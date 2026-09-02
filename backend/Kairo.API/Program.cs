@@ -1,4 +1,6 @@
+using Kairo.Application.Abstractions.Persistence;
 using Kairo.Infrastructure.Persistence;
+using Kairo.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,45 +11,24 @@ builder.Services.AddDbContext<KairoDbContext>(options =>
         builder.Configuration.GetConnectionString("KairoDatabase")
     ));
 
-// Add services to the container.
+// Register repositories
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+
+// Add services to the container
+builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+app.MapControllers();
 
-
-// ============================================================
-// Database Health Check
-// ============================================================
-
-app.MapGet("/api/health/database", async (KairoDbContext db) =>
-{
-    try
-    {
-        var canConnect = await db.Database.CanConnectAsync();
-
-        return Results.Ok(new
-        {
-            database = "SonaliDB",
-            connected = canConnect
-        });
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem(
-            title: "Database connection failed",
-            detail: ex.Message
-        );
-    }
-})
-.WithName("DatabaseHealth");
-
+// HTTPS redirection temporarily disabled
+// app.UseHttpsRedirection();
 
 app.Run();
