@@ -1,0 +1,39 @@
+{
+    "manifest_version": 3,
+    "name": "AI Memory",
+    "version": "0.1.0",
+    "description": "Persistent memory for AI-assisted development.",
+    "permissions": [
+        "storage"
+    ],
+    "host_permissions": [
+        "https://chatgpt.com/*"
+    ],
+    "action": {
+        "default_popup": "index.html"
+    },
+    "background": {
+        "service_worker": "src/background/background.ts"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://chatgpt.com/*"
+            ],
+            "js": [
+                "src/content/content.ts"
+            ],
+            "run_at": "document_start"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "assets/chatgptFetchInterceptor.js"
+            ],
+            "matches": [
+                "https://chatgpt.com/*"
+            ]
+        }
+    ]
+}

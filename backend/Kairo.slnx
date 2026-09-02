@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Kairo.API/Kairo.API.csproj" />
+  <Project Path="Kairo.Application/Kairo.Application.csproj" />
+  <Project Path="Kairo.Domain/Kairo.Domain.csproj" />
+  <Project Path="Kairo.Infrastructure/Kairo.Infrastructure.csproj" />
+</Solution>

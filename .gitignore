@@ -1,0 +1,30 @@
+# Build output
+**/bin/
+**/obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# VS Code
+.vscode/
+
+# Node
+node_modules/
+dist/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# .NET User Secrets
+secrets.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
