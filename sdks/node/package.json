@@ -1,0 +1,39 @@
+{
+  "name": "@kairo/sdk",
+  "version": "0.1.0",
+  "description": "Kairo SDK for persistent AI memory",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./agent": {
+      "require": "./dist/agent.js",
+      "types": "./dist/agent.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "kairo",
+    "ai",
+    "memory",
+    "sdk",
+    "llm",
+    "agent"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

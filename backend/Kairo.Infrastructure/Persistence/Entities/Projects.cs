@@ -17,6 +17,8 @@ public partial class Projects
 
     public bool IsDeleted { get; set; }
 
+    public virtual ICollection<ApiKeys> ApiKeys { get; set; } = new List<ApiKeys>();
+
     public virtual ICollection<Chats> Chats { get; set; } = new List<Chats>();
 
     public virtual Users User { get; set; } = null!;

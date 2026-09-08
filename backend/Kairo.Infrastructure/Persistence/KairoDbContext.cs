@@ -12,6 +12,8 @@ public partial class KairoDbContext : DbContext
     {
     }
 
+    public virtual DbSet<ApiKeys> ApiKeys { get; set; }
+
     public virtual DbSet<Chats> Chats { get; set; }
 
     public virtual DbSet<Memories> Memories { get; set; }
@@ -32,6 +34,29 @@ public partial class KairoDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ApiKeys>(entity =>
+        {
+            entity.HasKey(e => e.ApiKeyId);
+
+            entity.HasIndex(e => new { e.KeyHash, e.IsActive }, "IX_ApiKeys_Active");
+
+            entity.HasIndex(e => e.ProjectId, "IX_ApiKeys_ProjectId");
+
+            entity.HasIndex(e => e.KeyHash, "UX_ApiKeys_KeyHash").IsUnique();
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.KeyHash).HasMaxLength(256);
+            entity.Property(e => e.KeyPrefix).HasMaxLength(20);
+            entity.Property(e => e.Name).HasMaxLength(100);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(getutcdate())");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.ApiKeys)
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ApiKeys_Projects");
+        });
+
         modelBuilder.Entity<Chats>(entity =>
         {
             entity.HasKey(e => e.ChatId);
@@ -47,6 +72,9 @@ public partial class KairoDbContext : DbContext
                 .HasDefaultValueSql("(sysutcdatetime())", "DF_Chats_CreatedAt");
             entity.Property(e => e.ExternalConversationId).HasMaxLength(200);
             entity.Property(e => e.Name).HasMaxLength(500);
+            entity.Property(e => e.ProcessingError).HasMaxLength(2000);
+            entity.Property(e => e.ProcessingStatus).HasDefaultValue((byte)1, "DF_Chats_ProcessingStatus");
+            entity.Property(e => e.RawChatStatus).HasDefaultValue((byte)1, "DF_Chats_RawChatStatus");
             entity.Property(e => e.Source).HasMaxLength(50);
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)

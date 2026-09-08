@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+/* ── Kairo Design Tokens (Tailwind v4 @theme) ─────────────────────────────── */
+@theme {
+  /* Semantic colour tokens — reference CSS custom properties */
+  --color-background:          hsl(var(--background));
+  --color-foreground:          hsl(var(--foreground));
+
+  --color-card:                hsl(var(--card));
+  --color-card-foreground:     hsl(var(--card-foreground));
+
+  --color-popover:             hsl(var(--popover));
+  --color-popover-foreground:  hsl(var(--popover-foreground));
+
+  --color-primary:             hsl(var(--primary));
+  --color-primary-foreground:  hsl(var(--primary-foreground));
+
+  --color-secondary:           hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted:               hsl(var(--muted));
+  --color-muted-foreground:    hsl(var(--muted-foreground));
+
+  --color-accent:              hsl(var(--accent));
+  --color-accent-foreground:   hsl(var(--accent-foreground));
+
+  --color-destructive:         hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-border:              hsl(var(--border));
+  --color-input:               hsl(var(--input));
+  --color-ring:                hsl(var(--ring));
+
+  /* Typography */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Code", monospace;
+
+  /* Border radius scale */
+  --radius-xs:  calc(var(--radius) - 6px);
+  --radius-sm:  calc(var(--radius) - 4px);
+  --radius-md:  calc(var(--radius) - 2px);
+  --radius-lg:  var(--radius);
+  --radius-xl:  calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-full: 9999px;
+}
+
+/* ── CSS Custom Property Values ───────────────────────────────────────────── */
+:root {
+  /* ── Light mode ── */
+  --background:   0 0% 100%;
+  --foreground:   240 10% 4%;
+
+  --card:         0 0% 100%;
+  --card-foreground: 240 10% 4%;
+
+  --popover:      0 0% 100%;
+  --popover-foreground: 240 10% 4%;
+
+  /* Kairo violet accent */
+  --primary:      252 80% 60%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary:    240 5% 96%;
+  --secondary-foreground: 240 6% 10%;
+
+  --muted:        240 5% 96%;
+  --muted-foreground: 240 4% 46%;
+
+  --accent:       252 78% 97%;
+  --accent-foreground: 252 60% 40%;
+
+  --destructive:  0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border:       240 6% 90%;
+  --input:        240 6% 90%;
+  --ring:         252 80% 60%;
+
+  --radius:       0.5rem;
+}
+
+.dark {
+  /* ── Dark mode ── */
+  --background:   240 10% 4%;
+  --foreground:   0 0% 95%;
+
+  --card:         240 8% 6%;
+  --card-foreground: 0 0% 95%;
+
+  --popover:      240 8% 7%;
+  --popover-foreground: 0 0% 95%;
+
+  /* Violet is slightly lighter/more luminous in dark */
+  --primary:      252 78% 68%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary:    240 5% 12%;
+  --secondary-foreground: 0 0% 90%;
+
+  --muted:        240 5% 12%;
+  --muted-foreground: 240 5% 55%;
+
+  --accent:       252 60% 15%;
+  --accent-foreground: 252 78% 80%;
+
+  --destructive:  0 62% 55%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border:       240 6% 16%;
+  --input:        240 6% 16%;
+  --ring:         252 78% 68%;
+}
+
+/* ── Base Styles ──────────────────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: hsl(var(--border));
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    font-synthesis: none;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Accessible focus ring for all interactive elements */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: calc(var(--radius) - 2px);
+  }
+
+  /* Text selection uses primary accent */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.15);
+    color: hsl(var(--foreground));
+  }
+
+  /* Smooth transitions for theme switching */
+  *,
+  *::before,
+  *::after {
+    transition-property: color, background-color, border-color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+
+  /* Honour prefers-reduced-motion completely */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ── Typography scale ─────────────────────────────────────────────────────── */
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+  }
+
+  h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
+  h2 { font-size: clamp(1.5rem, 4vw, 2.25rem); }
+  h3 { font-size: clamp(1.25rem, 3vw, 1.5rem); }
+
+  p {
+    line-height: 1.7;
+  }
+
+  code, pre {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+  }
+
+  pre {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    background-color: hsl(var(--muted));
+  }
+}
