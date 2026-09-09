@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- MCP integration layer: only depends on Application contracts.
+       Infrastructure and Domain are NOT referenced directly.
+       All memory logic is delegated via IMemoryService. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Kairo.Application\Kairo.Application.csproj" />
+  </ItemGroup>
+
+  <!-- Official C# MCP SDK, co-maintained by Microsoft and Anthropic.
+       Verified compatible with net10.0 (NuGet supported frameworks list).
+       Isolated to this project — Python/Node SDKs are unaffected. -->
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+  </ItemGroup>
+
+</Project>

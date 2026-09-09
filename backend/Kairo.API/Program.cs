@@ -13,6 +13,7 @@ using Kairo.API.Authentication;
 using Microsoft.AspNetCore.Authentication;
 using Kairo.Application.Security;
 using Microsoft.OpenApi;
+using Kairo.MCP.Extensions; // Phase 9: MCP adapter layer
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -92,6 +93,14 @@ builder.Services.AddHttpClient<
 builder.Services.AddScoped<IFullConsolidationService, FullConsolidationService>();
 
 
+// ── Phase 9: MCP Integration Layer ────────────────────────────────────────
+// Registers the MCP server (Streamable HTTP transport) and discovers Kairo
+// MCP tools from Kairo.MCP. The existing IMemoryService, IApiKeyContext, and
+// KairoApiKeyAuthenticationHandler registrations above are reused as-is.
+// No duplicate memory logic, repositories, or auth is introduced here.
+builder.Services.AddKairoMcp();
+
+
 // Add services to the container
 builder.Services.AddControllers();
 
@@ -157,6 +166,15 @@ if (app.Environment.IsDevelopment())
 
 
 app.MapControllers();
+
+
+// ── Phase 9: MCP endpoint ─────────────────────────────────────────────────
+// MapMcp returns a RouteGroupBuilder. RequireAuthorization() ensures the
+// existing KairoApiKeyAuthenticationHandler runs before any MCP tool.
+// The scoped ApiKeyContext is populated by the auth handler — the same
+// mechanism used by MemoryController. No new auth logic is introduced.
+app.MapMcp("/mcp")
+   .RequireAuthorization();
 
 
 // HTTPS redirection temporarily disabled

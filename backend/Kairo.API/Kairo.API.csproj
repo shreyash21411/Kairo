@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -19,6 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Kairo.Application\Kairo.Application.csproj" />
     <ProjectReference Include="..\Kairo.Infrastructure\Kairo.Infrastructure.csproj" />
+    <!-- Phase 9: MCP integration layer -->
+    <ProjectReference Include="..\Kairo.MCP\Kairo.MCP.csproj" />
   </ItemGroup>
 
 </Project>
