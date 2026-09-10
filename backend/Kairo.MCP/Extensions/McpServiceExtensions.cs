@@ -39,9 +39,14 @@ public static class McpServiceExtensions
         // so scoped services (IMemoryService, IApiKeyContext) are resolved safely
         // per-request — exactly the same scope lifecycle as MemoryController uses.
         services
-            .AddMcpServer()
+            .AddMcpServer(options =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Resources ??= new();
+            })
             .WithHttpTransport()
-            .WithToolsFromAssembly(typeof(McpServiceExtensions).Assembly);
+            .WithToolsFromAssembly(typeof(McpServiceExtensions).Assembly)
+            .WithResourcesFromAssembly(typeof(McpServiceExtensions).Assembly);
 
         return services;
     }
