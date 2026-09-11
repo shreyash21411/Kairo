@@ -29,7 +29,7 @@ public class UserRepository : IUserRepository
 
     public async Task<long> CreateAsync(
         string email,
-        string passwordHash,
+        string? passwordHash,
         bool isEmailVerified,
         byte accountStatus)
     {
@@ -63,5 +63,17 @@ public class UserRepository : IUserRepository
                 AccountStatus = user.AccountStatus
             })
             .FirstOrDefaultAsync();
+    }
+
+    public async Task UpdateLastLoginAtAsync(
+        long userId,
+        DateTime lastLoginAt,
+        CancellationToken cancellationToken = default)
+    {
+        await _dbContext.Users
+            .Where(u => u.UserId == userId)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(u => u.LastLoginAt, lastLoginAt),
+                cancellationToken);
     }
 }

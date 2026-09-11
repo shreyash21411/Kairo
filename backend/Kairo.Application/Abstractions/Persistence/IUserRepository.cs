@@ -10,9 +10,14 @@ public interface IUserRepository
 
     Task<long> CreateAsync(
         string email,
-        string passwordHash,
+        string? passwordHash,
         bool isEmailVerified,
         byte accountStatus);
 
     Task<UserLoginData?> GetLoginDataByEmailAsync(string email);
+
+    Task UpdateLastLoginAtAsync(
+        long userId,
+        DateTime lastLoginAt,
+        CancellationToken cancellationToken = default);
 }

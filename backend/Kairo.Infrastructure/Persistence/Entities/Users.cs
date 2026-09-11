@@ -9,7 +9,7 @@ public partial class Users
 
     public string Email { get; set; } = null!;
 
-    public string PasswordHash { get; set; } = null!;
+    public string? PasswordHash { get; set; }
 
     public bool IsEmailVerified { get; set; }
 
@@ -21,6 +21,8 @@ public partial class Users
 
     public DateTime? LastLoginAt { get; set; }
 
+    public virtual ICollection<AuthenticationIdentities> AuthenticationIdentities { get; set; } = new List<AuthenticationIdentities>();
+
     public virtual ICollection<Chats> Chats { get; set; } = new List<Chats>();
 
     public virtual ICollection<Memories> Memories { get; set; } = new List<Memories>();
@@ -28,6 +30,8 @@ public partial class Users
     public virtual ICollection<MemorySettingHistory> MemorySettingHistory { get; set; } = new List<MemorySettingHistory>();
 
     public virtual ICollection<Projects> Projects { get; set; } = new List<Projects>();
+
+    public virtual ICollection<RefreshTokens> RefreshTokens { get; set; } = new List<RefreshTokens>();
 
     public virtual UserMemorySettings? UserMemorySettings { get; set; }
 }
