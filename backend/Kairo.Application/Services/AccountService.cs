@@ -24,6 +24,11 @@ public sealed class AccountService : IAccountService
     // ─── Default project name created alongside a new account ─────────────────
     private const string DefaultProjectName = "My Project";
 
+    // ─── Precomputed valid ASP.NET Identity V3 hash for timing attack mitigation ───
+    // Used exclusively for dummy verification when an account or password hash does not exist.
+    private const string DummyPasswordHash =
+        "AQAAAAIAAYagAAAAEBNFp+c2laYWk3RoI/0+ewWfltZrMl0RcTcU1pZkHWTMbiyJYEghbwAOOr3Rm3Libg==";
+
     private readonly IUserRepository _userRepository;
     private readonly IProjectRepository _projectRepository;
     private readonly IAuthenticationIdentityRepository _authIdentityRepository;
@@ -141,7 +146,10 @@ public sealed class AccountService : IAccountService
         // 2. Find the user. Non-existence and wrong password must produce identical results.
         var loginData = await _userRepository.GetLoginDataByEmailAsync(normalizedEmail);
         if (loginData is null)
+        {
+            _passwordHasher.Verify(password, DummyPasswordHash);
             return null;
+        }
 
         // 3. Verify credentials.
         var verified = await VerifyCredentialsAsync(
@@ -270,7 +278,10 @@ public sealed class AccountService : IAccountService
         {
             // Modern path: PasswordHash must be present on the identity.
             if (string.IsNullOrEmpty(identity.PasswordHash))
+            {
+                _passwordHasher.Verify(password, DummyPasswordHash);
                 return false;
+            }
 
             return _passwordHasher.Verify(password, identity.PasswordHash);
         }
@@ -278,7 +289,10 @@ public sealed class AccountService : IAccountService
         // ── Legacy lazy migration ──────────────────────────────────────────────
         // No Password AuthenticationIdentity exists — fall back to Users.PasswordHash.
         if (string.IsNullOrEmpty(loginData.PasswordHash))
+        {
+            _passwordHasher.Verify(password, DummyPasswordHash);
             return false;   // No legacy hash either — reject.
+        }
 
         var legacyVerified = _passwordHasher.Verify(password, loginData.PasswordHash);
         if (!legacyVerified)
