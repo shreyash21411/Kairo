@@ -11,6 +11,9 @@ using Kairo.Application.Abstractions.Security;
 using Kairo.API.Security;
 using Kairo.API.Authentication;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using Kairo.Application.Security;
 using Microsoft.OpenApi;
 using Kairo.MCP.Extensions; // Phase 9: MCP adapter layer
@@ -46,12 +49,30 @@ builder.Services.AddScoped<IApiKeyContext>(sp =>
 
 builder.Services.AddScoped<IApiKeyValidator, ApiKeyValidator>();
 
-// API Key authentication
+// Authentication: KairoApiKey (default scheme) + KairoJwt (named scheme)
+var jwtSigningKey = builder.Configuration["Kairo:Jwt:SigningKey"];
+
 builder.Services
     .AddAuthentication("KairoApiKey")
     .AddScheme<AuthenticationSchemeOptions, KairoApiKeyAuthenticationHandler>(
         "KairoApiKey",
-        options => { });
+        options => { })
+    .AddJwtBearer("KairoJwt", options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = !string.IsNullOrEmpty(jwtSigningKey)
+                ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSigningKey))
+                : null,
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(1),
+            ValidAlgorithms = new[] { SecurityAlgorithms.HmacSha256 }
+        };
+    });
 
 builder.Services.AddAuthorization();
 
