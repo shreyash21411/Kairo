@@ -1,3 +1,4 @@
+using Kairo.Application.Abstractions.Authentication;
 using Kairo.Application.Abstractions.Security;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
@@ -8,24 +9,24 @@ namespace Kairo.API.Controllers;
 
 [ApiController]
 [Route("api/v1/api-keys")]
-[Authorize]
+[Authorize(AuthenticationSchemes = "KairoJwt")]
 [Produces("application/json")]
 public class ApiKeyController : ControllerBase
 {
     private readonly IApiKeyService _apiKeyService;
-    private readonly IApiKeyContext _apiKeyContext;
+    private readonly IAccountContext _accountContext;
 
     public ApiKeyController(
         IApiKeyService apiKeyService,
-        IApiKeyContext apiKeyContext)
+        IAccountContext accountContext)
     {
         _apiKeyService = apiKeyService;
-        _apiKeyContext = apiKeyContext;
+        _accountContext = accountContext;
     }
 
     // POST: /api/v1/api-keys
     // Body: { "projectId": 1, "name": "My Key", "expiresAt": null }
-    // UserId is resolved from the authenticated API key — not from the request body.
+    // UserId is resolved from the authenticated account (JWT) — not from the request body.
     [HttpPost]
     [ProducesResponseType(typeof(CreatedApiKeyResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -36,7 +37,7 @@ public class ApiKeyController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId = _accountContext.UserId;
 
             var result = await _apiKeyService.CreateAsync(userId, request);
 
@@ -80,7 +81,7 @@ public class ApiKeyController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId = _accountContext.UserId;
 
             var result = await _apiKeyService.GetByProjectAsync(
                 userId,
@@ -125,7 +126,7 @@ public class ApiKeyController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId = _accountContext.UserId;
 
             var result = await _apiKeyService.RevokeAsync(
                 userId,

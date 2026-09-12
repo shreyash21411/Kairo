@@ -1,4 +1,4 @@
-using Kairo.Application.Abstractions.Security;
+using Kairo.Application.Abstractions.Authentication;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -8,19 +8,19 @@ namespace Kairo.API.Controllers;
 
 [ApiController]
 [Route("api/v1/projects")]
-[Authorize]
+[Authorize(AuthenticationSchemes = "KairoJwt")]
 [Produces("application/json")]
 public class ProjectController : ControllerBase
 {
     private readonly IProjectService _projectService;
-    private readonly IApiKeyContext _apiKeyContext;
+    private readonly IAccountContext _accountContext;
 
     public ProjectController(
         IProjectService projectService,
-        IApiKeyContext apiKeyContext)
+        IAccountContext accountContext)
     {
         _projectService = projectService;
-        _apiKeyContext = apiKeyContext;
+        _accountContext = accountContext;
     }
 
     // POST: /api/v1/projects
@@ -33,7 +33,7 @@ public class ProjectController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId = _accountContext.UserId;
 
             var result =
                 await _projectService.CreateAsync(userId, request);
@@ -67,7 +67,7 @@ public class ProjectController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId = _accountContext.UserId;
 
             var result =
                 await _projectService.GetByUserAsync(userId);
@@ -96,7 +96,7 @@ public class ProjectController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId = _accountContext.UserId;
 
             var result =
                 await _projectService.GetByIdAsync(
@@ -136,7 +136,7 @@ public class ProjectController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId = _accountContext.UserId;
 
             var result =
                 await _projectService.DeleteAsync(
