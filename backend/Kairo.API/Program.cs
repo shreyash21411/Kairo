@@ -163,6 +163,12 @@ builder.Services.AddKairoMcp();
 // Add services to the container
 builder.Services.AddControllers();
 
+// ── ProblemDetails (AUTH-9L) ──────────────────────────────────────────────────
+// Enables RFC 7807 / RFC 9457 structured error responses.
+// UseExceptionHandler below will write a generic HTTP 500 problem response
+// for any unhandled exception without leaking implementation details.
+builder.Services.AddProblemDetails();
+
 builder.Services.AddOpenApi();
 
 
@@ -204,6 +210,31 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-XSS-Protection"] = "0";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     await next();
+});
+
+
+// ── Global exception handler (AUTH-9L) ────────────────────────────────────────
+// Must be registered first in the pipeline so it can catch exceptions from all
+// subsequent middleware and controllers.
+// Produces a safe generic HTTP 500 application/problem+json body with no stack
+// trace, no exception message, and no internal details.
+app.UseExceptionHandler(errApp =>
+{
+    errApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        var problemDetails = context.RequestServices
+            .GetRequiredService<IProblemDetailsService>();
+        await problemDetails.WriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = context,
+            ProblemDetails =
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Title  = "An unexpected error occurred."
+            }
+        });
+    });
 });
 
 
