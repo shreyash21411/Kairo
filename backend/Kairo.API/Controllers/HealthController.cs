@@ -22,21 +22,20 @@ public class HealthController : ControllerBase
         {
             var connected = await _context.Database.CanConnectAsync();
 
-            var database = _context.Database.GetDbConnection().Database;
-
             return Ok(new
             {
-                database,
+                status = "Healthy",
                 connected
             });
         }
-        catch (Exception ex)
+        catch
         {
+            // Do not leak exception messages, stack traces, SQL details,
+            // connection strings, or the database name.
             return StatusCode(500, new
             {
-                database = _context.Database.GetDbConnection().Database,
-                connected = false,
-                error = ex.Message
+                status = "Unhealthy",
+                connected = false
             });
         }
     }

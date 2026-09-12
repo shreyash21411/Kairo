@@ -1,3 +1,4 @@
+using Kairo.Application.Abstractions.Security;
 using Kairo.Application.Abstractions.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +9,13 @@ using Kairo.Application.DTOs;
 
 namespace Kairo.API.Controllers;
 
+/// <summary>
+/// Chat processing and diagnostic endpoints — application/agent authenticated boundary.
+///
+/// Authentication: KairoApiKey (default scheme).
+/// Where a UserId is required, it is always resolved from IApiKeyContext.
+/// Callers cannot supply or override their UserId.
+/// </summary>
 [ApiController]
 [Route("api/chat-processing")]
 [Authorize]
@@ -20,12 +28,17 @@ public class ChatProcessingController : ControllerBase
     private readonly IMemoryConsolidationService _memoryConsolidationService;
     private readonly IEmbeddingBackfillService _embeddingBackfillService;
     private readonly IFullConsolidationService _fullConsolidationService;
+    private readonly IApiKeyContext _apiKeyContext;
 
     public ChatProcessingController(
-        IChatProcessingService chatProcessingService,  IEmbeddingGenerator embeddingGenerator,SemanticSimilarityService similarityService,
-        MemoryRetrievalService memoryRetrievalService,IMemoryConsolidationService memoryConsolidationService,
+        IChatProcessingService chatProcessingService,
+        IEmbeddingGenerator embeddingGenerator,
+        SemanticSimilarityService similarityService,
+        MemoryRetrievalService memoryRetrievalService,
+        IMemoryConsolidationService memoryConsolidationService,
         IEmbeddingBackfillService embeddingBackfillService,
-        IFullConsolidationService fullConsolidationService)
+        IFullConsolidationService fullConsolidationService,
+        IApiKeyContext apiKeyContext)
     {
         _chatProcessingService = chatProcessingService;
         _embeddingGenerator = embeddingGenerator;
@@ -34,9 +47,10 @@ public class ChatProcessingController : ControllerBase
         _memoryConsolidationService = memoryConsolidationService;
         _embeddingBackfillService = embeddingBackfillService;
         _fullConsolidationService = fullConsolidationService;
+        _apiKeyContext = apiKeyContext;
     }
 
-[HttpPost("{chatId:long}")]
+    [HttpPost("{chatId:long}")]
     public async Task<IActionResult> ProcessChat(long chatId)
     {
         if (chatId <= 0)
@@ -64,222 +78,237 @@ public class ChatProcessingController : ControllerBase
             message = "Chat processed successfully."
         });
     }
+
     public class TestEmbeddingRequest
-{
-    public string Text { get; set; } = null!;
-}
-[HttpPost("test-embedding")]
-public async Task<IActionResult> TestEmbedding(
-    [FromBody] TestEmbeddingRequest request)
-{
-    if (string.IsNullOrWhiteSpace(request.Text))
     {
-        return BadRequest(new
+        public string Text { get; set; } = null!;
+    }
+
+    [HttpPost("test-embedding")]
+    public async Task<IActionResult> TestEmbedding(
+        [FromBody] TestEmbeddingRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Text))
         {
-            message = "Text cannot be empty."
+            return BadRequest(new
+            {
+                message = "Text cannot be empty."
+            });
+        }
+
+        var embedding =
+            await _embeddingGenerator.GenerateAsync(request.Text);
+
+        return Ok(new
+        {
+            dimensions = embedding.Length,
+            embedding
         });
     }
 
-    var embedding =
-        await _embeddingGenerator.GenerateAsync(request.Text);
-
-    return Ok(new
+    public class TestSimilarityRequest
     {
-        dimensions = embedding.Length,
-        embedding
-    });
-}
-public class TestSimilarityRequest
-{
-    public string TextA { get; set; } = null!;
+        public string TextA { get; set; } = null!;
 
-    public string TextB { get; set; } = null!;
-}
-[HttpPost("test-similarity")]
-public async Task<IActionResult> TestSimilarity(
-    [FromBody] TestSimilarityRequest request)
-{
-    if (string.IsNullOrWhiteSpace(request.TextA) ||
-        string.IsNullOrWhiteSpace(request.TextB))
+        public string TextB { get; set; } = null!;
+    }
+
+    [HttpPost("test-similarity")]
+    public async Task<IActionResult> TestSimilarity(
+        [FromBody] TestSimilarityRequest request)
     {
-        return BadRequest(new
+        if (string.IsNullOrWhiteSpace(request.TextA) ||
+            string.IsNullOrWhiteSpace(request.TextB))
         {
-            message = "Both TextA and TextB are required."
+            return BadRequest(new
+            {
+                message = "Both TextA and TextB are required."
+            });
+        }
+
+        var embeddingA =
+            await _embeddingGenerator.GenerateAsync(
+                request.TextA);
+
+        var embeddingB =
+            await _embeddingGenerator.GenerateAsync(
+                request.TextB);
+
+        var similarity =
+            _similarityService.CalculateCosineSimilarity(
+                embeddingA,
+                embeddingB);
+
+        return Ok(new
+        {
+            similarity,
+            dimensionsA = embeddingA.Length,
+            dimensionsB = embeddingB.Length
         });
     }
 
-    var embeddingA =
-        await _embeddingGenerator.GenerateAsync(
-            request.TextA);
-
-    var embeddingB =
-        await _embeddingGenerator.GenerateAsync(
-            request.TextB);
-
-    var similarity =
-        _similarityService.CalculateCosineSimilarity(
-            embeddingA,
-            embeddingB);
-
-    return Ok(new
+    /// <summary>
+    /// Tests memory retrieval scoped to the authenticated user.
+    /// UserId is resolved from the API key — callers cannot supply their own.
+    /// </summary>
+    [HttpPost("test-retrieval")]
+    public async Task<IActionResult> TestRetrieval(
+        [FromBody] MemoryRetrievalRequest request)
     {
-        similarity,
-        dimensionsA = embeddingA.Length,
-        dimensionsB = embeddingB.Length
-    });
-}
-[HttpPost("test-retrieval")]
-public async Task<IActionResult> TestRetrieval(
-    [FromQuery] long userId,
-    [FromBody] MemoryRetrievalRequest request)
-{
-    if (userId <= 0)
-    {
-        return BadRequest(new
+        // UserId is always derived from the authenticated API key context.
+        var userId = _apiKeyContext.UserId;
+
+        if (string.IsNullOrWhiteSpace(request.Query))
         {
-            message = "Invalid userId."
-        });
-    }
+            return BadRequest(new
+            {
+                message = "Query cannot be empty."
+            });
+        }
 
-    if (string.IsNullOrWhiteSpace(request.Query))
-    {
-        return BadRequest(new
+        if (request.TopK <= 0)
         {
-            message = "Query cannot be empty."
-        });
-    }
+            return BadRequest(new
+            {
+                message = "TopK must be greater than zero."
+            });
+        }
 
-    if (request.TopK <= 0)
-    {
-        return BadRequest(new
+        var memories =
+            await _memoryRetrievalService.RetrieveAsync(
+                userId,
+                request.Query,
+                request.TopK);
+
+        if (memories.Count == 0)
         {
-            message = "TopK must be greater than zero."
-        });
-    }
+            return Ok(new
+            {
+                query = request.Query,
+                count = 0,
+                memories,
+                message = "No relevant memory found for this question."
+            });
+        }
 
-    var memories =
-        await _memoryRetrievalService.RetrieveAsync(
-            userId,
-            request.Query,
-            request.TopK);
-
-    if (memories.Count == 0)
-    {
         return Ok(new
         {
             query = request.Query,
-            count = 0,
-            memories,
-            message = "No relevant memory found for this question."
+            count = memories.Count,
+            memories
         });
     }
 
-    return Ok(new
+    /// <summary>
+    /// Tests the working-set deduplication pipeline for the authenticated user.
+    /// The UserId in the request body is ignored; it is overridden from the API key context.
+    /// </summary>
+    [HttpPost("test-working-set")]
+    public async Task<IActionResult> TestWorkingSet(
+        [FromBody] WorkingSetTestRequest request)
     {
-        query = request.Query,
-        count = memories.Count,
-        memories
-    });
-}
+        // Override any caller-supplied UserId with the authenticated identity.
+        request.UserId = _apiKeyContext.UserId;
 
-[HttpPost("test-working-set")]
-public async Task<IActionResult> TestWorkingSet(
-    [FromBody] WorkingSetTestRequest request)
-{
-    try
-    {
-        var result =
-            await _chatProcessingService
-                .TestWorkingSetDedupAsync(request);
-
-        return Ok(result);
-    }
-    catch (ArgumentException ex)
-    {
-        return BadRequest(new
+        try
         {
-            message = ex.Message
-        });
-    }
-}
-[HttpPost("test-consolidation-candidates")]
-public async Task<IActionResult> TestConsolidationCandidates(
-    [FromBody] MemoryConsolidationRequest request)
-{
-    try
-    {
-        var result =
-            await _memoryConsolidationService
-                .ConsolidateAsync(request);
+            var result =
+                await _chatProcessingService
+                    .TestWorkingSetDedupAsync(request);
 
-        return Ok(result);
-    }
-    catch (ArgumentException ex)
-    {
-        return BadRequest(new
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
         {
-            message = ex.Message
-        });
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
     }
-}
 
-// ── Task 1: Embedding backfill ───────────────────────────────────────────────
-
-[HttpPost("test-embedding-backfill")]
-public async Task<IActionResult> TestEmbeddingBackfill(
-    [FromQuery] long userId)
-{
-    if (userId <= 0)
+    /// <summary>
+    /// Tests consolidation candidate detection for the authenticated user.
+    /// The UserId in the request body is ignored; it is overridden from the API key context.
+    /// </summary>
+    [HttpPost("test-consolidation-candidates")]
+    public async Task<IActionResult> TestConsolidationCandidates(
+        [FromBody] MemoryConsolidationRequest request)
     {
-        return BadRequest(new
+        // Override any caller-supplied UserId with the authenticated identity.
+        request.UserId = _apiKeyContext.UserId;
+
+        try
         {
-            message = "Invalid userId."
-        });
-    }
+            var result =
+                await _memoryConsolidationService
+                    .ConsolidateAsync(request);
 
-    try
-    {
-        var result =
-            await _embeddingBackfillService.BackfillAsync(userId);
-
-        return Ok(result);
-    }
-    catch (ArgumentException ex)
-    {
-        return BadRequest(new
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
         {
-            message = ex.Message
-        });
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
     }
-}
 
-// ── Task 4: Full consolidation pipeline (candidates → Mistral → merge) ──
+    // ── Task 1: Embedding backfill ───────────────────────────────────────────────
 
-[HttpPost("test-full-consolidation")]
-public async Task<IActionResult> TestFullConsolidation(
-    [FromQuery] long userId)
-{
-    if (userId <= 0)
+    /// <summary>
+    /// Backfills embeddings for all active memories of the authenticated user
+    /// that do not yet have an embedding.
+    /// UserId is resolved from the API key — callers cannot supply their own.
+    /// </summary>
+    [HttpPost("test-embedding-backfill")]
+    public async Task<IActionResult> TestEmbeddingBackfill()
     {
-        return BadRequest(new
+        // UserId is always derived from the authenticated API key context.
+        var userId = _apiKeyContext.UserId;
+
+        try
         {
-            message = "Invalid userId."
-        });
-    }
+            var result =
+                await _embeddingBackfillService.BackfillAsync(userId);
 
-    try
-    {
-        var result =
-            await _fullConsolidationService.RunAsync(userId);
-
-        return Ok(result);
-    }
-    catch (ArgumentException ex)
-    {
-        return BadRequest(new
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
         {
-            message = ex.Message
-        });
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
     }
-}
+
+    // ── Task 4: Full consolidation pipeline (candidates → Mistral → merge) ──
+
+    /// <summary>
+    /// Runs the full consolidation pipeline for the authenticated user.
+    /// UserId is resolved from the API key — callers cannot supply their own.
+    /// </summary>
+    [HttpPost("test-full-consolidation")]
+    public async Task<IActionResult> TestFullConsolidation()
+    {
+        // UserId is always derived from the authenticated API key context.
+        var userId = _apiKeyContext.UserId;
+
+        try
+        {
+            var result =
+                await _fullConsolidationService.RunAsync(userId);
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
 }

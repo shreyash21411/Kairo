@@ -22,7 +22,7 @@ namespace Kairo.MCP.Resources;
 ///   - MapMcp("/mcp").RequireAuthorization() ensures only authenticated requests
 ///     reach these resources.
 ///   - All read operations delegate directly to existing Application services
-///     (IUserService, IProjectService, IMemoryService).
+///     (IProjectService, IMemoryService).
 ///   - Zero repository injection, zero DbContext, zero SQL, zero EF Core, zero Mistral.
 ///   - No business logic or validation is duplicated here.
 /// </summary>
@@ -30,7 +30,6 @@ namespace Kairo.MCP.Resources;
 public sealed class KairoResourceProvider
 {
     private readonly IApiKeyContext _apiKeyContext;
-    private readonly IUserService _userService;
     private readonly IProjectService _projectService;
     private readonly IMemoryService _memoryService;
 
@@ -43,12 +42,10 @@ public sealed class KairoResourceProvider
 
     public KairoResourceProvider(
         IApiKeyContext apiKeyContext,
-        IUserService userService,
         IProjectService projectService,
         IMemoryService memoryService)
     {
         _apiKeyContext = apiKeyContext;
-        _userService = userService;
         _projectService = projectService;
         _memoryService = memoryService;
     }
