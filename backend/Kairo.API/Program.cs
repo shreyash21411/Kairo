@@ -169,6 +169,37 @@ builder.Services.AddControllers();
 // for any unhandled exception without leaking implementation details.
 builder.Services.AddProblemDetails();
 
+// ── CORS (AUTH-9M) ────────────────────────────────────────────────────────────
+// Origins are read exclusively from configuration so that no production domain
+// is hardcoded here. Set Kairo:Cors:AllowedOrigins in the environment-specific
+// appsettings or environment variables before deploying.
+//
+// Explicit restrictions (do NOT relax without a security review):
+//   - No AllowAnyOrigin()      — exact origin list only
+//   - No AllowAnyMethod()      — GET, POST, PUT, PATCH, DELETE, OPTIONS only
+//   - No AllowAnyHeader()      — Content-Type, Authorization, Accept only
+//   - No AllowCredentials()    — Kairo uses JWT Bearer / API-key headers;
+//                                cookies are not part of the auth model
+var allowedOrigins = builder.Configuration
+    .GetSection("Kairo:Cors:AllowedOrigins")
+    .Get<string[]>() ?? Array.Empty<string>();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("KairoCors", policy =>
+    {
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                  .WithHeaders("Content-Type", "Authorization", "Accept");
+        }
+        // If AllowedOrigins is empty the policy permits no origins, which is
+        // the safe default. No requests will be cross-origin-allowed until
+        // the configuration is explicitly populated.
+    });
+});
+
 builder.Services.AddOpenApi();
 
 
@@ -243,6 +274,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
     app.UseHttpsRedirection();
 }
+
+// ── CORS (AUTH-9M) ───────────────────────────────────────────────────────────
+// Must run after HTTPS redirection and before rate limiting / authentication
+// so that browsers receive CORS headers on both preflight and actual requests.
+app.UseCors("KairoCors");
 
 app.UseRateLimiter();
 
