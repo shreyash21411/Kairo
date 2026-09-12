@@ -19,6 +19,8 @@ using Kairo.Infrastructure.Security;
 using Kairo.Application.Security;
 using Microsoft.OpenApi;
 using Kairo.MCP.Extensions; // Phase 9: MCP adapter layer
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -62,6 +64,28 @@ builder.Services.AddScoped<AccountContext>();
 builder.Services.AddScoped<IAccountContext>(sp =>
     sp.GetRequiredService<AccountContext>());
 builder.Services.AddScoped<IAccountService, AccountService>();
+
+// ── Rate Limiting (AUTH-9G) ──────────────────────────────────
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"message\":\"Too many requests. Please try again later.\"}",
+            token);
+    };
+    options.AddPolicy("auth-policy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 
 // Authentication: KairoApiKey (default scheme) + KairoJwt (named scheme)
 var jwtSigningKey = builder.Configuration["Kairo:Jwt:SigningKey"];
@@ -183,6 +207,15 @@ app.Use(async (context, next) =>
 });
 
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+
+app.UseRateLimiter();
+
+
 // Authentication must run before Authorization
 app.UseAuthentication();
 
@@ -210,10 +243,6 @@ app.MapControllers();
 // mechanism used by MemoryController. No new auth logic is introduced.
 app.MapMcp("/mcp")
    .RequireAuthorization();
-
-
-// HTTPS redirection temporarily disabled
-// app.UseHttpsRedirection();
 
 
 app.Run();
