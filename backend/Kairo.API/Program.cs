@@ -14,6 +14,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Kairo.Application.Abstractions.Authentication;
+using Kairo.Infrastructure.Security;
 using Kairo.Application.Security;
 using Microsoft.OpenApi;
 using Kairo.MCP.Extensions; // Phase 9: MCP adapter layer
@@ -48,6 +50,18 @@ builder.Services.AddScoped<IApiKeyContext>(sp =>
     sp.GetRequiredService<ApiKeyContext>());
 
 builder.Services.AddScoped<IApiKeyValidator, ApiKeyValidator>();
+
+// ── Account / Human Authentication (AUTH-8) ─────────────────────────────────
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuthenticationIdentityRepository, AuthenticationIdentityRepository>();
+builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<ITransactionCoordinator, EfTransactionCoordinator>();
+builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<AccountContext>();
+builder.Services.AddScoped<IAccountContext>(sp =>
+    sp.GetRequiredService<AccountContext>());
+builder.Services.AddScoped<IAccountService, AccountService>();
 
 // Authentication: KairoApiKey (default scheme) + KairoJwt (named scheme)
 var jwtSigningKey = builder.Configuration["Kairo:Jwt:SigningKey"];
