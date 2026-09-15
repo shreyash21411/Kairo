@@ -111,7 +111,8 @@ public sealed class KairoResourceProvider
     public async Task<string> GetMemories()
     {
         var userId = _apiKeyContext.UserId;
-        var memories = await _memoryService.ListMemoriesAsync(userId);
+        var projectId = _apiKeyContext.ProjectId;
+        var memories = await _memoryService.ListMemoriesAsync(userId, projectId);
 
         return JsonSerializer.Serialize(memories, JsonOptions);
     }
@@ -119,7 +120,7 @@ public sealed class KairoResourceProvider
     // ── 4. kairo://memories/{memoryId} ───────────────────────────────────────
 
     /// <summary>
-    /// Exposes a single memory by ID for the authenticated user.
+    /// Exposes a single memory by ID for the authenticated user and project.
     /// Enforces tenant boundary: MemoryService validates ownership at the SQL level.
     /// </summary>
     [McpServerResource(
@@ -133,7 +134,8 @@ public sealed class KairoResourceProvider
         long memoryId)
     {
         var userId = _apiKeyContext.UserId;
-        var memory = await _memoryService.GetMemoryAsync(memoryId, userId);
+        var projectId = _apiKeyContext.ProjectId;
+        var memory = await _memoryService.GetMemoryAsync(memoryId, userId, projectId);
 
         return JsonSerializer.Serialize(memory, JsonOptions);
     }

@@ -4,7 +4,7 @@ namespace Kairo.Application.Abstractions.Services;
 
 public interface IChatProcessingService
 {
-    Task<bool> ProcessChatAsync(long chatId);
+    Task<ChatProcessingResult> ProcessChatAsync(long chatId);
     Task<WorkingSetTestResult> TestWorkingSetDedupAsync(
-    WorkingSetTestRequest request);
+        WorkingSetTestRequest request);
 }

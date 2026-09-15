@@ -1,11 +1,10 @@
+using Kairo.Application;
 using Kairo.Application.Abstractions.Security;
 using Kairo.Application.Abstractions.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Kairo.Application.Services;
 using Kairo.Application.DTOs;
-
-
 
 namespace Kairo.API.Controllers;
 
@@ -29,6 +28,7 @@ public class ChatProcessingController : ControllerBase
     private readonly IEmbeddingBackfillService _embeddingBackfillService;
     private readonly IFullConsolidationService _fullConsolidationService;
     private readonly IApiKeyContext _apiKeyContext;
+    private readonly IScopeResolutionService _scopeResolutionService;
 
     public ChatProcessingController(
         IChatProcessingService chatProcessingService,
@@ -38,7 +38,8 @@ public class ChatProcessingController : ControllerBase
         IMemoryConsolidationService memoryConsolidationService,
         IEmbeddingBackfillService embeddingBackfillService,
         IFullConsolidationService fullConsolidationService,
-        IApiKeyContext apiKeyContext)
+        IApiKeyContext apiKeyContext,
+        IScopeResolutionService scopeResolutionService)
     {
         _chatProcessingService = chatProcessingService;
         _embeddingGenerator = embeddingGenerator;
@@ -48,6 +49,7 @@ public class ChatProcessingController : ControllerBase
         _embeddingBackfillService = embeddingBackfillService;
         _fullConsolidationService = fullConsolidationService;
         _apiKeyContext = apiKeyContext;
+        _scopeResolutionService = scopeResolutionService;
     }
 
     [HttpPost("{chatId:long}")]
@@ -61,21 +63,26 @@ public class ChatProcessingController : ControllerBase
             });
         }
 
-        var processed =
+        var result =
             await _chatProcessingService.ProcessChatAsync(chatId);
 
-        if (!processed)
+        if (!result.Success)
         {
             return BadRequest(new
             {
-                message = "Chat processing failed."
+                chatId,
+                message = result.Message ?? "Chat processing failed."
             });
         }
 
         return Ok(new
         {
             chatId,
-            message = "Chat processed successfully."
+            message = result.Message ?? "Chat processed successfully.",
+            extractedCount = result.ExtractedMemoryCount,
+            createdCount = result.CreatedMemoryCount,
+            skippedCount = result.SkippedMemoryCount,
+            skipReason = result.MemorySkipReason
         });
     }
 
@@ -228,8 +235,10 @@ public class ChatProcessingController : ControllerBase
     }
 
     /// <summary>
-    /// Tests consolidation candidate detection for the authenticated user.
+    /// Tests consolidation candidate detection for the authenticated user and project.
     /// The UserId in the request body is ignored; it is overridden from the API key context.
+    /// ActorId is required to resolve the target MemoryScope within the authenticated project.
+    /// Client-supplied raw ScopeId is not accepted.
     /// </summary>
     [HttpPost("test-consolidation-candidates")]
     public async Task<IActionResult> TestConsolidationCandidates(
@@ -238,13 +247,44 @@ public class ChatProcessingController : ControllerBase
         // Override any caller-supplied UserId with the authenticated identity.
         request.UserId = _apiKeyContext.UserId;
 
+        if (string.IsNullOrWhiteSpace(request.ActorId))
+        {
+            return BadRequest(new
+            {
+                message = "ActorId is required for consolidation candidate testing."
+            });
+        }
+
+        var projectId = _apiKeyContext.ProjectId;
+        if (projectId <= 0)
+        {
+            return BadRequest(new
+            {
+                message = "Authenticated API key must belong to a project."
+            });
+        }
+
         try
         {
+            var scopeId = await _scopeResolutionService.ResolveScopeAsync(
+                projectId,
+                request.ActorId);
+
+            request.ScopeId = scopeId;
+
+            // Pass resolved scopeId so candidates are partitioned strictly to this scope.
             var result =
                 await _memoryConsolidationService
-                    .ConsolidateAsync(request);
+                    .ConsolidateAsync(request, scopeId);
 
             return Ok(result);
+        }
+        catch (MemoryScopeNotFoundException ex)
+        {
+            return NotFound(new
+            {
+                message = ex.Message
+            });
         }
         catch (ArgumentException ex)
         {
@@ -287,21 +327,52 @@ public class ChatProcessingController : ControllerBase
     // ── Task 4: Full consolidation pipeline (candidates → Mistral → merge) ──
 
     /// <summary>
-    /// Runs the full consolidation pipeline for the authenticated user.
-    /// UserId is resolved from the API key — callers cannot supply their own.
+    /// Runs the full consolidation pipeline for the authenticated user and project.
+    /// UserId and ProjectId are resolved from the API key — callers cannot supply their own.
+    /// ActorId is required to resolve the target MemoryScope within the authenticated project.
+    /// Client-supplied raw ScopeId is not accepted.
     /// </summary>
     [HttpPost("test-full-consolidation")]
-    public async Task<IActionResult> TestFullConsolidation()
+    public async Task<IActionResult> TestFullConsolidation(
+        [FromQuery] string? actorId = null)
     {
         // UserId is always derived from the authenticated API key context.
         var userId = _apiKeyContext.UserId;
 
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            return BadRequest(new
+            {
+                message = "ActorId is required for full consolidation testing."
+            });
+        }
+
+        var projectId = _apiKeyContext.ProjectId;
+        if (projectId <= 0)
+        {
+            return BadRequest(new
+            {
+                message = "Authenticated API key must belong to a project."
+            });
+        }
+
         try
         {
+            var resolvedScopeId = await _scopeResolutionService.ResolveScopeAsync(
+                projectId,
+                actorId);
+
             var result =
-                await _fullConsolidationService.RunAsync(userId);
+                await _fullConsolidationService.RunAsync(userId, resolvedScopeId);
 
             return Ok(result);
+        }
+        catch (MemoryScopeNotFoundException ex)
+        {
+            return NotFound(new
+            {
+                message = ex.Message
+            });
         }
         catch (ArgumentException ex)
         {

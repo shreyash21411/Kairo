@@ -3,6 +3,16 @@ namespace Kairo.Application.DTOs;
 public class MemoryConsolidationRequest
 {
     public long UserId { get; set; }
+
+    /// <summary>
+    /// The external actor identifier to resolve the target MemoryScope within the authenticated project.
+    /// </summary>
+    public string? ActorId { get; set; }
+
+    /// <summary>
+    /// The resolved MemoryScope identifier. When specified, consolidation is partitioned strictly to this scope.
+    /// </summary>
+    public long? ScopeId { get; set; }
 }
 
 public class MemoryConsolidationResult

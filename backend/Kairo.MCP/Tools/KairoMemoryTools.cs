@@ -49,6 +49,7 @@ public sealed class KairoMemoryTools
 {
     private readonly IApiKeyContext _apiKeyContext;
     private readonly IMemoryService _memoryService;
+    private readonly IScopeResolutionService _scopeResolutionService;
 
     // Shared serialization options used for all MCP result payloads.
     // camelCase keeps output idiomatic for MCP clients.
@@ -60,10 +61,12 @@ public sealed class KairoMemoryTools
 
     public KairoMemoryTools(
         IApiKeyContext apiKeyContext,
-        IMemoryService memoryService)
+        IMemoryService memoryService,
+        IScopeResolutionService scopeResolutionService)
     {
         _apiKeyContext = apiKeyContext;
         _memoryService = memoryService;
+        _scopeResolutionService = scopeResolutionService;
     }
 
     // ── kairo_ping ───────────────────────────────────────────────────────────
@@ -96,7 +99,7 @@ public sealed class KairoMemoryTools
     /// </summary>
     [McpServerTool(Name = "remember")]
     [Description(
-        "Stores a durable memory in Kairo for the authenticated user. " +
+        "Stores a durable memory in Kairo for the authenticated user and resolved actor scope. " +
         "The memory is deduplicated (exact and semantic) and embedded automatically. " +
         "Returns the created memory or a notice if a duplicate was detected. " +
         "Valid memoryType values: Preference, Fact, Goal, Context, Skill, Relationship, Other.")]
@@ -109,23 +112,38 @@ public sealed class KairoMemoryTools
         [Description(
             "The category of the memory. Must be one of: " +
             "Preference, Fact, Goal, Context, Skill, Relationship, Other.")]
-        string memoryType)
+        string memoryType,
+
+        [Description(
+            "The actor identifier for this memory partition within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId)
     {
         // Identity comes from the authenticated context — never from tool args.
         var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
 
         // Build the existing Application DTO — no new DTOs introduced.
         var request = new CreateMemoryRequest
         {
             Content = content,
-            MemoryType = memoryType
+            MemoryType = memoryType,
+            ActorId = actorId
         };
 
         // Delegate entirely to the existing Application memory pipeline.
-        // All validation, deduplication, embedding, and persistence is handled
-        // inside MemoryService. This class adds zero memory logic.
+        // MemoryService resolves the scope via IScopeResolutionService using
+        // (projectId, actorId), enforces deduplication within that scope,
+        // and persists the memory with the resolved ScopeId. ScopeId is never null.
         var (memory, duplicate) =
-            await _memoryService.CreateMemoryAsync(request, userId);
+            await _memoryService.CreateMemoryAsync(request, userId, projectId);
 
         if (duplicate is not null)
         {
@@ -167,7 +185,7 @@ public sealed class KairoMemoryTools
     /// </summary>
     [McpServerTool(Name = "recall")]
     [Description(
-        "Semantically searches the authenticated user's memories in Kairo. " +
+        "Semantically searches the authenticated user's memories in Kairo within the specified actor scope. " +
         "Uses embedding similarity and relevance evaluation to return the most " +
         "relevant memories. Returns up to topK results (default 5, max 100).")]
     public async Task<string> Recall(
@@ -177,25 +195,39 @@ public sealed class KairoMemoryTools
         string query,
 
         [Description(
+            "The actor identifier for the memory scope to search within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId,
+
+        [Description(
             "The maximum number of memories to return. Must be between 1 and 100. " +
             "Defaults to 5 if not specified.")]
         int topK = 5)
     {
         // Identity comes from the authenticated context — never from tool args.
         var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
 
         // Build the existing Application DTO — no new DTOs introduced.
         var request = new MemorySearchRequest
         {
             Query = query,
-            TopK = topK
+            TopK = topK,
+            ActorId = actorId
         };
 
         // Delegate entirely to the existing Application retrieval pipeline.
         // Embedding, cosine similarity, candidate ranking, and relevance
-        // evaluation are all handled inside MemoryService → MemoryRetrievalService.
+        // evaluation are scoped to the resolved MemoryScope. No global search.
         var result =
-            await _memoryService.SearchMemoriesAsync(request, userId);
+            await _memoryService.SearchMemoriesAsync(request, userId, projectId);
 
         return JsonSerializer.Serialize(new
         {
@@ -229,13 +261,13 @@ public sealed class KairoMemoryTools
     /// </summary>
     [McpServerTool(Name = "update")]
     [Description(
-        "Corrects or refines an existing memory in Kairo for the authenticated user. " +
+        "Corrects or refines an existing memory in Kairo for the authenticated project and actor scope. " +
         "Archives the previous state as a historical version and regenerates the embedding. " +
         "Returns the updated memory details. " +
         "Valid memoryType values: Preference, Fact, Goal, Context, Skill, Relationship, Other.")]
     public async Task<string> Update(
         [Description(
-            "The unique ID of the memory to update. Must belong to the authenticated user.")]
+            "The unique ID of the memory to update. Must belong to the authenticated project and actor scope.")]
         long memoryId,
 
         [Description(
@@ -245,10 +277,27 @@ public sealed class KairoMemoryTools
         [Description(
             "The category of the memory. Must be one of: " +
             "Preference, Fact, Goal, Context, Skill, Relationship, Other.")]
-        string memoryType)
+        string memoryType,
+
+        [Description(
+            "The actor identifier for the memory scope within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId)
     {
         // Identity comes from the authenticated context — never from tool args.
         var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
+
+        // Resolve the scope for this project and actor.
+        // If the scope does not exist, throws MemoryScopeNotFoundException.
+        var scopeId = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
 
         // Build the existing Application DTO — no new DTOs introduced.
         var request = new UpdateMemoryRequest
@@ -257,10 +306,13 @@ public sealed class KairoMemoryTools
             MemoryType = memoryType
         };
 
-        // Delegate entirely to the existing Application memory pipeline.
-        // Ownership check, version archiving, content update, and embedding
-        // regeneration are all handled inside MemoryService.
-        var updated = await _memoryService.UpdateMemoryAsync(memoryId, request, userId);
+        // Delegate entirely to the existing Application memory pipeline with scope validation.
+        var updated = await _memoryService.UpdateMemoryAsync(
+            memoryId,
+            request,
+            userId,
+            projectId,
+            scopeId);
 
         return JsonSerializer.Serialize(new
         {
@@ -289,21 +341,40 @@ public sealed class KairoMemoryTools
     /// </summary>
     [McpServerTool(Name = "forget")]
     [Description(
-        "Deactivates (soft-deletes) a memory in Kairo for the authenticated user. " +
+        "Deactivates (soft-deletes) a memory in Kairo for the authenticated project and actor scope. " +
         "Archives the state as a historical version and marks it inactive so it no longer " +
         "appears in recall results. The record is preserved in the database for auditing.")]
     public async Task<string> Forget(
         [Description(
-            "The unique ID of the memory to deactivate / forget. Must belong to the authenticated user.")]
-        long memoryId)
+            "The unique ID of the memory to deactivate / forget. Must belong to the authenticated project and actor scope.")]
+        long memoryId,
+
+        [Description(
+            "The actor identifier for the memory scope within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId)
     {
         // Identity comes from the authenticated context — never from tool args.
         var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
 
-        // Delegate entirely to the existing Application memory pipeline.
-        // Ownership check, version archiving, and soft deactivation are handled
-        // inside MemoryService.
-        await _memoryService.DeleteMemoryAsync(memoryId, userId);
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
+
+        // Resolve the scope for this project and actor.
+        // If the scope does not exist, throws MemoryScopeNotFoundException.
+        var scopeId = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
+
+        // Delegate entirely to the existing Application memory pipeline with scope validation.
+        await _memoryService.DeleteMemoryAsync(
+            memoryId,
+            userId,
+            projectId,
+            scopeId);
 
         return JsonSerializer.Serialize(new
         {

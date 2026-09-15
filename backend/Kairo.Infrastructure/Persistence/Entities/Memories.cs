@@ -21,9 +21,13 @@ public partial class Memories
 
     public DateTime UpdatedAt { get; set; }
 
+    public long? ScopeId { get; set; }
+
     public virtual ICollection<MemoryEmbeddings> MemoryEmbeddings { get; set; } = new List<MemoryEmbeddings>();
 
     public virtual ICollection<MemoryVersions> MemoryVersions { get; set; } = new List<MemoryVersions>();
+
+    public virtual MemoryScopes? Scope { get; set; }
 
     public virtual Chats? SourceChat { get; set; }
 

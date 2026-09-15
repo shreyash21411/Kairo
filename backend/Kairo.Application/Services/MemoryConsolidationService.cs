@@ -18,19 +18,23 @@ public class MemoryConsolidationService : IMemoryConsolidationService
     }
 
     public async Task<MemoryConsolidationResult> ConsolidateAsync(
-    MemoryConsolidationRequest request)
-{
-    if (request.UserId <= 0)
+        MemoryConsolidationRequest request,
+        long? scopeId = null)
     {
-        throw new ArgumentException(
-            "Invalid userId.",
-            nameof(request.UserId));
-    }
+        if (request.UserId <= 0)
+        {
+            throw new ArgumentException(
+                "Invalid userId.",
+                nameof(request.UserId));
+        }
 
-    var memories =
-        await _memoryRepository
-            .GetActiveMemoryEmbeddingsAsync(
-                request.UserId);
+        var effectiveScopeId = scopeId ?? request.ScopeId;
+
+        var memories =
+            await _memoryRepository
+                .GetActiveMemoryEmbeddingsAsync(
+                    request.UserId,
+                    effectiveScopeId);
 
     var result = new MemoryConsolidationResult
     {

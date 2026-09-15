@@ -29,3 +29,13 @@ public class WorkingSetTestResult
     public int SemanticDuplicateCount { get; set; }
     public List<long> CreatedMemoryIds { get; set; } = new();
 }
+
+public class ChatProcessingResult
+{
+    public bool Success { get; set; }
+    public string? Message { get; set; }
+    public int ExtractedMemoryCount { get; set; }
+    public int CreatedMemoryCount { get; set; }
+    public int SkippedMemoryCount { get; set; }
+    public string? MemorySkipReason { get; set; }
+}

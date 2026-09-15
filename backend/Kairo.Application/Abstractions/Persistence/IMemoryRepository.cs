@@ -8,12 +8,25 @@ public interface IMemoryRepository
 
     Task<bool> ExistsAsync(
         long userId,
-        string content);
+        string content,
+        long? scopeId = null);
 
+    /// <summary>
+    /// Creates a new Memory row.
+    /// </summary>
+    /// <param name="userId">Owner of the memory.</param>
+    /// <param name="memory">Extracted content and type.</param>
+    /// <param name="sourceChatId">Chat that produced the memory, or null for direct API creates.</param>
+    /// <param name="scopeId">
+    ///     The resolved MemoryScope for this memory.
+    ///     Null is permitted because pre-Phase-10.3 memories (chat pipeline, backfill)
+    ///     do not yet carry a scope. All V1 API creates must supply this value.
+    /// </param>
     Task<long> CreateAsync(
         long userId,
         ExtractedMemory memory,
-        long? sourceChatId);
+        long? sourceChatId,
+        long? scopeId = null);
 
     Task SaveEmbeddingAsync(
         long memoryId,
@@ -21,7 +34,8 @@ public interface IMemoryRepository
         float[] embedding);
 
     Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
-        long userId);
+        long userId,
+        long? scopeId = null);
 
     // ── New methods (Task 1: Embedding Backfill) ──────────────────────────────
 
@@ -69,18 +83,27 @@ public interface IMemoryRepository
 
     /// <summary>
     /// Returns a memory snapshot only when the memory belongs to
-    /// <paramref name="userId"/>. Returns null if the memory does not exist
-    /// or belongs to a different user. Enforces ownership at the query level.
+    /// <paramref name="userId"/> AND (when <paramref name="projectId"/> is
+    /// supplied) the memory's resolved scope belongs to that project.
+    /// Returns null if the memory does not exist, belongs to a different
+    /// user, or belongs to a different project. Enforces ownership at the
+    /// query level so callers never receive another project's data.
     /// </summary>
     Task<MemorySnapshot?> GetMemorySnapshotForUserAsync(
         long memoryId,
-        long userId);
+        long userId,
+        long? projectId = null,
+        long? scopeId = null);
 
     /// <summary>
     /// Returns all active memories for <paramref name="userId"/>,
-    /// ordered by CreatedAt descending. Used by the list endpoint.
+    /// ordered by CreatedAt descending. When <paramref name="projectId"/>
+    /// is supplied only memories whose scope belongs to that project are
+    /// returned. Used by GET /api/v1/memories.
     /// </summary>
-    Task<List<MemoryListItem>> GetActiveMemoriesAsync(long userId);
+    Task<List<MemoryListItem>> GetActiveMemoriesAsync(
+        long userId,
+        long? projectId = null);
 
     /// <summary>
     /// Deletes all existing embedding rows for <paramref name="memoryId"/>

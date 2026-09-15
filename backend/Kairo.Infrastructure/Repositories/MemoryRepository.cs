@@ -18,7 +18,8 @@ public class MemoryRepository : IMemoryRepository
     public async Task<long> CreateAsync(
         long userId,
         ExtractedMemory memory,
-        long? sourceChatId)
+        long? sourceChatId,
+        long? scopeId = null)
     {
         var entity = new Memories
         {
@@ -26,6 +27,7 @@ public class MemoryRepository : IMemoryRepository
             Content = memory.Content,
             MemoryType = memory.MemoryType,
             SourceChatId = sourceChatId,
+            ScopeId = scopeId,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -40,16 +42,24 @@ public class MemoryRepository : IMemoryRepository
 
     public async Task<bool> ExistsAsync(
         long userId,
-        string content)
+        string content,
+        long? scopeId = null)
     {
         var normalizedContent = content.Trim().ToLower();
 
-        return await _dbContext.Memories
+        var query = _dbContext.Memories
             .AsNoTracking()
-            .AnyAsync(memory =>
+            .Where(memory =>
                 memory.UserId == userId &&
                 memory.IsActive &&
                 memory.Content.ToLower() == normalizedContent);
+
+        if (scopeId.HasValue)
+        {
+            query = query.Where(memory => memory.ScopeId == scopeId.Value);
+        }
+
+        return await query.AnyAsync();
     }
 
     public async Task SaveEmbeddingAsync(
@@ -79,14 +89,22 @@ public class MemoryRepository : IMemoryRepository
     }
 
     public async Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
-        long userId)
+        long userId,
+        long? scopeId = null)
     {
+        var query = _dbContext.MemoryEmbeddings
+            .AsNoTracking()
+            .Where(embedding =>
+                embedding.Memory.UserId == userId &&
+                embedding.Memory.IsActive);
+
+        if (scopeId.HasValue)
+        {
+            query = query.Where(embedding => embedding.Memory.ScopeId == scopeId.Value);
+        }
+
         var embeddings =
-            await _dbContext.MemoryEmbeddings
-                .AsNoTracking()
-                .Where(embedding =>
-                    embedding.Memory.UserId == userId &&
-                    embedding.Memory.IsActive)
+            await query
                 .Select(embedding => new
                 {
                     embedding.MemoryId,
@@ -221,16 +239,41 @@ public class MemoryRepository : IMemoryRepository
 
     /// <summary>
     /// Returns a memory snapshot only when the row belongs to
-    /// <paramref name="userId"/>. Ownership is enforced in the SQL query
-    /// so callers never receive another user’s data.
+    /// <paramref name="userId"/> AND (when <paramref name="projectId"/> is
+    /// supplied) the memory's scope belongs to that project.
+    /// Ownership is enforced in the SQL query so callers never receive
+    /// another project's data. Memories with a null ScopeId are excluded
+    /// when a projectId is provided.
     /// </summary>
     public async Task<MemorySnapshot?> GetMemorySnapshotForUserAsync(
         long memoryId,
-        long userId)
+        long userId,
+        long? projectId = null,
+        long? scopeId = null)
     {
-        return await _dbContext.Memories
+        var query = _dbContext.Memories
             .AsNoTracking()
-            .Where(m => m.MemoryId == memoryId && m.UserId == userId && m.IsActive == true)
+            .Where(m =>
+                m.MemoryId == memoryId &&
+                m.UserId   == userId   &&
+                m.IsActive);
+
+        if (projectId.HasValue)
+        {
+            // Only memories with a scope that belongs to this project.
+            // Memories with ScopeId == null are excluded (no scope = no project).
+            query = query.Where(m =>
+                m.ScopeId != null &&
+                m.Scope!.ProjectId == projectId.Value);
+        }
+
+        if (scopeId.HasValue)
+        {
+            // Only memories belonging specifically to this scope.
+            query = query.Where(m => m.ScopeId == scopeId.Value);
+        }
+
+        return await query
             .Select(m => new MemorySnapshot
             {
                 MemoryId   = m.MemoryId,
@@ -246,13 +289,28 @@ public class MemoryRepository : IMemoryRepository
 
     /// <summary>
     /// Returns all active memories for <paramref name="userId"/>,
-    /// newest first. Used by GET /api/v1/memories.
+    /// newest first. When <paramref name="projectId"/> is supplied, only
+    /// memories whose scope belongs to that project are returned.
+    /// Used by GET /api/v1/memories.
     /// </summary>
-    public async Task<List<MemoryListItem>> GetActiveMemoriesAsync(long userId)
+    public async Task<List<MemoryListItem>> GetActiveMemoriesAsync(
+        long userId,
+        long? projectId = null)
     {
-        return await _dbContext.Memories
+        var query = _dbContext.Memories
             .AsNoTracking()
-            .Where(m => m.UserId == userId && m.IsActive)
+            .Where(m => m.UserId == userId && m.IsActive);
+
+        if (projectId.HasValue)
+        {
+            // Only memories with a scope that belongs to this project.
+            // Memories with ScopeId == null are excluded.
+            query = query.Where(m =>
+                m.ScopeId != null &&
+                m.Scope!.ProjectId == projectId.Value);
+        }
+
+        return await query
             .OrderByDescending(m => m.CreatedAt)
             .Select(m => new MemoryListItem
             {

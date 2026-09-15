@@ -5,5 +5,6 @@ namespace Kairo.Application.Abstractions.Services;
 public interface IMemoryConsolidationService
 {
     Task<MemoryConsolidationResult> ConsolidateAsync(
-        MemoryConsolidationRequest request);
+        MemoryConsolidationRequest request,
+        long? scopeId = null);
 }

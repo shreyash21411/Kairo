@@ -117,6 +117,10 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 
+// ── Phase 10.2: Scope Resolution Layer ────────────────────────────────────────
+builder.Services.AddScoped<IMemoryScopeRepository, MemoryScopeRepository>();
+builder.Services.AddScoped<IScopeResolutionService, ScopeResolutionService>();
+
 builder.Services.Configure<MistralOptions>(
     builder.Configuration.GetSection("Mistral"));
 
@@ -239,6 +243,12 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["X-XSS-Protection"] = "0";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+
+    context.Response.Headers["Content-Security-Policy"] =
+    "default-src 'none'; frame-ancestors 'none'";
+
+context.Response.Headers["Permissions-Policy"] =
+    "geolocation=(), camera=(), microphone=()";
     await next();
 });
 

@@ -220,4 +220,15 @@ public async Task<long?> GetUserIdByChatIdAsync(long chatId)
         .Select(chat => (long?)chat.UserId)
         .FirstOrDefaultAsync();
 }
+
+public async Task<long?> GetProjectIdByChatIdAsync(long chatId)
+{
+    return await _dbContext.Chats
+        .AsNoTracking()
+        .Where(chat =>
+            chat.ChatId == chatId &&
+            !chat.IsDeleted)
+        .Select(chat => chat.ProjectId)
+        .FirstOrDefaultAsync();
+}
 }

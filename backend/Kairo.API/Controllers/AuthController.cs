@@ -94,37 +94,39 @@ public class AuthController : ControllerBase
     /// Rotates a refresh token and issues a new access/refresh token pair.
     /// </summary>
     [HttpPost("refresh")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(TokenPair), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Refresh(
-        [FromBody] RefreshTokenRequest request,
-        CancellationToken cancellationToken)
+[AllowAnonymous]
+[EnableRateLimiting("auth-policy")]
+[ProducesResponseType(typeof(TokenPair), StatusCodes.Status200OK)]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+public async Task<IActionResult> Refresh(
+    [FromBody] RefreshTokenRequest request,
+    CancellationToken cancellationToken)
+{
+    if (request is null || string.IsNullOrWhiteSpace(request.RefreshToken))
     {
-        if (request is null || string.IsNullOrWhiteSpace(request.RefreshToken))
-        {
-            return Unauthorized(new { message = "Refresh token is required." });
-        }
-
-        try
-        {
-            var tokenPair = await _accountService.RefreshAsync(
-                request.RefreshToken,
-                cancellationToken);
-
-            return Ok(tokenPair);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            return Unauthorized(new { message = ex.Message });
-        }
+        return Unauthorized(new { message = "Refresh token is required." });
     }
+
+    try
+    {
+        var tokenPair = await _accountService.RefreshAsync(
+            request.RefreshToken,
+            cancellationToken);
+
+        return Ok(tokenPair);
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        return Unauthorized(new { message = ex.Message });
+    }
+}
 
     /// <summary>
     /// Revokes the refresh token family for the supplied token.
     /// </summary>
     [HttpPost("logout")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-policy")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Logout(

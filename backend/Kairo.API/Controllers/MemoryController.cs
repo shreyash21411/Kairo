@@ -1,3 +1,4 @@
+using Kairo.Application;
 using Kairo.Application.Abstractions.Security;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
@@ -44,6 +45,7 @@ public class MemoryController : ControllerBase
         StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> CreateMemory(
         [FromBody] CreateMemoryRequest request)
@@ -51,11 +53,13 @@ public class MemoryController : ControllerBase
         try
         {
             var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
 
             var (memory, duplicate) =
                 await _memoryService.CreateMemoryAsync(
                     request,
-                    userId);
+                    userId,
+                    projectId);
 
             if (duplicate != null)
             {
@@ -73,6 +77,13 @@ public class MemoryController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+        catch (MemoryScopeNotFoundException ex)
+        {
+            return NotFound(new
             {
                 message = ex.Message
             });
@@ -107,11 +118,13 @@ public class MemoryController : ControllerBase
         try
         {
             var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
 
             var memory =
                 await _memoryService.GetMemoryAsync(
                     memoryId,
-                    userId);
+                    userId,
+                    projectId);
 
             return Ok(memory);
         }
@@ -156,9 +169,10 @@ public class MemoryController : ControllerBase
         try
         {
             var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
 
             var memories =
-                await _memoryService.ListMemoriesAsync(userId);
+                await _memoryService.ListMemoriesAsync(userId, projectId);
 
             return Ok(new
             {
@@ -205,12 +219,14 @@ public class MemoryController : ControllerBase
         try
         {
             var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
 
             var updated =
                 await _memoryService.UpdateMemoryAsync(
                     memoryId,
                     request,
-                    userId);
+                    userId,
+                    projectId);
 
             return Ok(updated);
         }
@@ -256,10 +272,12 @@ public class MemoryController : ControllerBase
         try
         {
             var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
 
             await _memoryService.DeleteMemoryAsync(
                 memoryId,
-                userId);
+                userId,
+                projectId);
 
             return Ok(new
             {
@@ -296,7 +314,7 @@ public class MemoryController : ControllerBase
     // ── POST /api/v1/memories/search ─────────────────────────────────────────
 
     /// <summary>
-    /// Performs semantic memory search for the authenticated user.
+    /// Performs semantic memory search for the authenticated user and resolved MemoryScope.
     /// </summary>
     [HttpPost("search")]
     [ProducesResponseType(
@@ -304,6 +322,7 @@ public class MemoryController : ControllerBase
         StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> SearchMemories(
         [FromBody] MemorySearchRequest request)
@@ -311,17 +330,26 @@ public class MemoryController : ControllerBase
         try
         {
             var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
 
             var result =
                 await _memoryService.SearchMemoriesAsync(
                     request,
-                    userId);
+                    userId,
+                    projectId);
 
             return Ok(result);
         }
         catch (ArgumentException ex)
         {
             return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+        catch (MemoryScopeNotFoundException ex)
+        {
+            return NotFound(new
             {
                 message = ex.Message
             });

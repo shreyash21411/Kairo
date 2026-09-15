@@ -4,14 +4,22 @@ namespace Kairo.Application.DTOs;
 
 /// <summary>
 /// Request body for POST /api/v1/memories.
-/// The authenticated API key determines the memory owner.
+/// The authenticated API key determines ProjectId and UserId.
+/// ActorId identifies the memory partition (MemoryScope) within the project.
+/// ProjectId is never accepted from the client — it is sourced from IApiKeyContext.
 /// </summary>
 public class CreateMemoryRequest
 {
-
     public string Content { get; set; } = null!;
 
     public string MemoryType { get; set; } = null!;
+
+    /// <summary>
+    /// The actor identifier for this memory within the authenticated project.
+    /// Combined with the project's ProjectId to resolve the target MemoryScope.
+    /// Must not be null, empty, or whitespace.
+    /// </summary>
+    public string ActorId { get; set; } = null!;
 }
 
 /// <summary>
@@ -28,14 +36,22 @@ public class UpdateMemoryRequest
 
 /// <summary>
 /// Request body for POST /api/v1/memories/search.
-/// The authenticated API key determines the memory owner.
+/// The authenticated API key determines ProjectId and UserId.
+/// ActorId identifies the memory partition (MemoryScope) to search within the project.
+/// ProjectId is never accepted from the client — it is sourced from IApiKeyContext.
 /// </summary>
 public class MemorySearchRequest
 {
-
     public string Query { get; set; } = null!;
 
     public int TopK { get; set; } = 5;
+
+    /// <summary>
+    /// The actor identifier for the memory scope to search within the authenticated project.
+    /// Combined with the project's ProjectId to resolve the target MemoryScope.
+    /// Must not be null, empty, or whitespace.
+    /// </summary>
+    public string ActorId { get; set; } = null!;
 }
 
 // ── Response DTOs ─────────────────────────────────────────────────────────────

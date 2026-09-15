@@ -35,4 +35,5 @@ Task<bool> ArchiveRawChatAsync(long chatId);
 
 Task<List<CreateMessageRequest>> GetMessagesAsync(long chatId);
 Task<long?> GetUserIdByChatIdAsync(long chatId);
+Task<long?> GetProjectIdByChatIdAsync(long chatId);
 }

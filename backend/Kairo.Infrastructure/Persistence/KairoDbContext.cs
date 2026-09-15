@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Kairo.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -16,13 +16,13 @@ public partial class KairoDbContext : DbContext
 
     public virtual DbSet<AuthenticationIdentities> AuthenticationIdentities { get; set; }
 
-    public virtual DbSet<RefreshTokens> RefreshTokens { get; set; }
-
     public virtual DbSet<Chats> Chats { get; set; }
 
     public virtual DbSet<Memories> Memories { get; set; }
 
     public virtual DbSet<MemoryEmbeddings> MemoryEmbeddings { get; set; }
+
+    public virtual DbSet<MemoryScopes> MemoryScopes { get; set; }
 
     public virtual DbSet<MemorySettingHistory> MemorySettingHistory { get; set; }
 
@@ -31,6 +31,8 @@ public partial class KairoDbContext : DbContext
     public virtual DbSet<Messages> Messages { get; set; }
 
     public virtual DbSet<Projects> Projects { get; set; }
+
+    public virtual DbSet<RefreshTokens> RefreshTokens { get; set; }
 
     public virtual DbSet<UserMemorySettings> UserMemorySettings { get; set; }
 
@@ -65,22 +67,11 @@ public partial class KairoDbContext : DbContext
         {
             entity.HasKey(e => e.AuthenticationIdentityId);
 
-            entity.HasIndex(
-                e => new { e.Provider, e.ProviderSubject },
-                "UX_AuthenticationIdentities_Provider_ProviderSubject")
-                .IsUnique();
+            entity.HasIndex(e => new { e.Provider, e.ProviderSubject }, "UQ_AuthenticationIdentities_Provider_Subject").IsUnique();
 
-            entity.HasIndex(e => e.UserId, "IX_AuthenticationIdentities_UserId");
-
+            entity.Property(e => e.PasswordHash).HasMaxLength(500);
             entity.Property(e => e.Provider).HasMaxLength(50);
             entity.Property(e => e.ProviderSubject).HasMaxLength(320);
-            entity.Property(e => e.PasswordHash).HasMaxLength(500);
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())");
-            entity.Property(e => e.UpdatedAt)
-                .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())");
 
             entity.HasOne(d => d.User).WithMany(p => p.AuthenticationIdentities)
                 .HasForeignKey(d => d.UserId)
@@ -125,6 +116,8 @@ public partial class KairoDbContext : DbContext
         {
             entity.HasKey(e => e.MemoryId);
 
+            entity.HasIndex(e => e.ScopeId, "IX_Memories_ScopeId");
+
             entity.HasIndex(e => e.SourceChatId, "IX_Memories_SourceChatId");
 
             entity.HasIndex(e => new { e.UserId, e.IsActive }, "IX_Memories_UserId_IsActive");
@@ -137,6 +130,10 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
                 .HasDefaultValueSql("(sysutcdatetime())", "DF_Memories_UpdatedAt");
+
+            entity.HasOne(d => d.Scope).WithMany(p => p.Memories)
+                .HasForeignKey(d => d.ScopeId)
+                .HasConstraintName("FK_Memories_MemoryScopes");
 
             entity.HasOne(d => d.SourceChat).WithMany(p => p.Memories)
                 .HasForeignKey(d => d.SourceChatId)
@@ -163,6 +160,23 @@ public partial class KairoDbContext : DbContext
                 .HasForeignKey(d => d.MemoryId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MemoryEmbeddings_Memories");
+        });
+
+        modelBuilder.Entity<MemoryScopes>(entity =>
+        {
+            entity.HasKey(e => e.ScopeId);
+
+            entity.HasIndex(e => e.ProjectId, "IX_MemoryScopes_ProjectId");
+
+            entity.HasIndex(e => new { e.ProjectId, e.ActorId }, "UX_MemoryScopes_ProjectId_ActorId").IsUnique();
+
+            entity.Property(e => e.ActorId).HasMaxLength(128);
+            entity.Property(e => e.CreatedAt).HasPrecision(3);
+            entity.Property(e => e.UpdatedAt).HasPrecision(3);
+
+            entity.HasOne(d => d.Project).WithMany(p => p.MemoryScopes)
+                .HasForeignKey(d => d.ProjectId)
+                .HasConstraintName("FK_MemoryScopes_Projects");
         });
 
         modelBuilder.Entity<MemorySettingHistory>(entity =>
@@ -244,28 +258,18 @@ public partial class KairoDbContext : DbContext
         {
             entity.HasKey(e => e.RefreshTokenId);
 
-            entity.HasIndex(e => e.TokenHash, "UX_RefreshTokens_TokenHash").IsUnique();
+            entity.HasIndex(e => e.TokenHash, "UQ_RefreshTokens_TokenHash").IsUnique();
 
-            entity.HasIndex(
-                e => new { e.UserId, e.FamilyId },
-                "IX_RefreshTokens_UserId_FamilyId");
+            entity.Property(e => e.TokenHash).HasMaxLength(128);
 
-            entity.Property(e => e.TokenHash).HasMaxLength(256);
-            entity.Property(e => e.ExpiresAt).HasPrecision(3);
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())");
-            entity.Property(e => e.RevokedAt).HasPrecision(3);
+            entity.HasOne(d => d.ReplacedByToken).WithMany(p => p.InverseReplacedByToken)
+                .HasForeignKey(d => d.ReplacedByTokenId)
+                .HasConstraintName("FK_RefreshTokens_ReplacedBy");
 
             entity.HasOne(d => d.User).WithMany(p => p.RefreshTokens)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_RefreshTokens_Users");
-
-            entity.HasOne(d => d.ReplacedByToken)
-                .WithMany(p => p.InverseReplacedByToken)
-                .HasForeignKey(d => d.ReplacedByTokenId)
-                .HasConstraintName("FK_RefreshTokens_ReplacedBy");
         });
 
         modelBuilder.Entity<UserMemorySettings>(entity =>

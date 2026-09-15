@@ -20,7 +20,9 @@ public class FullConsolidationService : IFullConsolidationService
         _memoryRepository = memoryRepository;
     }
 
-    public async Task<FullConsolidationResult> RunAsync(long userId)
+    public async Task<FullConsolidationResult> RunAsync(
+        long userId,
+        long? scopeId = null)
     {
         if (userId <= 0)
         {
@@ -32,10 +34,12 @@ public class FullConsolidationService : IFullConsolidationService
         // ── Step 1: Candidate detection ───────────────────────────────────────
         // Delegates entirely to the existing (unchanged) candidate service.
         // This produces pairs with similarity >= 0.85.
+        // ScopeId is passed through so candidates are bounded to a single scope.
 
         var candidateResult =
             await _candidateService.ConsolidateAsync(
-                new MemoryConsolidationRequest { UserId = userId });
+                new MemoryConsolidationRequest { UserId = userId, ScopeId = scopeId },
+                scopeId);
 
         var result = new FullConsolidationResult
         {

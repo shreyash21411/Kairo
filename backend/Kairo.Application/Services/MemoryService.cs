@@ -28,6 +28,7 @@ public class MemoryService : IMemoryService
     private readonly IEmbeddingGenerator _embeddingGenerator;
     private readonly SemanticSimilarityService _similarityService;
     private readonly MemoryRetrievalService _retrievalService;
+    private readonly IScopeResolutionService _scopeResolutionService;
 
     // Model name used consistently across the existing pipeline.
     private const string EmbeddingModel = "mistral-embed";
@@ -51,13 +52,15 @@ public class MemoryService : IMemoryService
         IUserRepository userRepository,
         IEmbeddingGenerator embeddingGenerator,
         SemanticSimilarityService similarityService,
-        MemoryRetrievalService retrievalService)
+        MemoryRetrievalService retrievalService,
+        IScopeResolutionService scopeResolutionService)
     {
         _memoryRepository = memoryRepository;
         _userRepository = userRepository;
         _embeddingGenerator = embeddingGenerator;
         _similarityService = similarityService;
         _retrievalService = retrievalService;
+        _scopeResolutionService = scopeResolutionService;
     }
 
     // ── CreateMemoryAsync ─────────────────────────────────────────────────────
@@ -66,7 +69,9 @@ public class MemoryService : IMemoryService
     public async Task<(MemoryResponse? Memory, MemoryDuplicateResult? Duplicate)>
         CreateMemoryAsync(
             CreateMemoryRequest request,
-            long userId)
+            long userId,
+            long? projectId = null,
+            CancellationToken cancellationToken = default)
     {
         // ── Validate authenticated user ───────────────────────────────────────
 
@@ -103,6 +108,24 @@ public class MemoryService : IMemoryService
                 nameof(request.MemoryType));
         }
 
+        // ── Step 0: Resolve MemoryScope (if project context is provided) ───────
+
+        long? scopeId = null;
+        if (projectId.HasValue)
+        {
+            if (string.IsNullOrWhiteSpace(request.ActorId))
+            {
+                throw new ArgumentException(
+                    "ActorId cannot be empty.",
+                    nameof(request.ActorId));
+            }
+
+            scopeId = await _scopeResolutionService.ResolveScopeAsync(
+                projectId.Value,
+                request.ActorId,
+                cancellationToken);
+        }
+
         // ── Verify authenticated user exists ──────────────────────────────────
 
         var userExists = await _userRepository.ExistsByIdAsync(userId);
@@ -118,7 +141,8 @@ public class MemoryService : IMemoryService
 
         var exactDuplicate = await _memoryRepository.ExistsAsync(
             userId,
-            request.Content);
+            request.Content,
+            scopeId);
 
         if (exactDuplicate)
         {
@@ -137,7 +161,9 @@ public class MemoryService : IMemoryService
         // ── Step 3: Semantic duplicate check ──────────────────────────────────
 
         var existingEmbeddings =
-            await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId);
+            await _memoryRepository.GetActiveMemoryEmbeddingsAsync(
+                userId,
+                scopeId);
 
         foreach (var existing in existingEmbeddings)
         {
@@ -176,7 +202,8 @@ public class MemoryService : IMemoryService
         var memoryId = await _memoryRepository.CreateAsync(
             userId,
             extractedMemory,
-            sourceChatId: null);
+            sourceChatId: null,
+            scopeId: scopeId);
 
         // ── Step 5: Persist embedding ─────────────────────────────────────────
 
@@ -200,7 +227,9 @@ public class MemoryService : IMemoryService
     /// <inheritdoc/>
     public async Task<MemoryResponse> GetMemoryAsync(
         long memoryId,
-        long userId)
+        long userId,
+        long? projectId = null,
+        long? scopeId = null)
     {
         ValidateMemoryId(memoryId);
         ValidateUserId(userId);
@@ -208,12 +237,14 @@ public class MemoryService : IMemoryService
         var snapshot =
             await _memoryRepository.GetMemorySnapshotForUserAsync(
                 memoryId,
-                userId);
+                userId,
+                projectId,
+                scopeId);
 
         if (snapshot == null)
         {
             throw new KeyNotFoundException(
-                $"Memory {memoryId} was not found or does not belong to user {userId}.");
+                $"Memory {memoryId} was not found or does not belong to the current project.");
         }
 
         return SnapshotToResponse(snapshot);
@@ -223,12 +254,13 @@ public class MemoryService : IMemoryService
 
     /// <inheritdoc/>
     public async Task<List<MemoryResponse>> ListMemoriesAsync(
-        long userId)
+        long userId,
+        long? projectId = null)
     {
         ValidateUserId(userId);
 
         var items =
-            await _memoryRepository.GetActiveMemoriesAsync(userId);
+            await _memoryRepository.GetActiveMemoriesAsync(userId, projectId);
 
         return items.Select(item => new MemoryResponse
         {
@@ -248,7 +280,9 @@ public class MemoryService : IMemoryService
     public async Task<MemoryResponse> UpdateMemoryAsync(
         long memoryId,
         UpdateMemoryRequest request,
-        long userId)
+        long userId,
+        long? projectId = null,
+        long? scopeId = null)
     {
         ValidateMemoryId(memoryId);
         ValidateUserId(userId);
@@ -289,13 +323,15 @@ public class MemoryService : IMemoryService
         var snapshot =
             await _memoryRepository.GetMemorySnapshotForUserAsync(
                 memoryId,
-                userId);
+                userId,
+                projectId,
+                scopeId);
 
         if (snapshot == null)
         {
             throw new KeyNotFoundException(
                 $"Memory {memoryId} was not found or does not belong " +
-                $"to user {userId}.");
+                $"to the current project.");
         }
 
         // ── Step 1: Archive the current state BEFORE mutating ─────────────────
@@ -327,7 +363,9 @@ public class MemoryService : IMemoryService
         var updated =
             await _memoryRepository.GetMemorySnapshotForUserAsync(
                 memoryId,
-                userId);
+                userId,
+                projectId,
+                scopeId);
 
         return SnapshotToResponse(updated!);
     }
@@ -337,7 +375,9 @@ public class MemoryService : IMemoryService
     /// <inheritdoc/>
     public async Task DeleteMemoryAsync(
         long memoryId,
-        long userId)
+        long userId,
+        long? projectId = null,
+        long? scopeId = null)
     {
         ValidateMemoryId(memoryId);
         ValidateUserId(userId);
@@ -347,12 +387,14 @@ public class MemoryService : IMemoryService
         var snapshot =
             await _memoryRepository.GetMemorySnapshotForUserAsync(
                 memoryId,
-                userId);
+                userId,
+                projectId,
+                scopeId);
 
         if (snapshot == null)
         {
             throw new KeyNotFoundException(
-                $"Memory {memoryId} was not found or does not belong to user {userId}.");
+                $"Memory {memoryId} was not found or does not belong to the current project.");
         }
 
         // ── Step 1: Archive current state BEFORE deactivating ─────────────────
@@ -372,7 +414,9 @@ public class MemoryService : IMemoryService
     /// <inheritdoc/>
     public async Task<MemorySearchResponse> SearchMemoriesAsync(
         MemorySearchRequest request,
-        long userId)
+        long userId,
+        long? projectId = null,
+        CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
 
@@ -397,6 +441,22 @@ public class MemoryService : IMemoryService
                 nameof(request.TopK));
         }
 
+        long? scopeId = null;
+        if (projectId.HasValue)
+        {
+            if (string.IsNullOrWhiteSpace(request.ActorId))
+            {
+                throw new ArgumentException(
+                    "ActorId cannot be empty.",
+                    nameof(request.ActorId));
+            }
+
+            scopeId = await _scopeResolutionService.ResolveScopeAsync(
+                projectId.Value,
+                request.ActorId,
+                cancellationToken);
+        }
+
         // Delegate entirely to the existing retrieval pipeline:
         //
         // embedding → cosine similarity → Mistral relevance evaluation.
@@ -404,7 +464,8 @@ public class MemoryService : IMemoryService
             await _retrievalService.RetrieveAsync(
                 userId,
                 request.Query,
-                request.TopK);
+                request.TopK,
+                scopeId);
 
         return new MemorySearchResponse
         {

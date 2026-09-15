@@ -26,7 +26,8 @@ public class MemoryRetrievalService
     public async Task<List<RetrievedMemory>> RetrieveAsync(
         long userId,
         string query,
-        int topK = 5)
+        int topK = 5,
+        long? scopeId = null)
     {
         if (userId <= 0)
         {
@@ -53,11 +54,11 @@ public class MemoryRetrievalService
         var queryEmbedding =
             await _embeddingGenerator.GenerateAsync(query);
 
-        // Step 2: Load all active memory embeddings
-        // for this user.
+        // Step 2: Load active memory embeddings
+        // for this user (filtered by ScopeId if provided).
         var existingMemories =
             await _memoryRepository
-                .GetActiveMemoryEmbeddingsAsync(userId);
+                .GetActiveMemoryEmbeddingsAsync(userId, scopeId);
 
         // Step 3: Calculate semantic similarity
         // between the query and every memory.

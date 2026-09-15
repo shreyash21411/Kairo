@@ -21,5 +21,7 @@ public partial class Projects
 
     public virtual ICollection<Chats> Chats { get; set; } = new List<Chats>();
 
+    public virtual ICollection<MemoryScopes> MemoryScopes { get; set; } = new List<MemoryScopes>();
+
     public virtual Users User { get; set; } = null!;
 }
