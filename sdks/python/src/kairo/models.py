@@ -92,6 +92,7 @@ class CreateMemoryResult:
         result = client.memories.create(
             content="User prefers dark mode",
             memory_type="Preference",
+            actor_id="user-123",
         )
         if result.is_duplicate:
             print(f"Duplicate: {result.duplicate_reason}")
@@ -115,7 +116,10 @@ class RetrievedMemory:
 
     Example::
 
-        results = client.memories.search(query="What theme does the user prefer?")
+        results = client.memories.search(
+            query="What theme does the user prefer?",
+            actor_id="user-123",
+        )
         for m in results.memories:
             print(f"[{m.similarity:.4f}] {m.content}")
     """
@@ -148,7 +152,11 @@ class MemorySearchResponse:
 
     Example::
 
-        results = client.memories.search(query="dark mode", top_k=3)
+        results = client.memories.search(
+            query="dark mode",
+            actor_id="user-123",
+            top_k=3,
+        )
         print(f"Found {results.count} relevant memories")
         for m in results.memories:
             print(m.content)

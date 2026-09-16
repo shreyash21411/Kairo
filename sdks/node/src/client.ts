@@ -1,6 +1,7 @@
 import {
     KairoAuthenticationError,
     KairoAuthorizationError,
+    KairoConflictError,
     KairoConnectionError,
     KairoError,
     KairoNotFoundError,
@@ -9,6 +10,10 @@ import {
     KairoValidationError,
 } from "./exceptions";
 import { MemoryResource } from "./memories";
+
+// Safe declaration for Node environment when @types/node is not installed
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const process: any;
 
 /** @internal */
 const DEFAULT_BASE_URL = "http://localhost:5171";
@@ -24,21 +29,22 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export interface KairoConfig {
     /**
      * Your Kairo API key.
-     * If omitted, the client will throw {@link KairoAuthenticationError}
-     * immediately during construction.
+     * If omitted, falls back to the KAIRO_API_KEY environment variable.
+     * If both are missing, throws {@link KairoAuthenticationError}.
      *
      * Never hard-code API keys in source files.
      * Use an environment variable instead:
      *
      * ```typescript
-     * const kairo = new Kairo({ apiKey: process.env.KAIRO_API_KEY! });
+     * const kairo = new Kairo();
      * ```
      */
-    apiKey: string;
+    apiKey?: string;
 
     /**
      * Override the Kairo API base URL.
      * Useful for staging, self-hosted, or local development instances.
+     * Falls back to KAIRO_BASE_URL environment variable if omitted.
      *
      * Trailing slashes are stripped automatically.
      *
@@ -69,6 +75,7 @@ export interface KairoConfig {
  * const result = await kairo.memories.create({
  *     content: "User prefers dark mode",
  *     memoryType: "Preference",
+ *     actorId: "user-123",
  * });
  * ```
  */
@@ -86,22 +93,30 @@ export class Kairo {
      */
     public readonly memories: MemoryResource;
 
-    constructor(config: KairoConfig) {
-        const { apiKey, baseUrl, timeout } = config;
+    constructor(config?: KairoConfig) {
+        const resolvedKey =
+            config?.apiKey ||
+            (typeof process !== "undefined" && process.env?.KAIRO_API_KEY) ||
+            "";
 
-        if (!apiKey || apiKey.trim() === "") {
+        if (!resolvedKey || resolvedKey.trim() === "") {
             throw new KairoAuthenticationError(
-                "No API key provided. Supply apiKey in the Kairo constructor options."
+                "No API key provided. Pass apiKey to Kairo constructor or set the KAIRO_API_KEY environment variable."
             );
         }
 
         // Store key internally — never expose through public properties.
-        this._apiKey = apiKey;
+        this._apiKey = resolvedKey.trim();
+
+        const rawBase =
+            config?.baseUrl ||
+            (typeof process !== "undefined" && process.env?.KAIRO_BASE_URL) ||
+            DEFAULT_BASE_URL;
 
         // Strip trailing slashes so path joins are always clean.
-        this._baseUrl = (baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+        this._baseUrl = rawBase.replace(/\/+$/, "");
 
-        this._timeout = timeout ?? DEFAULT_TIMEOUT_MS;
+        this._timeout = config?.timeout ?? DEFAULT_TIMEOUT_MS;
 
         this.memories = new MemoryResource(this);
     }
@@ -187,38 +202,59 @@ export class Kairo {
         switch (status) {
             case 400:
                 throw new KairoValidationError(
-                    errorMessage ?? "Invalid request."
+                    errorMessage ?? "Invalid request.",
+                    400
                 );
             case 401:
                 throw new KairoAuthenticationError(
                     errorMessage ??
-                        "Authentication failed. Check your Kairo API key."
+                        "Authentication failed. Check your Kairo API key.",
+                    401
                 );
             case 403:
                 throw new KairoAuthorizationError(
                     errorMessage ??
-                        "You do not have permission to perform this action."
+                        "You do not have permission to perform this action.",
+                    403
                 );
             case 404:
                 throw new KairoNotFoundError(
-                    errorMessage ?? "The requested resource was not found."
+                    errorMessage ?? "The requested resource was not found.",
+                    404
                 );
-            case 429:
+            case 409:
+                throw new KairoConflictError(
+                    errorMessage ?? "The request conflicts with current server state.",
+                    409
+                );
+            case 429: {
+                let retryAfter: number | undefined = undefined;
+                const rawRetry =
+                    response.headers.get("retry-after") ??
+                    response.headers.get("Retry-After");
+                if (rawRetry && /^\d+$/.test(rawRetry.trim())) {
+                    retryAfter = parseInt(rawRetry.trim(), 10);
+                }
                 throw new KairoRateLimitError(
                     errorMessage ??
-                        "Rate limit exceeded. Please reduce your request rate."
+                        "Rate limit exceeded. Please reduce your request rate.",
+                    429,
+                    retryAfter
                 );
+            }
         }
 
         if (status >= 500) {
             throw new KairoServerError(
                 errorMessage ??
-                    `The Kairo server returned an error (HTTP ${status}).`
+                    `The Kairo server returned an error (HTTP ${status}).`,
+                status
             );
         }
 
         throw new KairoError(
-            `Unexpected HTTP ${status} from Kairo API. ${errorMessage ?? ""}`
+            `Unexpected HTTP ${status} from Kairo API. ${errorMessage ?? ""}`.trim(),
+            status
         );
     }
 
@@ -263,3 +299,6 @@ async function extractErrorMessage(
         return null;
     }
 }
+
+export const KairoClient = Kairo;
+export type KairoClient = Kairo;

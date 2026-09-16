@@ -19,9 +19,12 @@
  * Catch this to handle any Kairo-related failure.
  */
 export class KairoError extends Error {
-    constructor(message: string) {
+    public readonly statusCode?: number;
+
+    constructor(message: string, statusCode?: number) {
         super(message);
         this.name = this.constructor.name;
+        this.statusCode = statusCode;
         // Preserves the correct stack trace in V8/Node.js.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (typeof (Error as any).captureStackTrace === "function") {
@@ -56,10 +59,23 @@ export class KairoAuthorizationError extends KairoError {}
 export class KairoNotFoundError extends KairoError {}
 
 /**
+ * The request conflicts with current server state.
+ * HTTP 409.
+ */
+export class KairoConflictError extends KairoError {}
+
+/**
  * The API rate limit has been exceeded.
  * HTTP 429.
  */
-export class KairoRateLimitError extends KairoError {}
+export class KairoRateLimitError extends KairoError {
+    public readonly retryAfter?: number;
+
+    constructor(message: string, statusCode?: number, retryAfter?: number) {
+        super(message, statusCode ?? 429);
+        this.retryAfter = retryAfter;
+    }
+}
 
 /**
  * The Kairo server encountered an unexpected error.

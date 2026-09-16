@@ -26,11 +26,13 @@ import {
  * const result = await kairo.memories.create({
  *     content: "User prefers dark mode",
  *     memoryType: "Preference",
+ *     actorId: "user-123",
  * });
  *
  * // Search
  * const results = await kairo.memories.search({
  *     query: "What UI theme does the user prefer?",
+ *     actorId: "user-123",
  * });
  * ```
  */
@@ -63,6 +65,7 @@ export class MemoryResource {
      * const result = await kairo.memories.create({
      *     content: "User works in Python and prefers type hints",
      *     memoryType: "Fact",
+     *     actorId: "user-123",
      * });
      * if (!result.isDuplicate) {
      *     console.log("Stored memory", result.memory!.memoryId);
@@ -71,16 +74,20 @@ export class MemoryResource {
      */
     async create(request: CreateMemoryRequest): Promise<CreateMemoryResult> {
         if (!request.content || request.content.trim() === "") {
-            throw new KairoValidationError("content must not be empty.");
+            throw new KairoValidationError("content must not be empty.", 400);
+        }
+        if (!request.actorId || request.actorId.trim() === "") {
+            throw new KairoValidationError("actorId must not be empty.", 400);
         }
 
-        // The backend accepts the JSON field name 'memoryType' (camelCase).
+        // The backend accepts the JSON field name 'memoryType' and 'actorId' (camelCase).
         const data = await this._client.request<Memory | _DuplicateResult>(
             "POST",
             "/api/v1/memories",
             {
                 content: request.content,
                 memoryType: request.memoryType,
+                actorId: request.actorId,
             }
         );
 
@@ -269,6 +276,7 @@ export class MemoryResource {
      * ```typescript
      * const results = await kairo.memories.search({
      *     query: "What are Kairo's goals?",
+     *     actorId: "user-123",
      *     topK: 5,
      * });
      * for (const m of results.memories) {
@@ -278,14 +286,18 @@ export class MemoryResource {
      */
     async search(request: MemorySearchRequest): Promise<MemorySearchResponse> {
         if (!request.query || request.query.trim() === "") {
-            throw new KairoValidationError("query must not be empty.");
+            throw new KairoValidationError("query must not be empty.", 400);
+        }
+        if (!request.actorId || request.actorId.trim() === "") {
+            throw new KairoValidationError("actorId must not be empty.", 400);
         }
 
         const topK = request.topK ?? 5;
 
         if (!Number.isInteger(topK) || topK < 1 || topK > 100) {
             throw new KairoValidationError(
-                "topK must be an integer between 1 and 100."
+                "topK must be an integer between 1 and 100.",
+                400
             );
         }
 
@@ -294,6 +306,7 @@ export class MemoryResource {
             "/api/v1/memories/search",
             {
                 query: request.query,
+                actorId: request.actorId,
                 topK,
             }
         );

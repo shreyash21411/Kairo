@@ -1,4 +1,5 @@
 import { Kairo } from "./client";
+import { KairoValidationError } from "./exceptions";
 import {
     CreateMemoryResult,
     DeleteMemoryResult,
@@ -6,6 +7,16 @@ import {
     MemorySearchResponse,
     MemoryType,
 } from "./models";
+
+/**
+ * Options for initializing {@link KairoAgentMemory}.
+ */
+export interface KairoAgentMemoryOptions {
+    /**
+     * Default application-level actor identifier for memory scoping.
+     */
+    actorId?: string;
+}
 
 /**
  * Thin agent-facing memory abstraction built on the Kairo SDK.
@@ -61,7 +72,7 @@ import {
  * import { KairoAgentMemory } from "@kairo/sdk/agent";
  *
  * const kairo = new Kairo({ apiKey: process.env.KAIRO_API_KEY! });
- * const memory = new KairoAgentMemory(kairo);
+ * const memory = new KairoAgentMemory(kairo, { actorId: "user-123" });
  *
  * // 1. Before calling the LLM — recall relevant context
  * const context = await memory.recall({
@@ -90,12 +101,15 @@ import {
  */
 export class KairoAgentMemory {
     private readonly _client: Kairo;
+    private readonly _defaultActorId?: string;
 
     /**
      * @param client An authenticated {@link Kairo} SDK client.
+     * @param options Optional configuration including default actorId.
      */
-    constructor(client: Kairo) {
+    constructor(client: Kairo, options?: KairoAgentMemoryOptions) {
         this._client = client;
+        this._defaultActorId = options?.actorId;
     }
 
     // ── remember ──────────────────────────────────────────────────────────────
@@ -112,7 +126,7 @@ export class KairoAgentMemory {
      * The agent is responsible for deciding *what* to remember.
      * Kairo handles persistence, duplicate detection, and embedding.
      *
-     * @param request - Memory content and type.
+     * @param request - Memory content, type, and optional actorId override.
      * @returns A {@link CreateMemoryResult}.
      *
      * @example
@@ -129,10 +143,20 @@ export class KairoAgentMemory {
     async remember(request: {
         content: string;
         memoryType: MemoryType;
+        actorId?: string;
     }): Promise<CreateMemoryResult> {
+        const actorId = request.actorId || this._defaultActorId;
+        if (!actorId || actorId.trim() === "") {
+            throw new KairoValidationError(
+                "actorId is required. Provide actorId on KairoAgentMemory options or in remember().",
+                400
+            );
+        }
+
         return this._client.memories.create({
             content: request.content,
             memoryType: request.memoryType,
+            actorId,
         });
     }
 
@@ -144,13 +168,13 @@ export class KairoAgentMemory {
      * Delegates to `POST /api/v1/memories/search`.
      *
      * The backend generates an embedding for the query, computes cosine
-     * similarity against all stored memories, and applies relevance
-     * evaluation to return the most contextually appropriate results.
+     * similarity against all stored memories within the actor scope, and applies
+     * relevance evaluation to return the most contextually appropriate results.
      *
      * The agent is responsible for incorporating the recalled context
      * into its LLM prompt. Kairo does not construct or send prompts.
      *
-     * @param request - Query string and optional topK limit.
+     * @param request - Query string, optional topK limit, and optional actorId override.
      * @returns A {@link MemorySearchResponse}.
      *
      * @example
@@ -167,9 +191,19 @@ export class KairoAgentMemory {
     async recall(request: {
         query: string;
         topK?: number;
+        actorId?: string;
     }): Promise<MemorySearchResponse> {
+        const actorId = request.actorId || this._defaultActorId;
+        if (!actorId || actorId.trim() === "") {
+            throw new KairoValidationError(
+                "actorId is required. Provide actorId on KairoAgentMemory options or in recall().",
+                400
+            );
+        }
+
         return this._client.memories.search({
             query: request.query,
+            actorId,
             topK: request.topK,
         });
     }

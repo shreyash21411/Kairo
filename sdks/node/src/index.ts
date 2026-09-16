@@ -10,13 +10,18 @@
  * const result = await kairo.memories.create({
  *     content: "User prefers dark mode",
  *     memoryType: "Preference",
+ *     actorId: "user-123",
  * });
  * ```
  */
 
 // ── Client ────────────────────────────────────────────────────────────────────
-export { Kairo } from "./client";
+export { Kairo, KairoClient } from "./client";
 export type { KairoConfig } from "./client";
+
+// ── Agent Integration ─────────────────────────────────────────────────────────
+export { KairoAgentMemory } from "./agent";
+export type { KairoAgentMemoryOptions } from "./agent";
 
 // ── Exceptions ────────────────────────────────────────────────────────────────
 export {
@@ -25,6 +30,7 @@ export {
     KairoAuthenticationError,
     KairoAuthorizationError,
     KairoNotFoundError,
+    KairoConflictError,
     KairoRateLimitError,
     KairoServerError,
     KairoConnectionError,

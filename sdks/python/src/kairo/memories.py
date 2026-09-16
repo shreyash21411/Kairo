@@ -34,11 +34,13 @@ class MemoryResource:
         result = client.memories.create(
             content="User prefers dark mode",
             memory_type="Preference",
+            actor_id="user-123",
         )
 
         # Search
         results = client.memories.search(
-            query="What UI theme does the user prefer?"
+            query="What UI theme does the user prefer?",
+            actor_id="user-123",
         )
     """
 
@@ -52,8 +54,9 @@ class MemoryResource:
         *,
         content: str,
         memory_type: str,
+        actor_id: str,
     ) -> CreateMemoryResult:
-        """Create a new memory for the authenticated user.
+        """Create a new memory for the authenticated user and specified actor.
 
         Calls ``POST /api/v1/memories``.
 
@@ -65,8 +68,9 @@ class MemoryResource:
         :param memory_type: Memory classification. One of:
             ``Preference``, ``Fact``, ``Goal``, ``Context``,
             ``Skill``, ``Relationship``, ``Other``.
+        :param actor_id: Application-level actor identifier for memory scoping.
         :returns: A :class:`~kairo.CreateMemoryResult`.
-        :raises KairoValidationError: If ``content`` or ``memory_type``
+        :raises KairoValidationError: If ``content``, ``memory_type``, or ``actor_id``
             fails server-side validation.
         :raises KairoAuthenticationError: If the API key is invalid.
 
@@ -75,6 +79,7 @@ class MemoryResource:
             result = client.memories.create(
                 content="User works in Python and prefers type hints",
                 memory_type="Fact",
+                actor_id="user-123",
             )
             if not result.is_duplicate:
                 print(f"Stored memory {result.memory.memory_id}")
@@ -85,6 +90,7 @@ class MemoryResource:
             json={
                 "content": content,
                 "memoryType": memory_type,
+                "actorId": actor_id,
             },
         )
 
@@ -227,28 +233,31 @@ class MemoryResource:
         self,
         *,
         query: str,
+        actor_id: str,
         top_k: int = 5,
     ) -> MemorySearchResponse:
-        """Search memories semantically.
+        """Search memories semantically within an actor scope.
 
         Calls ``POST /api/v1/memories/search``.
 
         The backend generates an embedding for ``query``, computes
-        cosine similarity against all stored memories, and applies
-        relevance evaluation to return the most contextually appropriate
-        results.
+        cosine similarity against stored memories within the resolved
+        actor scope, and applies relevance evaluation to return the most
+        contextually appropriate results.
 
         :param query: Natural-language search query.
+        :param actor_id: Application-level actor identifier for memory scoping.
         :param top_k: Maximum number of memories to return (1–100).
             Defaults to 5.
         :returns: A :class:`~kairo.MemorySearchResponse`.
-        :raises KairoValidationError: If ``query`` is empty or
-            ``top_k`` is out of range.
+        :raises KairoValidationError: If ``query`` is empty, ``actor_id`` is missing,
+            or ``top_k`` is out of range.
 
         Example::
 
             results = client.memories.search(
                 query="What interface theme does the user prefer?",
+                actor_id="user-123",
                 top_k=3,
             )
             for m in results.memories:
@@ -259,6 +268,7 @@ class MemoryResource:
             "/api/v1/memories/search",
             json={
                 "query": query,
+                "actorId": actor_id,
                 "topK": top_k,
             },
         )

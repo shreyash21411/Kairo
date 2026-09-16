@@ -12,19 +12,23 @@ Usage::
     result = client.memories.create(
         content="User prefers dark mode",
         memory_type="Preference",
+        actor_id="user-123",
     )
 
     results = client.memories.search(
         query="What UI theme does the user prefer?",
+        actor_id="user-123",
         top_k=5,
     )
 
 """
 
-from .client import Kairo
+from .agent import KairoAgentMemory
+from .client import Kairo, KairoClient
 from .exceptions import (
     KairoAuthenticationError,
     KairoAuthorizationError,
+    KairoConflictError,
     KairoConnectionError,
     KairoError,
     KairoNotFoundError,
@@ -43,12 +47,16 @@ from .models import (
 __all__ = [
     # Client
     "Kairo",
+    "KairoClient",
+    # Agent Integration
+    "KairoAgentMemory",
     # Exceptions
     "KairoError",
     "KairoAuthenticationError",
     "KairoAuthorizationError",
     "KairoNotFoundError",
     "KairoValidationError",
+    "KairoConflictError",
     "KairoRateLimitError",
     "KairoServerError",
     "KairoConnectionError",

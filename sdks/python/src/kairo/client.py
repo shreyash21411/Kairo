@@ -12,6 +12,7 @@ import httpx
 from .exceptions import (
     KairoAuthenticationError,
     KairoAuthorizationError,
+    KairoConflictError,
     KairoConnectionError,
     KairoError,
     KairoNotFoundError,
@@ -21,7 +22,7 @@ from .exceptions import (
 )
 from .memories import MemoryResource
 
-_DEFAULT_BASE_URL = "http://localhost:5000"
+_DEFAULT_BASE_URL = "http://localhost:5171"
 _DEFAULT_TIMEOUT = 30.0
 
 
@@ -57,7 +58,7 @@ class Kairo:
         ``KAIRO_API_KEY`` environment variable.
     :param base_url: Override the default API base URL. Falls back to
         the ``KAIRO_BASE_URL`` environment variable, then
-        ``http://localhost:5000``.
+        ``http://localhost:5171``.
     :param timeout: HTTP request timeout in seconds. Defaults to 30.
 
     :raises KairoAuthenticationError: If no API key is available.
@@ -190,30 +191,46 @@ def _handle_response(response: httpx.Response) -> Any:
     message = _extract_error_message(response)
 
     if status == 400:
-        raise KairoValidationError(message or "Invalid request.")
+        raise KairoValidationError(message or "Invalid request.", status_code=400)
     if status == 401:
         raise KairoAuthenticationError(
-            message or "Authentication failed. Check your Kairo API key."
+            message or "Authentication failed. Check your Kairo API key.",
+            status_code=401,
         )
     if status == 403:
         raise KairoAuthorizationError(
-            message or "You do not have permission to perform this action."
+            message or "You do not have permission to perform this action.",
+            status_code=403,
         )
     if status == 404:
         raise KairoNotFoundError(
-            message or "The requested resource was not found."
+            message or "The requested resource was not found.",
+            status_code=404,
+        )
+    if status == 409:
+        raise KairoConflictError(
+            message or "The request conflicts with current server state.",
+            status_code=409,
         )
     if status == 429:
+        retry_after: Optional[int] = None
+        raw_retry = response.headers.get("retry-after") or response.headers.get("Retry-After")
+        if raw_retry and raw_retry.strip().isdigit():
+            retry_after = int(raw_retry.strip())
         raise KairoRateLimitError(
-            message or "Rate limit exceeded. Please reduce your request rate."
+            message or "Rate limit exceeded. Please reduce your request rate.",
+            status_code=429,
+            retry_after=retry_after,
         )
     if status >= 500:
         raise KairoServerError(
-            message or f"The Kairo server encountered an error (HTTP {status})."
+            message or f"The Kairo server encountered an error (HTTP {status}).",
+            status_code=status,
         )
 
     raise KairoError(
-        f"Unexpected HTTP {status} from Kairo API. {message or ''}"
+        f"Unexpected HTTP {status} from Kairo API. {message or ''}".strip(),
+        status_code=status,
     )
 
 
@@ -229,3 +246,7 @@ def _extract_error_message(response: httpx.Response) -> Optional[str]:
     text = response.text
     # Truncate to avoid polluting exception messages with large HTML pages.
     return text[:300].strip() if text else None
+
+
+# Backwards-compatible alias for canonical naming parity
+KairoClient = Kairo

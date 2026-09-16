@@ -94,6 +94,7 @@ export interface DeleteMemoryResult {
  * const result = await kairo.memories.create({
  *     content: "User prefers dark mode",
  *     memoryType: "Preference",
+ *     actorId: "user-123",
  * });
  *
  * if (result.isDuplicate) {
@@ -117,6 +118,8 @@ export interface CreateMemoryRequest {
     content: string;
     /** Memory classification. */
     memoryType: MemoryType;
+    /** Application-level actor identifier for memory scoping. */
+    actorId: string;
 }
 
 /** Request body for updating an existing memory. */
@@ -131,6 +134,8 @@ export interface UpdateMemoryRequest {
 export interface MemorySearchRequest {
     /** Natural-language search query. */
     query: string;
+    /** Application-level actor identifier for memory scoping. */
+    actorId: string;
     /** Maximum number of memories to return. Range: 1–100. Defaults to 5. */
     topK?: number;
 }

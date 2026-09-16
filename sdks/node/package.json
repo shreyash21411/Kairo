@@ -19,7 +19,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/**/*.test.js"
   },
   "engines": {
     "node": ">=18.0.0"

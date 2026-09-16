@@ -97,6 +97,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from .exceptions import KairoValidationError
 from .models import (
     CreateMemoryResult,
     DeleteMemoryResult,
@@ -122,6 +123,7 @@ class KairoAgentMemory:
     through the frozen SDK. No memory logic is implemented here.
 
     :param client: An authenticated :class:`~kairo.Kairo` instance.
+    :param actor_id: Optional default application-level actor identifier.
 
     Example::
 
@@ -129,7 +131,7 @@ class KairoAgentMemory:
         from kairo.agent import KairoAgentMemory
 
         kairo = Kairo(api_key=os.environ["KAIRO_API_KEY"])
-        memory = KairoAgentMemory(kairo)
+        memory = KairoAgentMemory(kairo, actor_id="user-123")
 
         context = memory.recall(query="What does the user prefer?")
         result  = memory.remember(
@@ -138,8 +140,14 @@ class KairoAgentMemory:
         )
     """
 
-    def __init__(self, client: Kairo) -> None:
+    def __init__(
+        self,
+        client: Kairo,
+        *,
+        actor_id: Optional[str] = None,
+    ) -> None:
         self._client = client
+        self._actor_id = actor_id
 
     # ── remember ──────────────────────────────────────────────────────────────
 
@@ -148,6 +156,7 @@ class KairoAgentMemory:
         *,
         content: str,
         memory_type: str,
+        actor_id: Optional[str] = None,
     ) -> CreateMemoryResult:
         """Store durable information as a Kairo memory.
 
@@ -164,6 +173,8 @@ class KairoAgentMemory:
         :param memory_type: Memory classification. One of:
             ``Preference``, ``Fact``, ``Goal``, ``Context``,
             ``Skill``, ``Relationship``, ``Other``.
+        :param actor_id: Optional actor identifier override. If not passed,
+            uses default ``actor_id`` configured on this instance.
         :returns: A :class:`~kairo.CreateMemoryResult`.
 
         Example::
@@ -175,9 +186,18 @@ class KairoAgentMemory:
             if not result.is_duplicate:
                 print(f"Stored memory {result.memory.memory_id}")
         """
+        resolved_actor = actor_id or self._actor_id
+        if not resolved_actor or not resolved_actor.strip():
+            raise KairoValidationError(
+                "actor_id is required. Provide actor_id on KairoAgentMemory "
+                "or pass actor_id to remember().",
+                status_code=400,
+            )
+
         return self._client.memories.create(
             content=content,
             memory_type=memory_type,
+            actor_id=resolved_actor,
         )
 
     # ── recall ────────────────────────────────────────────────────────────────
@@ -187,6 +207,7 @@ class KairoAgentMemory:
         *,
         query: str,
         top_k: int = 5,
+        actor_id: Optional[str] = None,
     ) -> MemorySearchResponse:
         """Retrieve semantically relevant memories for a given query.
 
@@ -203,6 +224,8 @@ class KairoAgentMemory:
         :param query: A natural-language question or context statement.
         :param top_k: Maximum number of memories to return (1–100).
             Defaults to 5.
+        :param actor_id: Optional actor identifier override. If not passed,
+            uses default ``actor_id`` configured on this instance.
         :returns: A :class:`~kairo.MemorySearchResponse`.
 
         Example::
@@ -214,8 +237,17 @@ class KairoAgentMemory:
             for m in context.memories:
                 print(f"[{m.similarity:.4f}] {m.content}")
         """
+        resolved_actor = actor_id or self._actor_id
+        if not resolved_actor or not resolved_actor.strip():
+            raise KairoValidationError(
+                "actor_id is required. Provide actor_id on KairoAgentMemory "
+                "or pass actor_id to recall().",
+                status_code=400,
+            )
+
         return self._client.memories.search(
             query=query,
+            actor_id=resolved_actor,
             top_k=top_k,
         )
 
@@ -275,7 +307,7 @@ class KairoAgentMemory:
         """
         return self._client.memories.delete(memory_id=memory_id)
 
-    # ── Dunder ────────────────────────────────────────────────────────────────
-
     def __repr__(self) -> str:
+        if self._actor_id:
+            return f"KairoAgentMemory(client={self._client!r}, actor_id={self._actor_id!r})"
         return f"KairoAgentMemory(client={self._client!r})"

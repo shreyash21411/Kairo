@@ -18,8 +18,26 @@ Network/transport failures:
 """
 
 
+from typing import Optional
+
+
 class KairoError(Exception):
     """Base exception for all Kairo SDK errors."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: Optional[int] = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+    def __repr__(self) -> str:
+        if self.status_code is not None:
+            return f"{self.__class__.__name__}(message={self.message!r}, status_code={self.status_code})"
+        return f"{self.__class__.__name__}(message={self.message!r})"
 
 
 class KairoAuthenticationError(KairoError):
@@ -50,11 +68,36 @@ class KairoValidationError(KairoError):
     """
 
 
+class KairoConflictError(KairoError):
+    """The request conflicts with current state on the server.
+
+    Corresponds to HTTP 409.
+    """
+
+
 class KairoRateLimitError(KairoError):
     """The API rate limit has been exceeded.
 
     Corresponds to HTTP 429.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: Optional[int] = 429,
+        retry_after: Optional[int] = None,
+    ) -> None:
+        super().__init__(message, status_code=status_code)
+        self.retry_after = retry_after
+
+    def __repr__(self) -> str:
+        return (
+            f"KairoRateLimitError("
+            f"message={self.message!r}, "
+            f"status_code={self.status_code}, "
+            f"retry_after={self.retry_after})"
+        )
 
 
 class KairoServerError(KairoError):
