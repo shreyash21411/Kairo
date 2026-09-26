@@ -1,174 +1,94 @@
+"use client"
+
+import * as React from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Terminal } from "lucide-react"
-
-function HeroApiInspector() {
-  return (
-    <div className="w-full overflow-hidden rounded border border-zinc-300 bg-zinc-950 font-mono text-[12.5px] text-zinc-100 shadow-sm dark:border-zinc-800 dark:bg-[#0b0b0f]">
-      {/* Pane header */}
-      <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/90 px-4 py-2.5 dark:bg-zinc-900/40">
-        <div className="flex items-center gap-3">
-          <div className="flex gap-1.5" aria-hidden="true">
-            <span className="size-2.5 rounded-full bg-[#ff5f57]/80" />
-            <span className="size-2.5 rounded-full bg-[#febc2e]/80" />
-            <span className="size-2.5 rounded-full bg-[#28c840]/80" />
-          </div>
-          <span className="text-[11px] text-zinc-400">HTTP / 1.1 · Kairo V1 Contract</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-            201 Created
-          </span>
-        </div>
-      </div>
-
-      {/* Request Section */}
-      <div className="border-b border-zinc-800/80 px-5 py-4 leading-6">
-        <div className="mb-2.5 flex items-baseline gap-2">
-          <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-300">
-            POST
-          </span>
-          <span className="text-zinc-200">/api/v1/memories</span>
-        </div>
-
-        <div className="mb-3 space-y-0.5 text-[11px] text-zinc-400">
-          <div>
-            <span className="text-zinc-500">Authorization: </span>
-            <span className="text-amber-400/90">Bearer </span>
-            <span className="text-zinc-300">$KAIRO_API_KEY</span>
-          </div>
-          <div>
-            <span className="text-zinc-500">Content-Type: </span>
-            <span className="text-zinc-300">application/json</span>
-          </div>
-        </div>
-
-        <div className="text-[12px]">
-          <span className="text-zinc-500">{"{"}</span>
-          <div className="ml-4 space-y-0.5">
-            <div>
-              <span className="text-zinc-400">&quot;content&quot;</span>
-              <span className="text-zinc-500">: </span>
-              <span className="text-emerald-300">&quot;The user prefers dark mode in all applications.&quot;</span>
-              <span className="text-zinc-500">,</span>
-            </div>
-            <div>
-              <span className="text-zinc-400">&quot;memoryType&quot;</span>
-              <span className="text-zinc-500">: </span>
-              <span className="text-emerald-300">&quot;Preference&quot;</span>
-            </div>
-          </div>
-          <span className="text-zinc-500">{"}"}</span>
-        </div>
-      </div>
-
-      {/* Response Section */}
-      <div className="px-5 py-4 leading-6 text-[12px]">
-        <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wider text-zinc-500">
-          <span>Response Payload</span>
-          <span className="text-zinc-400">application/json</span>
-        </div>
-        <span className="text-zinc-500">{"{"}</span>
-        <div className="ml-4 space-y-0.5">
-          <div>
-            <span className="text-zinc-400">&quot;memoryId&quot;</span>
-            <span className="text-zinc-500">: </span>
-            <span className="text-amber-400">42</span>
-            <span className="text-zinc-500">,</span>
-          </div>
-          <div>
-            <span className="text-zinc-400">&quot;userId&quot;</span>
-            <span className="text-zinc-500">: </span>
-            <span className="text-amber-400">7</span>
-            <span className="text-zinc-500">,</span>
-          </div>
-          <div>
-            <span className="text-zinc-400">&quot;content&quot;</span>
-            <span className="text-zinc-500">: </span>
-            <span className="text-emerald-300">&quot;The user prefers dark mode in all applications.&quot;</span>
-            <span className="text-zinc-500">,</span>
-          </div>
-          <div>
-            <span className="text-zinc-400">&quot;memoryType&quot;</span>
-            <span className="text-zinc-500">: </span>
-            <span className="text-emerald-300">&quot;Preference&quot;</span>
-            <span className="text-zinc-500">,</span>
-          </div>
-          <div>
-            <span className="text-zinc-400">&quot;isActive&quot;</span>
-            <span className="text-zinc-500">: </span>
-            <span className="text-sky-300">true</span>
-            <span className="text-zinc-500">,</span>
-          </div>
-          <div>
-            <span className="text-zinc-400">&quot;createdAt&quot;</span>
-            <span className="text-zinc-500">: </span>
-            <span className="text-emerald-300">&quot;2026-09-07T11:00:00.000Z&quot;</span>
-          </div>
-        </div>
-        <span className="text-zinc-500">{"}"}</span>
-      </div>
-    </div>
-  )
-}
+import { useAuth } from "@/providers/auth-provider"
+import { HeroStoryAnimation } from "@/components/marketing/hero-story-animation"
+import { ArrowRight, ChevronDown, Terminal, Shield, Sparkles } from "lucide-react"
 
 export function HeroSection() {
+  const { isAuthenticated } = useAuth()
+
   return (
-    <section
-      id="hero"
-      className="mx-auto max-w-6xl px-6 pt-32 pb-20 sm:pt-36 sm:pb-24"
-      aria-label="Hero"
-    >
-      <div className="grid items-start gap-12 lg:grid-cols-[1.15fr,0.85fr] xl:gap-16">
-        {/* Left column: Hero copy and hierarchy */}
-        <div className="flex flex-col">
-          {/* Identity relationship line */}
-          <div className="mb-6 flex items-center gap-2 text-sm font-medium tracking-tight text-foreground/85">
-            <span className="font-semibold text-foreground">Kairo</span>
-            <span className="text-muted-foreground/50">—</span>
-            <span className="text-muted-foreground">persistent memory infrastructure</span>
-          </div>
+    <section className="relative pt-24 pb-20 md:pt-32 md:pb-28 lg:pt-36 lg:pb-32 overflow-hidden">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
 
-          {/* Scaled H1 */}
-          <h1 className="text-4xl font-semibold tracking-[-0.04em] leading-[1.08] text-foreground sm:text-5xl lg:text-6xl text-balance">
-            Persistent memory for AI agents and applications.
-          </h1>
+        {/* 2-Column Responsive Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
 
-          {/* Body */}
-          <p className="mt-6 max-w-xl text-[16px] leading-relaxed text-muted-foreground sm:text-[17px]">
-            Kairo provides a dedicated persistence layer for LLM agents. Store facts,
-            preferences, and context through a standardized REST API, and retrieve them
-            using Mistral semantic vector search across every conversation session.
-          </p>
+          {/* Left Column: Editorial Headline & Actions */}
+          <div className="lg:col-span-6 xl:col-span-5 flex flex-col items-start text-left">
 
-          {/* CTAs */}
-          <div className="mt-8 flex flex-wrap items-center gap-3.5">
-            <Button size="default" className="gap-2 px-5 text-sm font-medium" asChild>
-              <Link href="#quickstart">
-                Start integration
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
-            </Button>
-            <Button variant="outline" size="default" className="gap-2 px-5 text-sm font-medium" asChild>
-              <Link href="#api">
-                <Terminal className="size-4 text-muted-foreground" aria-hidden="true" />
-                API specification
-              </Link>
-            </Button>
-          </div>
+            {/* Eyebrow Chip */}
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-surface-elevated/60 backdrop-blur-sm px-3 py-1 text-[11px] font-mono font-medium text-muted-foreground mb-6 shadow-xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              <span>Persistent AI Memory Infrastructure</span>
+            </div>
 
-          {/* Specifications line */}
-          <div className="mt-10 border-t border-border/70 pt-4">
-            <p className="font-mono text-xs text-muted-foreground/80">
-              Memory V1 API · Mistral Semantic Embeddings · Scoped Bearer Authentication
+            {/* Signature Headline */}
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight text-foreground leading-[1.08]">
+              Give your AI <br className="hidden sm:inline" />
+              <span className="text-primary font-bold">a memory</span>.
+            </h1>
+
+            {/* Supporting Copy */}
+            <p className="mt-5 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-lg">
+              Persistent memory for AI applications, agents, and assistants.
+              Retain context, user preferences, and project facts that outlast any single conversation window.
             </p>
+
+            {/* Primary Action Buttons */}
+            <div className="mt-8 flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <Button
+                size="lg"
+                className="h-11 px-6 text-xs sm:text-sm font-medium rounded-full bg-foreground text-background hover:bg-foreground/90 transition-all duration-150 active:translate-y-px shadow-sm cursor-pointer"
+                asChild
+              >
+                <Link href={isAuthenticated ? "/dashboard" : "/register"}>
+                  {isAuthenticated ? "Open Dashboard" : "Start building"}
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-11 px-5 text-xs sm:text-sm font-medium rounded-full border-border/70 bg-surface-elevated/50 backdrop-blur-sm hover:bg-surface-elevated transition-all duration-150 active:translate-y-px cursor-pointer"
+                asChild
+              >
+                <Link href="#remembers">
+                  See how it works
+                  <ChevronDown className="ml-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                </Link>
+              </Button>
+            </div>
+
+            {/* Quick Developer Trust Bar - no border-t */}
+            <div className="mt-8 flex flex-wrap items-center gap-y-2 gap-x-5 text-xs font-mono text-muted-foreground/80">
+              <div className="flex items-center gap-1.5">
+                <Terminal className="h-3.5 w-3.5 text-primary" />
+                <span>REST &amp; Python SDK</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5 text-primary" />
+                <span>Actor-Level Isolation</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span>Model Context Protocol</span>
+              </div>
+            </div>
+
           </div>
+
+          {/* Right Column: Signature Interactive Visual */}
+          <div className="lg:col-span-6 xl:col-span-7 flex justify-center w-full">
+            <HeroStoryAnimation />
+          </div>
+
         </div>
 
-        {/* Right column: Aligned Inspector */}
-        <div className="w-full">
-          <HeroApiInspector />
-        </div>
       </div>
     </section>
   )
