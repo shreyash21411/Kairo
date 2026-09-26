@@ -3,9 +3,6 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import {
-  Play,
-  Pause,
-  RotateCcw,
   Check,
   Copy,
   Search,
@@ -76,9 +73,13 @@ export const DEMO_STEPS: DemoStep[] = [
 export function SeeKairoSection() {
   const containerRef = React.useRef<HTMLDivElement>(null)
 
-  // ── Overall Playback State ──
-  const [isPlaying, setIsPlaying] = React.useState(true)
+  // ── Active Step State ──
   const [activeStepId, setActiveStepId] = React.useState<DemoStep["id"]>("workspace")
+  const activeStepIdRef = React.useRef<DemoStep["id"]>("workspace")
+
+  React.useEffect(() => {
+    activeStepIdRef.current = activeStepId
+  }, [activeStepId])
 
   // ── Simulated Cursor State ──
   const [cursorPos, setCursorPos] = React.useState({ x: 220, y: 70 })
@@ -106,23 +107,12 @@ export function SeeKairoSection() {
   // Step 5: MCP
   const [mcpStepState, setMcpStepState] = React.useState<"config" | "calling" | "resolved">("config")
 
-  // Check prefers-reduced-motion
-  const [reducedMotion, setReducedMotion] = React.useState(false)
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && window.matchMedia) {
-      const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
-      if (mq.matches) {
-        setReducedMotion(true)
-        setIsPlaying(false)
-      }
-    }
-  }, [])
 
   // Helper to move cursor to a data-target element smoothly
   const moveCursorTo = React.useCallback(
     (targetName: string, durationMs = 650): Promise<void> => {
       return new Promise((resolve) => {
-        if (!containerRef.current || reducedMotion) {
+        if (!containerRef.current) {
           setHoveredTarget(targetName)
           resolve()
           return
@@ -134,6 +124,14 @@ export function SeeKairoSection() {
         if (el) {
           const cRect = container.getBoundingClientRect()
           const tRect = el.getBoundingClientRect()
+
+          // Guard against hidden or collapsed targets (e.g. mobile hidden sidebar)
+          if (tRect.width <= 0 || tRect.height <= 0) {
+            setHoveredTarget(targetName)
+            resolve()
+            return
+          }
+
           const x = tRect.left - cRect.left + tRect.width / 2
           const y = tRect.top - cRect.top + tRect.height / 2
 
@@ -150,33 +148,24 @@ export function SeeKairoSection() {
         }
       })
     },
-    [reducedMotion]
+    []
   )
 
   // Helper to click at current target
   const clickCurrent = React.useCallback((): Promise<void> => {
     return new Promise((resolve) => {
-      if (reducedMotion) {
-        resolve()
-        return
-      }
       setIsClicking(true)
       setTimeout(() => {
         setIsClicking(false)
         resolve()
       }, 250)
     })
-  }, [reducedMotion])
+  }, [])
 
   // Helper for typing text into a field
   const typeText = React.useCallback(
     (text: string, setter: (val: string) => void, speedMs = 35): Promise<void> => {
       return new Promise((resolve) => {
-        if (reducedMotion) {
-          setter(text)
-          resolve()
-          return
-        }
         let i = 0
         const interval = setInterval(() => {
           i++
@@ -188,7 +177,7 @@ export function SeeKairoSection() {
         }, speedMs)
       })
     },
-    [reducedMotion]
+    []
   )
 
   const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
@@ -202,17 +191,16 @@ export function SeeKairoSection() {
 
       const checkCancel = () => cancelRef.current
 
-      // Determine starting step
-      const stepIndex = startStep
-        ? DEMO_STEPS.findIndex((s) => s.id === startStep)
-        : DEMO_STEPS.findIndex((s) => s.id === activeStepId)
-
+      // Determine starting step using ref to avoid cancelling when activeStepId updates
+      const currentStepId = startStep ?? activeStepIdRef.current
+      const stepIndex = DEMO_STEPS.findIndex((s) => s.id === currentStepId)
       const startIdx = stepIndex >= 0 ? stepIndex : 0
 
       // Run through steps in sequence
       for (let s = startIdx; s < DEMO_STEPS.length; s++) {
         if (checkCancel()) return
         const step = DEMO_STEPS[s]
+        activeStepIdRef.current = step.id
         setActiveStepId(step.id)
 
         // ══════════════════════════════════════════════════════
@@ -436,27 +424,27 @@ export function SeeKairoSection() {
         if (checkCancel()) return
       }
 
-      // Loop back smoothly if still playing
-      if (!cancelRef.current && isPlaying) {
+      // Loop back smoothly
+      if (!cancelRef.current) {
         runSequence("workspace")
       }
     },
-    [activeStepId, clickCurrent, isPlaying, moveCursorTo, typeText]
+    [clickCurrent, moveCursorTo, typeText]
   )
 
-  // Start sequence when playing
+  // Start sequence automatically on mount
   React.useEffect(() => {
-    if (isPlaying && !reducedMotion) {
-      runSequence()
-    }
+    runSequence()
     return () => {
       cancelRef.current = true
     }
-  }, [isPlaying, reducedMotion, runSequence])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Direct Step Selection from user clicks
   const handleSelectStep = (stepId: DemoStep["id"]) => {
     cancelRef.current = true
+    activeStepIdRef.current = stepId
     setActiveStepId(stepId)
 
     // Reset step UI states appropriate for the chosen step
@@ -479,34 +467,9 @@ export function SeeKairoSection() {
       setMcpStepState("resolved")
     }
 
-    if (isPlaying && !reducedMotion) {
-      setTimeout(() => {
-        runSequence(stepId)
-      }, 100)
-    }
-  }
-
-  const handleTogglePlay = () => {
-    if (isPlaying) {
-      cancelRef.current = true
-      setIsPlaying(false)
-    } else {
-      setIsPlaying(true)
-    }
-  }
-
-  const handleRestart = () => {
-    cancelRef.current = true
-    setActiveStepId("workspace")
-    setProjectDropdownOpen(false)
-    setKeyModalOpen(false)
-    setKeyRevealed(false)
-    setKeyCopied(false)
-    setMemoryModalOpen(false)
-    setMemoryCreated(false)
-    setSearchExecuted(false)
-    setMcpStepState("config")
-    setIsPlaying(true)
+    setTimeout(() => {
+      runSequence(stepId)
+    }, 100)
   }
 
   const currentStep = DEMO_STEPS.find((s) => s.id === activeStepId) || DEMO_STEPS[0]
@@ -562,36 +525,34 @@ export function SeeKairoSection() {
           className="relative mx-auto rounded-2xl border border-border/80 bg-surface-elevated/95 backdrop-blur-md shadow-2xl shadow-black/40 overflow-hidden min-h-[520px] select-none"
         >
           {/* Animated DOM Cursor */}
-          {!reducedMotion && (
-            <div
-              className="pointer-events-none absolute z-50 will-change-transform"
-              style={{
-                transform: `translate3d(${cursorPos.x}px, ${cursorPos.y}px, 0)`,
-                transition: isMoving ? "transform 0.65s cubic-bezier(0.22, 1, 0.36, 1)" : "none",
-              }}
+          <div
+            className="pointer-events-none absolute top-0 left-0 z-50 will-change-transform"
+            style={{
+              transform: `translate3d(${cursorPos.x}px, ${cursorPos.y}px, 0)`,
+              transition: isMoving ? "transform 0.65s cubic-bezier(0.22, 1, 0.36, 1)" : "none",
+            }}
+          >
+            {/* Click Ripple Indicator */}
+            {isClicking && (
+              <span className="absolute -top-2.5 -left-2.5 h-8 w-8 rounded-full border-2 border-primary bg-primary/20 animate-ping pointer-events-none" />
+            )}
+            {/* Cursor Arrow Graphic with high-contrast dual-tone */}
+            <svg
+              className={`h-5 w-5 drop-shadow-md transition-transform duration-100 ${
+                isClicking ? "scale-90" : "scale-100"
+              }`}
+              viewBox="0 0 24 24"
+              fill="none"
             >
-              {/* Click Ripple Indicator */}
-              {isClicking && (
-                <span className="absolute -top-2.5 -left-2.5 h-8 w-8 rounded-full border-2 border-primary bg-primary/20 animate-ping pointer-events-none" />
-              )}
-              {/* Cursor Arrow Graphic */}
-              <svg
-                className={`h-5 w-5 drop-shadow-lg transition-transform duration-100 ${
-                  isClicking ? "scale-90" : "scale-100"
-                }`}
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <path
-                  d="M4 3L11.5 21L14.5 13.5L22 10.5L4 3Z"
-                  fill="currentColor"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                  className="text-foreground"
-                />
-              </svg>
-            </div>
-          )}
+              <path
+                d="M4 3L11.5 21L14.5 13.5L22 10.5L4 3Z"
+                fill="#09090b"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
 
           {/* Browser Chrome Bar */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-background/80">
@@ -608,25 +569,12 @@ export function SeeKairoSection() {
               <span className="truncate">{currentStep.route}</span>
             </div>
 
-            {/* Controls: Play/Pause, Restart */}
+            {/* Auto-playing walkthrough indicator */}
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleTogglePlay}
-                aria-label={isPlaying ? "Pause walkthrough" : "Play walkthrough"}
-                className="flex items-center gap-1 px-2 py-0.5 rounded border border-border/60 bg-surface-elevated/60 hover:border-primary/40 hover:text-primary text-[11px] font-mono text-muted-foreground transition-colors"
-              >
-                {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                <span className="hidden sm:inline">{isPlaying ? "Pause" : "Play"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleRestart}
-                aria-label="Restart product walkthrough"
-                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-surface-elevated/60 transition-colors"
-              >
-                <RotateCcw className="h-3 w-3" />
-              </button>
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded border border-primary/30 bg-primary/10 text-[10px] font-mono text-primary">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse inline-block" />
+                live
+              </span>
             </div>
           </div>
 
