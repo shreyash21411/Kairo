@@ -20,14 +20,17 @@ namespace Kairo.API.Controllers;
 public class MemoryController : ControllerBase
 {
     private readonly IMemoryService _memoryService;
+    private readonly IMemoryIngestionService _ingestionService;
     private readonly IApiKeyContext _apiKeyContext;
 
     public MemoryController(
         IMemoryService memoryService,
+        IMemoryIngestionService ingestionService,
         IApiKeyContext apiKeyContext)
     {
-        _memoryService = memoryService;
-        _apiKeyContext = apiKeyContext;
+        _memoryService    = memoryService;
+        _ingestionService = ingestionService;
+        _apiKeyContext    = apiKeyContext;
     }
 
     // ── POST /api/v1/memories ────────────────────────────────────────────────
@@ -362,6 +365,100 @@ public class MemoryController : ControllerBase
                 {
                     message = "An unexpected error occurred."
                 });
+        }
+    }
+
+    // ── POST /api/v1/memories/ingest ────────────────────────────────────────
+
+    /// <summary>
+    /// Accepts raw conversation messages, extracts durable memories using Mistral,
+    /// evaluates against existing memories, and persists only the appropriate ones.
+    ///
+    /// Authentication: Bearer API key in Authorization header.
+    /// ProjectId and UserId are sourced from the authenticated API key.
+    /// ActorId is sourced from the request body.
+    /// </summary>
+    [HttpPost("ingest")]
+    [ProducesResponseType(
+        typeof(MemoryIngestionResponse),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> IngestConversation(
+        [FromBody] IngestConversationRequest request)
+    {
+        // ── Controller-level validation ────────────────────────────────────────
+
+        if (string.IsNullOrWhiteSpace(request?.ActorId))
+        {
+            return BadRequest(new { message = "actorId is required and must not be empty." });
+        }
+
+        if (request.Messages == null || request.Messages.Count == 0)
+        {
+            return BadRequest(new { message = "messages must contain at least one entry." });
+        }
+
+        for (var i = 0; i < request.Messages.Count; i++)
+        {
+            var msg = request.Messages[i];
+
+            if (msg == null)
+            {
+                return BadRequest(new
+                {
+                    message = $"messages[{i}] must not be null."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(msg.Role))
+            {
+                return BadRequest(new
+                {
+                    message = $"messages[{i}].role is required and must not be empty."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(msg.Content))
+            {
+                return BadRequest(new
+                {
+                    message = $"messages[{i}].content is required and must not be empty."
+                });
+            }
+        }
+
+        // ── Delegate to ingestion service ─────────────────────────────────────
+
+        try
+        {
+            var userId    = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
+
+            var result = await _ingestionService.IngestAsync(
+                request,
+                userId,
+                projectId);
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Extraction or pipeline failure — safe message, no internal details.
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "An unexpected error occurred during ingestion." });
         }
     }
 }

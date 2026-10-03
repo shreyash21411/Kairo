@@ -7,12 +7,16 @@ Access via ``client.memories``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
+from .exceptions import KairoValidationError
 from .models import (
     CreateMemoryResult,
     DeleteMemoryResult,
+    IngestMessage,
+    IngestionMemoryResult,
     Memory,
+    MemoryIngestionResponse,
     MemorySearchResponse,
 )
 
@@ -263,13 +267,105 @@ class MemoryResource:
             for m in results.memories:
                 print(f"[{m.similarity:.4f}] {m.content}")
         """
+        if not query or not isinstance(query, str) or not query.strip():
+            raise KairoValidationError("query must not be empty.", status_code=400)
+        if not actor_id or not isinstance(actor_id, str) or not actor_id.strip():
+            raise KairoValidationError("actor_id must not be empty.", status_code=400)
+        if len(actor_id.strip()) > 128:
+            raise KairoValidationError("actor_id must not exceed 128 characters.", status_code=400)
+        if not isinstance(top_k, int) or isinstance(top_k, bool) or top_k < 1 or top_k > 100:
+            raise KairoValidationError("top_k must be an integer between 1 and 100.", status_code=400)
+
         data = self._client._request(
             "POST",
             "/api/v1/memories/search",
             json={
-                "query": query,
-                "actorId": actor_id,
+                "query": query.strip(),
+                "actorId": actor_id.strip(),
                 "topK": top_k,
             },
         )
         return MemorySearchResponse._from_dict(data)
+
+    # ── Ingest ────────────────────────────────────────────────────────────────
+
+    def ingest(
+        self,
+        *,
+        actor_id: str,
+        messages: list[Union[dict[str, str], IngestMessage]],
+    ) -> MemoryIngestionResponse:
+        """Ingest a conversation and extract durable memories with automatic consolidation.
+
+        Calls ``POST /api/v1/memories/ingest``.
+
+        The Kairo backend extracts salient knowledge from the conversation,
+        evaluates candidate memories against existing memories within the actor's scope,
+        and applies the appropriate operation: Add, Update, Merge, or NoAction.
+
+        :param actor_id: Application-level actor identifier for memory scoping.
+        :param messages: List of conversation messages (as dicts with 'role' and 'content',
+            or :class:`~kairo.models.IngestMessage` instances).
+        :returns: A :class:`~kairo.models.MemoryIngestionResponse`.
+        :raises KairoValidationError: If ``actor_id`` or ``messages`` is empty or malformed.
+        :raises KairoAuthenticationError: If the API key is invalid.
+
+        Example::
+
+            response = client.memories.ingest(
+                actor_id="user-123",
+                messages=[
+                    {"role": "user", "content": "I prefer PostgreSQL for backend applications."},
+                ],
+            )
+            for mem in response.memories:
+                print(f"[{mem.action}] ID: {mem.memory_id} - {mem.content}")
+        """
+        if not actor_id or not isinstance(actor_id, str) or not actor_id.strip():
+            raise KairoValidationError("actor_id must not be empty.", status_code=400)
+        if len(actor_id.strip()) > 128:
+            raise KairoValidationError("actor_id must not exceed 128 characters.", status_code=400)
+
+        if not messages or not isinstance(messages, (list, tuple)):
+            raise KairoValidationError("messages must be a non-empty list.", status_code=400)
+
+        serialized_messages: list[dict[str, str]] = []
+        for i, msg in enumerate(messages):
+            if isinstance(msg, dict):
+                role = msg.get("role")
+                content = msg.get("content")
+            elif hasattr(msg, "role") and hasattr(msg, "content"):
+                role = getattr(msg, "role")
+                content = getattr(msg, "content")
+            else:
+                raise KairoValidationError(
+                    f"Message at index {i} must be a dict or IngestMessage.",
+                    status_code=400,
+                )
+
+            if not role or not isinstance(role, str) or not role.strip():
+                raise KairoValidationError(
+                    f"Message at index {i} is missing a valid 'role'.",
+                    status_code=400,
+                )
+            if not content or not isinstance(content, str) or not content.strip():
+                raise KairoValidationError(
+                    f"Message at index {i} is missing a valid 'content'.",
+                    status_code=400,
+                )
+
+            serialized_messages.append({
+                "role": role.strip(),
+                "content": content.strip(),
+            })
+
+        data = self._client._request(
+            "POST",
+            "/api/v1/memories/ingest",
+            json={
+                "actorId": actor_id.strip(),
+                "messages": serialized_messages,
+            },
+        )
+        return MemoryIngestionResponse._from_dict(data or {})
+

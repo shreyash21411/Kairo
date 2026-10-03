@@ -120,7 +120,7 @@ public class MemoryService : IMemoryService
                     nameof(request.ActorId));
             }
 
-            scopeId = await _scopeResolutionService.ResolveScopeAsync(
+            scopeId = await _scopeResolutionService.GetOrCreateScopeAsync(
                 projectId.Value,
                 request.ActorId,
                 cancellationToken);
@@ -451,10 +451,24 @@ public class MemoryService : IMemoryService
                     nameof(request.ActorId));
             }
 
-            scopeId = await _scopeResolutionService.ResolveScopeAsync(
-                projectId.Value,
-                request.ActorId,
-                cancellationToken);
+            try
+            {
+                scopeId = await _scopeResolutionService.ResolveScopeAsync(
+                    projectId.Value,
+                    request.ActorId,
+                    cancellationToken);
+            }
+            catch (MemoryScopeNotFoundException)
+            {
+                // An actor who has never created a memory has no MemoryScope record yet.
+                // A search for an actor with no memories is a valid read-only query that returns empty results.
+                return new MemorySearchResponse
+                {
+                    Query = request.Query,
+                    Count = 0,
+                    Memories = []
+                };
+            }
         }
 
         // Delegate entirely to the existing retrieval pipeline:

@@ -826,3 +826,131 @@ test("31: Agent delegation to REST routes", async () => {
         global.fetch = originalFetch;
     }
 });
+
+// ── Phase 4: Conversational Ingestion Contract Tests ──────────────────────────
+
+test("F-N-30: ingest() sends POST to /api/v1/memories/ingest", async () => {
+    const originalFetch = global.fetch;
+    try {
+        const payload = { processed: true, extractedCount: 1, memories: [] };
+        global.fetch = async () =>
+            new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+
+        const client = new Kairo({ apiKey: "kairo_test_key" });
+        const result = await client.memories.ingest({
+            actorId: "actor-1",
+            messages: [{ role: "user", content: "I enjoy hiking on weekends." }],
+        });
+
+        assert.ok(result.processed);
+        assert.equal(result.extractedCount, 1);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test("F-N-31: ingest() sends correct JSON body", async () => {
+    const originalFetch = global.fetch;
+    let capturedBody;
+    try {
+        const payload = { processed: true, extractedCount: 0, memories: [] };
+        global.fetch = async (url, opts) => {
+            capturedBody = JSON.parse(opts.body);
+            return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+        };
+
+        const client = new Kairo({ apiKey: "kairo_test_key" });
+        await client.memories.ingest({
+            actorId: "actor-99",
+            messages: [
+                { role: "user", content: "I use Rust for systems programming." },
+                { role: "assistant", content: "Noted." },
+            ],
+        });
+
+        assert.equal(capturedBody.actorId, "actor-99");
+        assert.equal(capturedBody.messages.length, 2);
+        assert.equal(capturedBody.messages[0].role, "user");
+        assert.equal(capturedBody.messages[0].content, "I use Rust for systems programming.");
+        assert.equal(capturedBody.messages[1].role, "assistant");
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test("F-N-32: ingest() maps IngestionMemoryResult fields", async () => {
+    const originalFetch = global.fetch;
+    try {
+        const payload = {
+            processed: true,
+            extractedCount: 2,
+            memories: [
+                { action: "Add", memoryId: 101, content: "User likes hiking.", reason: null },
+                { action: "NoAction", memoryId: null, content: "User likes water.", reason: "Duplicate" },
+            ],
+        };
+        global.fetch = async () =>
+            new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+
+        const client = new Kairo({ apiKey: "kairo_test_key" });
+        const result = await client.memories.ingest({
+            actorId: "actor-2",
+            messages: [{ role: "user", content: "I love hiking and water sports." }],
+        });
+
+        assert.equal(result.processed, true);
+        assert.equal(result.extractedCount, 2);
+        assert.equal(result.memories.length, 2);
+        assert.equal(result.memories[0].action, "Add");
+        assert.equal(result.memories[0].memoryId, 101);
+        assert.equal(result.memories[0].content, "User likes hiking.");
+        assert.equal(result.memories[0].reason, null);
+        assert.equal(result.memories[1].action, "NoAction");
+        assert.equal(result.memories[1].memoryId, null);
+        assert.equal(result.memories[1].reason, "Duplicate");
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test("F-N-33: ingest() throws KairoValidationError for empty actorId", async () => {
+    const client = new Kairo({ apiKey: "kairo_test_key" });
+    await assert.rejects(
+        () => client.memories.ingest({
+            actorId: "",
+            messages: [{ role: "user", content: "Test." }],
+        }),
+        KairoValidationError
+    );
+});
+
+test("F-N-34: ingest() throws KairoValidationError for empty messages array", async () => {
+    const client = new Kairo({ apiKey: "kairo_test_key" });
+    await assert.rejects(
+        () => client.memories.ingest({ actorId: "actor-x", messages: [] }),
+        KairoValidationError
+    );
+});
+
+test("F-N-35: ingest() throws KairoValidationError for message with empty role", async () => {
+    const client = new Kairo({ apiKey: "kairo_test_key" });
+    await assert.rejects(
+        () => client.memories.ingest({
+            actorId: "actor-x",
+            messages: [{ role: "", content: "Some content." }],
+        }),
+        KairoValidationError
+    );
+});
+
+test("F-N-36: ingest() throws KairoValidationError for message with empty content", async () => {
+    const client = new Kairo({ apiKey: "kairo_test_key" });
+    await assert.rejects(
+        () => client.memories.ingest({
+            actorId: "actor-x",
+            messages: [{ role: "user", content: "" }],
+        }),
+        KairoValidationError
+    );
+});
+

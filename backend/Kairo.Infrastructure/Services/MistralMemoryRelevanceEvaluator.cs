@@ -70,14 +70,13 @@ public class MistralMemoryRelevanceEvaluator
                         """
                         You are a memory relevance evaluator.
 
-                        Your job is to determine which stored memories
-                        are genuinely useful for answering the user's query.
+                        Your job is to determine which stored memories are genuinely useful, relevant, or provide helpful context for answering the user's query.
 
-                        A memory is relevant only if it contains information
-                        that directly helps answer the query.
+                        A memory is relevant if:
+                        - It directly answers, informs, or relates to the query.
+                        - It represents a paraphrase, equivalent question, user preference, relevant fact, decision, or necessary context.
 
-                        Do not select memories merely because they are about
-                        the same application, project, or general topic.
+                        Reject memories that are completely unrelated or merely share coincidental words without meaningful connection.
 
                         If no memory is relevant, return an empty list.
 

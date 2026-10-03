@@ -17,6 +17,18 @@ public interface IMemoryScopeRepository
         long projectId,
         string actorId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Looks up a MemoryScope by the composite key (ProjectId, ActorId).
+    /// If found, returns the existing scope data.
+    /// If not found, creates and persists a new MemoryScope record and returns the created scope data.
+    /// Handles concurrency and race conditions safely using the database unique constraint
+    /// UX_MemoryScopes_ProjectId_ActorId.
+    /// </summary>
+    Task<MemoryScopeData> GetOrCreateAsync(
+        long projectId,
+        string actorId,
+        CancellationToken cancellationToken = default);
 }
 
 // ── Data contract returned by IMemoryScopeRepository ─────────────────────────

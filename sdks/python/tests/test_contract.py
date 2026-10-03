@@ -660,3 +660,138 @@ def test_31_agent_delegation():
     # forget delegates to DELETE /api/v1/memories/{id}
     agent.forget(memory_id=42)
     assert called_endpoints[-1] == ("DELETE", "/api/v1/memories/42")
+
+
+# ── Phase 4: Conversational Ingestion ─────────────────────────────────────────
+
+from kairo.models import IngestMessage, IngestionMemoryResult, MemoryIngestionResponse
+
+
+def _make_ingest_transport(payload: dict) -> httpx.MockTransport:
+    """Return a MockTransport that always returns *payload* as JSON."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    return httpx.MockTransport(_handler)
+
+
+def test_F_P_30_ingest_sends_post_to_correct_endpoint():
+    """ingest() must POST to /api/v1/memories/ingest."""
+    captured = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(200, json={"processed": True, "extractedCount": 0, "memories": []})
+
+    client = Kairo(api_key="kairo_test_key")
+    client._http = httpx.Client(transport=httpx.MockTransport(_handler))
+    client.memories.ingest(actor_id="actor-1", messages=[{"role": "user", "content": "Hello."}])
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/memories/ingest"
+
+
+def test_F_P_31_ingest_sends_correct_json_body():
+    """ingest() must send actorId and messages in the request body."""
+    captured = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"processed": True, "extractedCount": 0, "memories": []})
+
+    client = Kairo(api_key="kairo_test_key")
+    client._http = httpx.Client(transport=httpx.MockTransport(_handler))
+    client.memories.ingest(
+        actor_id="actor-99",
+        messages=[
+            {"role": "user", "content": "I use Python."},
+            {"role": "assistant", "content": "Noted."},
+        ],
+    )
+
+    body = captured["body"]
+    assert body["actorId"] == "actor-99"
+    assert len(body["messages"]) == 2
+    assert body["messages"][0]["role"] == "user"
+    assert body["messages"][0]["content"] == "I use Python."
+    assert body["messages"][1]["role"] == "assistant"
+
+
+def test_F_P_32_ingest_maps_response_fields():
+    """ingest() must correctly map MemoryIngestionResponse fields."""
+    payload = {
+        "processed": True,
+        "extractedCount": 2,
+        "memories": [
+            {"action": "Add", "memoryId": 101, "content": "User likes Python.", "reason": None},
+            {"action": "NoAction", "memoryId": None, "content": "User likes cats.", "reason": "Duplicate"},
+        ],
+    }
+    client = Kairo(api_key="kairo_test_key")
+    client._http = httpx.Client(transport=_make_ingest_transport(payload))
+    result = client.memories.ingest(
+        actor_id="actor-2",
+        messages=[{"role": "user", "content": "I love Python and cats."}],
+    )
+
+    assert isinstance(result, MemoryIngestionResponse)
+    assert result.processed is True
+    assert result.extracted_count == 2
+    assert len(result.memories) == 2
+
+    mem0 = result.memories[0]
+    assert isinstance(mem0, IngestionMemoryResult)
+    assert mem0.action == "Add"
+    assert mem0.memory_id == 101
+    assert mem0.content == "User likes Python."
+    assert mem0.reason is None
+
+    mem1 = result.memories[1]
+    assert mem1.action == "NoAction"
+    assert mem1.memory_id is None
+    assert mem1.reason == "Duplicate"
+
+
+def test_F_P_33_ingest_raises_for_empty_actor_id():
+    """ingest() must raise KairoValidationError when actor_id is empty."""
+    client = Kairo(api_key="kairo_test_key")
+    with pytest.raises(KairoValidationError):
+        client.memories.ingest(actor_id="", messages=[{"role": "user", "content": "Test."}])
+
+
+def test_F_P_34_ingest_raises_for_empty_messages():
+    """ingest() must raise KairoValidationError when messages list is empty."""
+    client = Kairo(api_key="kairo_test_key")
+    with pytest.raises(KairoValidationError):
+        client.memories.ingest(actor_id="actor-x", messages=[])
+
+
+def test_F_P_35_ingest_raises_for_message_missing_role():
+    """ingest() must raise KairoValidationError when a message has an empty role."""
+    client = Kairo(api_key="kairo_test_key")
+    with pytest.raises(KairoValidationError):
+        client.memories.ingest(
+            actor_id="actor-x",
+            messages=[{"role": "", "content": "Some content."}],
+        )
+
+
+def test_F_P_36_ingest_raises_for_message_missing_content():
+    """ingest() must raise KairoValidationError when a message has empty content."""
+    client = Kairo(api_key="kairo_test_key")
+    with pytest.raises(KairoValidationError):
+        client.memories.ingest(
+            actor_id="actor-x",
+            messages=[{"role": "user", "content": ""}],
+        )
+
+
+def test_F_P_37_ingest_models_exported_from_package():
+    """IngestMessage, IngestionMemoryResult, and MemoryIngestionResponse must be importable from kairo."""
+    from kairo import IngestMessage, IngestionMemoryResult, MemoryIngestionResponse  # noqa: F401
+    msg = IngestMessage(role="user", content="Hello.")
+    assert msg.role == "user"
+    assert msg.content == "Hello."
+

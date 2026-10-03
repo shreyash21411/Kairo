@@ -71,7 +71,7 @@ class Kairo:
         base_url: Optional[str] = None,
         timeout: float = _DEFAULT_TIMEOUT,
     ) -> None:
-        resolved_key = api_key or os.environ.get("KAIRO_API_KEY", "")
+        resolved_key = (api_key or os.environ.get("KAIRO_API_KEY", "")).strip()
 
         if not resolved_key:
             raise KairoAuthenticationError(

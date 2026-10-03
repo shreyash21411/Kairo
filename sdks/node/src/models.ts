@@ -140,6 +140,82 @@ export interface MemorySearchRequest {
     topK?: number;
 }
 
+// ── Phase 4: Conversational Ingestion ─────────────────────────────────────────
+
+/**
+ * A single message within a conversation submitted for memory ingestion.
+ */
+export interface MemoryMessage {
+    /**
+     * The role of the speaker.
+     * Accepted values: "user", "assistant", "system".
+     */
+    role: string;
+    /** The text content of the message. */
+    content: string;
+}
+
+/**
+ * Request body for conversational memory ingestion.
+ * POST /api/v1/memories/ingest
+ */
+export interface IngestRequest {
+    /** Application-level actor identifier for memory scoping. */
+    actorId: string;
+    /** Conversation messages to analyze. Must contain at least one message. */
+    messages: MemoryMessage[];
+}
+
+/**
+ * The action taken by Kairo for a single extracted memory candidate.
+ *
+ * - "Add": A new memory was created.
+ * - "Update": An existing memory was superseded or replaced.
+ * - "Merge": An existing memory was enriched with complementary context.
+ * - "NoAction": The content was a duplicate or non-salient; no change was made.
+ */
+export type IngestionAction = "Add" | "Update" | "Merge" | "NoAction";
+
+/**
+ * The result for a single memory candidate processed during ingestion.
+ */
+export interface IngestionMemoryResult {
+    /** The consolidation operation performed. */
+    action: IngestionAction;
+    /** The ID of the affected memory. Null for NoAction. */
+    memoryId: number | null;
+    /** The persisted or canonical memory content. */
+    content: string;
+    /** Optional explanation for the action (especially for Merge and Update). */
+    reason: string | null;
+}
+
+/**
+ * Response from POST /api/v1/memories/ingest.
+ *
+ * @example
+ * ```typescript
+ * const result = await kairo.memories.ingest({
+ *     actorId: "user-123",
+ *     messages: [
+ *         { role: "user", content: "I prefer PostgreSQL for backend applications." }
+ *     ],
+ * });
+ *
+ * for (const mem of result.memories) {
+ *     console.log(`[${mem.action}] ${mem.content}`);
+ * }
+ * ```
+ */
+export interface IngestResponse {
+    /** Whether the ingestion pipeline completed without fatal error. */
+    processed: boolean;
+    /** Number of candidates extracted from the conversation. */
+    extractedCount: number;
+    /** Per-candidate results. Empty when extraction found nothing worth remembering. */
+    memories: IngestionMemoryResult[];
+}
+
 // ── Internal raw response shapes ──────────────────────────────────────────────
 // These are used internally to deserialise backend responses and are not
 // exported as part of the public API surface.

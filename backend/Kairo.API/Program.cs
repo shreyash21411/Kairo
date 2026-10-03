@@ -143,6 +143,9 @@ builder.Services.AddScoped<MemoryRetrievalService>();
 // ── V1 Public Memory API ────────────────────────────────────────────────────
 builder.Services.AddScoped<IMemoryService, MemoryService>();
 
+// ── Phase 2: Conversational Memory Ingestion ──────────────────────────────
+builder.Services.AddScoped<IMemoryIngestionService, MemoryIngestionService>();
+
 // ── Phase A: Embedding Backfill (Task 1) ──────────────────────────────────
 builder.Services.AddScoped<IEmbeddingBackfillService, EmbeddingBackfillService>();
 
@@ -164,7 +167,10 @@ builder.Services.AddKairoMcp();
 
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+        opts.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
 // ── ProblemDetails (AUTH-9L) ──────────────────────────────────────────────────
 // Enables RFC 7807 / RFC 9457 structured error responses.

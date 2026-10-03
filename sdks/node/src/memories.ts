@@ -6,7 +6,10 @@ import {
     CreateMemoryRequest,
     CreateMemoryResult,
     DeleteMemoryResult,
+    IngestRequest,
+    IngestResponse,
     Memory,
+    MemoryMessage,
     MemorySearchRequest,
     MemorySearchResponse,
     UpdateMemoryRequest,
@@ -291,6 +294,9 @@ export class MemoryResource {
         if (!request.actorId || request.actorId.trim() === "") {
             throw new KairoValidationError("actorId must not be empty.", 400);
         }
+        if (request.actorId.trim().length > 128) {
+            throw new KairoValidationError("actorId must not exceed 128 characters.", 400);
+        }
 
         const topK = request.topK ?? 5;
 
@@ -310,5 +316,89 @@ export class MemoryResource {
                 topK,
             }
         );
+    }
+
+    // ── Ingest ────────────────────────────────────────────────────────────────
+
+    /**
+     * Ingest a conversation and extract durable memories with automatic consolidation.
+     *
+     * Calls `POST /api/v1/memories/ingest`.
+     *
+     * The Kairo backend extracts salient knowledge from the conversation,
+     * evaluates candidate memories against existing memories within the actor's
+     * scope, and applies the appropriate operation: Add, Update, Merge, or NoAction.
+     *
+     * The SDK does **not** perform extraction, consolidation, or embedding locally.
+     * All intelligence remains server-side.
+     *
+     * @param request - Actor ID and conversation messages.
+     * @returns An {@link IngestResponse} with per-candidate results.
+     *
+     * @throws {KairoValidationError} If actorId or messages are empty or malformed.
+     * @throws {KairoAuthenticationError} If the API key is invalid.
+     *
+     * @example
+     * ```typescript
+     * const result = await kairo.memories.ingest({
+     *     actorId: "user-123",
+     *     messages: [
+     *         { role: "user", content: "I prefer PostgreSQL for backend applications." },
+     *     ],
+     * });
+     *
+     * for (const mem of result.memories) {
+     *     console.log(`[${mem.action}] ${mem.content}`);
+     * }
+     * ```
+     */
+    async ingest(request: IngestRequest): Promise<IngestResponse> {
+        if (!request.actorId || request.actorId.trim() === "") {
+            throw new KairoValidationError("actorId must not be empty.", 400);
+        }
+        if (request.actorId.trim().length > 128) {
+            throw new KairoValidationError("actorId must not exceed 128 characters.", 400);
+        }
+        if (!request.messages || !Array.isArray(request.messages) || request.messages.length === 0) {
+            throw new KairoValidationError("messages must be a non-empty array.", 400);
+        }
+
+        // Validate each message
+        for (let i = 0; i < request.messages.length; i++) {
+            const msg = request.messages[i];
+            if (!msg.role || typeof msg.role !== "string" || msg.role.trim() === "") {
+                throw new KairoValidationError(
+                    `Message at index ${i} is missing a valid 'role'.`,
+                    400
+                );
+            }
+            if (!msg.content || typeof msg.content !== "string" || msg.content.trim() === "") {
+                throw new KairoValidationError(
+                    `Message at index ${i} is missing a valid 'content'.`,
+                    400
+                );
+            }
+        }
+
+        const sanitizedMessages: MemoryMessage[] = request.messages.map((msg) => ({
+            role: msg.role.trim(),
+            content: msg.content.trim(),
+        }));
+
+        const data = await this._client.request<IngestResponse>(
+            "POST",
+            "/api/v1/memories/ingest",
+            {
+                actorId: request.actorId.trim(),
+                messages: sanitizedMessages,
+            }
+        );
+
+        // Normalise: guarantee the shape even if backend returns partial data
+        return {
+            processed: data?.processed ?? false,
+            extractedCount: data?.extractedCount ?? 0,
+            memories: data?.memories ?? [],
+        };
     }
 }

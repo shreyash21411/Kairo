@@ -4,4 +4,5 @@
   <Project Path="Kairo.Domain/Kairo.Domain.csproj" />
   <Project Path="Kairo.Infrastructure/Kairo.Infrastructure.csproj" />
   <Project Path="Kairo.MCP/Kairo.MCP.csproj" />
+  <Project Path="Kairo.Tests/Kairo.Tests.csproj" />
 </Solution>

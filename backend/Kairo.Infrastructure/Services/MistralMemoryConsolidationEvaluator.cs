@@ -26,8 +26,8 @@ public class MistralMemoryConsolidationEvaluator : IMemoryConsolidationEvaluator
     {
         var userContent = JsonSerializer.Serialize(new
         {
-            memoryA = candidate.ContentA,
-            memoryB = candidate.ContentB
+            existingMemory = candidate.ContentA,
+            newCandidate   = candidate.ContentB
         });
 
         var requestBody = new
@@ -42,37 +42,39 @@ public class MistralMemoryConsolidationEvaluator : IMemoryConsolidationEvaluator
                     role = "system",
                     content =
                         """
-                        You are a memory consolidation evaluator for an AI memory system.
+                        You are Kairo's memory intelligence and consolidation engine.
+                        Your task is to analyze an EXISTING memory (existingMemory) against a NEW candidate memory (newCandidate) and decide how the knowledge should be handled.
 
-                        Given two memory statements (memoryA and memoryB), determine
-                        whether they encode exactly the same real-world knowledge or fact.
+                        Determine which of the following 4 actions applies:
 
-                        Return a JSON object using exactly this structure:
+                        1. "NoAction":
+                           The newCandidate conveys the exact same fact or preference as existingMemory without adding any new or meaningful details. No update is needed.
+                           canonicalContent: null
 
-                        If they ARE the same knowledge:
-                        {
-                          "isSameKnowledge": true,
-                          "canonicalContent": "A single concise statement that captures the shared knowledge",
-                          "reason": "Brief explanation of why they are the same"
-                        }
+                        2. "Merge":
+                           The newCandidate and existingMemory describe the SAME core fact or preference, but one provides additional context, detail, or clarification that complements the other. They should be combined into a single, concise canonical statement.
+                           canonicalContent: A single concise statement capturing the combined knowledge.
 
-                        If they are NOT the same knowledge:
-                        {
-                          "isSameKnowledge": false,
-                          "canonicalContent": null,
-                          "reason": "Brief explanation of why they are different"
-                        }
+                        3. "Update":
+                           The newCandidate SUPERSEDES, CONTRADICTS, or REPLACES the existingMemory (e.g. user moved to a new city, changed jobs, or explicitly changed their preference to a new exclusive choice). The existing memory is out-of-date and should be replaced.
+                           canonicalContent: The new current fact/preference that supersedes the old one.
 
-                        Rules:
-                        - Two memories are the SAME knowledge only if they convey
-                          identical facts or are direct paraphrases of each other.
-                        - Memories about related but distinct topics (e.g., two
-                          different technologies used in the same project) are NOT
-                          the same, even if they share context.
-                        - Do NOT consolidate memories that contain different
-                          specific facts.
-                        - Be conservative. When in doubt, return isSameKnowledge: false.
+                        4. "Add":
+                           The newCandidate represents a DIFFERENT, INDEPENDENT, or COMPATIBLE fact (e.g. using multiple technologies like PostgreSQL and Redis, or facts from different domains). Both memories should exist independently.
+                           canonicalContent: null
+
+                        CRITICAL RULES:
+                        - If newCandidate and existingMemory are compatible items (e.g., "I use PostgreSQL" and "I use Redis"), choose "Add". They do NOT contradict unless the user explicitly switches or states an exclusive preference.
+                        - If newCandidate directly contradicts or updates a previous status (e.g., "moved from X to Y", "now work at Y", "switched to Y"), choose "Update".
                         - Never invent information not present in either memory.
+                        - Be precise and conservative.
+
+                        Return ONLY a JSON object with this exact structure:
+                        {
+                          "action": "NoAction" | "Merge" | "Update" | "Add",
+                          "canonicalContent": "string or null",
+                          "reason": "Brief explanation for this decision"
+                        }
                         """
                 },
                 new
@@ -129,13 +131,12 @@ public class MistralMemoryConsolidationEvaluator : IMemoryConsolidationEvaluator
             using var resultDocument = JsonDocument.Parse(messageContent);
             var root = resultDocument.RootElement;
 
-            if (!root.TryGetProperty("isSameKnowledge", out var sameKnowledgeEl))
+            string? reason = null;
+            if (root.TryGetProperty("reason", out var reasonEl) &&
+                reasonEl.ValueKind == JsonValueKind.String)
             {
-                return FailSafe(
-                    "Response missing 'isSameKnowledge' field. Failing safe.");
+                reason = reasonEl.GetString();
             }
-
-            var isSameKnowledge = sameKnowledgeEl.ValueKind == JsonValueKind.True;
 
             string? canonicalContent = null;
             if (root.TryGetProperty("canonicalContent", out var canonicalEl) &&
@@ -144,27 +145,88 @@ public class MistralMemoryConsolidationEvaluator : IMemoryConsolidationEvaluator
                 canonicalContent = canonicalEl.GetString();
             }
 
-            string? reason = null;
-            if (root.TryGetProperty("reason", out var reasonEl) &&
-                reasonEl.ValueKind == JsonValueKind.String)
+            // Phase 3 4-action schema check: "action" property
+            if (root.TryGetProperty("action", out var actionEl) &&
+                actionEl.ValueKind == JsonValueKind.String)
             {
-                reason = reasonEl.GetString();
+                var actionStr = actionEl.GetString()?.Trim();
+
+                if (string.Equals(actionStr, "NoAction", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new ConsolidationEvaluationResult
+                    {
+                        Action = ConsolidationAction.NoAction,
+                        CanonicalContent = null,
+                        Reason = reason
+                    };
+                }
+
+                if (string.Equals(actionStr, "Merge", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(canonicalContent))
+                    {
+                        // Fall back to candidate content rather than discarding knowledge
+                        canonicalContent = candidate.ContentB;
+                    }
+
+                    return new ConsolidationEvaluationResult
+                    {
+                        Action = ConsolidationAction.Merge,
+                        CanonicalContent = canonicalContent,
+                        Reason = reason
+                    };
+                }
+
+                if (string.Equals(actionStr, "Update", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(canonicalContent))
+                    {
+                        canonicalContent = candidate.ContentB;
+                    }
+
+                    return new ConsolidationEvaluationResult
+                    {
+                        Action = ConsolidationAction.Update,
+                        CanonicalContent = canonicalContent,
+                        Reason = reason
+                    };
+                }
+
+                if (string.Equals(actionStr, "Add", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new ConsolidationEvaluationResult
+                    {
+                        Action = ConsolidationAction.Add,
+                        CanonicalContent = null,
+                        Reason = reason
+                    };
+                }
             }
 
-            // Safety: isSameKnowledge=true must come with a non-empty canonicalContent.
-            if (isSameKnowledge && string.IsNullOrWhiteSpace(canonicalContent))
+            // Backward compatibility fallback: check for legacy isSameKnowledge boolean
+            if (root.TryGetProperty("isSameKnowledge", out var sameKnowledgeEl))
             {
-                return FailSafe(
-                    "Mistral returned isSameKnowledge=true but no canonicalContent. " +
-                    "Failing safe to prevent data loss.");
+                var isSameKnowledge = sameKnowledgeEl.ValueKind == JsonValueKind.True;
+
+                if (isSameKnowledge && !string.IsNullOrWhiteSpace(canonicalContent))
+                {
+                    return new ConsolidationEvaluationResult
+                    {
+                        Action = ConsolidationAction.Merge,
+                        CanonicalContent = canonicalContent,
+                        Reason = reason
+                    };
+                }
+
+                return new ConsolidationEvaluationResult
+                {
+                    Action = ConsolidationAction.Add,
+                    CanonicalContent = null,
+                    Reason = reason
+                };
             }
 
-            return new ConsolidationEvaluationResult
-            {
-                IsSameKnowledge = isSameKnowledge,
-                CanonicalContent = canonicalContent,
-                Reason = reason
-            };
+            return FailSafe("Response missing recognized action field. Failing safe to Add.");
         }
         catch (JsonException ex)
         {
@@ -177,7 +239,7 @@ public class MistralMemoryConsolidationEvaluator : IMemoryConsolidationEvaluator
     {
         return new ConsolidationEvaluationResult
         {
-            IsSameKnowledge = false,
+            Action = ConsolidationAction.Add,
             CanonicalContent = null,
             Reason = reason
         };

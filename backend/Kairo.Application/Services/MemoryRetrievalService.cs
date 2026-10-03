@@ -87,15 +87,20 @@ public class MemoryRetrievalService
 
         // Step 4: Select a larger candidate set.
         //
-        // We intentionally use 10 candidates instead of topK.
-        // This gives the relevance evaluator more memories
-        // to work with and reduces the chance of missing
-        // a relevant memory because of embedding ranking alone.
+        // We use Math.Max(topK * 2, 10) candidates.
+        // This gives the relevance evaluator enough memories to work with
+        // without prematurely truncating when topK > 10 is requested.
+        var candidateLimit = Math.Max(topK * 2, 10);
         var candidates =
             results
                 .OrderByDescending(x => x.Similarity)
-                .Take(10)
+                .Take(candidateLimit)
                 .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return new List<RetrievedMemory>();
+        }
 
         // Step 5: Ask the relevance evaluator to determine
         // which candidate memories are genuinely relevant
@@ -104,6 +109,11 @@ public class MemoryRetrievalService
             await _relevanceEvaluator.EvaluateAsync(
                 query,
                 candidates);
+
+        if (relevantMemories == null || relevantMemories.Count == 0)
+        {
+            return new List<RetrievedMemory>();
+        }
 
         // Step 6: Preserve semantic similarity ranking
         // and return only the requested number of relevant

@@ -285,6 +285,30 @@ for m in results.memories:
 - `top_k` must be an integer between 1 and 100 (defaults to 5).
 - Search evaluates cosine similarity against memories within the specified `actor_id` scope.
 
+### Conversational Ingestion (Automatic Extraction & Consolidation)
+
+Pass conversation dialogues directly to Kairo. The backend automatically extracts salient memories, generates embeddings, retrieves candidate memories in the actor's scope, and applies AI consolidation:
+
+```python
+response = client.memories.ingest(
+    actor_id="user-123",
+    messages=[
+        {"role": "user", "content": "I prefer PostgreSQL for backend applications."},
+        {"role": "assistant", "content": "Got it, I will remember that."},
+    ],
+)
+
+print(f"Processed: {response.processed}, Extracted: {response.extracted_count}")
+for mem in response.memories:
+    print(f"[{mem.action}] ID: {mem.memory_id} - {mem.content}")
+```
+
+#### Consolidation Actions:
+- **`Add`**: A novel memory was extracted and stored.
+- **`Update`**: An existing memory was superseded by updated or contradictory facts.
+- **`Merge`**: An existing memory was enriched with complementary details.
+- **`NoAction`**: Candidate was skipped due to exact/semantic duplication or lack of durable salience.
+
 ---
 
 ## Agent Integration V1

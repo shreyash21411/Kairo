@@ -210,3 +210,78 @@ class DeleteMemoryResult:
 
     def __repr__(self) -> str:
         return f"DeleteMemoryResult(memory_id={self.memory_id!r})"
+
+
+# ── Phase 4: Conversational Ingestion Models ─────────────────────────────────
+
+@dataclass
+class IngestMessage:
+    """A single message within a conversation submitted for memory ingestion."""
+
+    role: str
+    content: str
+
+
+@dataclass
+class IngestionMemoryResult:
+    """The result for a single candidate memory processed during ingestion.
+
+    :param action: The action performed: "Add", "Update", "Merge", or "NoAction".
+    :param memory_id: The ID of the affected memory (null for NoAction).
+    :param content: The persisted or updated canonical memory content.
+    :param reason: Optional explanation for the action (e.g. consolidation rationale).
+    """
+
+    action: str
+    memory_id: Optional[int]
+    content: str
+    reason: Optional[str]
+
+    @classmethod
+    def _from_dict(cls, data: dict) -> IngestionMemoryResult:
+        return cls(
+            action=data["action"],
+            memory_id=data.get("memoryId"),
+            content=data["content"],
+            reason=data.get("reason"),
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"IngestionMemoryResult("
+            f"action={self.action!r}, "
+            f"memory_id={self.memory_id!r}, "
+            f"content={self.content!r})"
+        )
+
+
+@dataclass
+class MemoryIngestionResponse:
+    """Response from a conversational memory ingestion request.
+
+    Returned by :meth:`~kairo.MemoryResource.ingest`.
+    """
+
+    processed: bool
+    extracted_count: int
+    memories: list[IngestionMemoryResult]
+
+    @classmethod
+    def _from_dict(cls, data: dict) -> MemoryIngestionResponse:
+        return cls(
+            processed=data.get("processed", False),
+            extracted_count=data.get("extractedCount", 0),
+            memories=[
+                IngestionMemoryResult._from_dict(m)
+                for m in data.get("memories", [])
+            ],
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"MemoryIngestionResponse("
+            f"processed={self.processed!r}, "
+            f"extracted_count={self.extracted_count!r}, "
+            f"memories_count={len(self.memories)})"
+        )
+

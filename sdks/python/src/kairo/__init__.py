@@ -39,7 +39,10 @@ from .exceptions import (
 from .models import (
     CreateMemoryResult,
     DeleteMemoryResult,
+    IngestMessage,
+    IngestionMemoryResult,
     Memory,
+    MemoryIngestionResponse,
     MemorySearchResponse,
     RetrievedMemory,
 )
@@ -66,6 +69,10 @@ __all__ = [
     "RetrievedMemory",
     "MemorySearchResponse",
     "DeleteMemoryResult",
+    # Phase 4: Ingestion
+    "IngestMessage",
+    "IngestionMemoryResult",
+    "MemoryIngestionResponse",
 ]
 
 __version__ = "0.1.0"

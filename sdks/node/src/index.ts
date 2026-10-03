@@ -47,4 +47,10 @@ export type {
     MemorySearchRequest,
     CreateMemoryResult,
     DeleteMemoryResult,
+    // Phase 4: Conversational Ingestion
+    MemoryMessage,
+    IngestRequest,
+    IngestionAction,
+    IngestionMemoryResult,
+    IngestResponse,
 } from "./models";

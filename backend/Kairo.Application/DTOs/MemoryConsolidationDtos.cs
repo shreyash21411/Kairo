@@ -43,11 +43,38 @@ public class MemoryConsolidationCandidate
     public string ContentB { get; set; } = null!;
 }
 
-// ── Evaluator result (Task 3) ────────────────────────────────────────────────
+// ── Evaluator result (Phase 2 & Phase 3) ────────────────────────────────────
+
+public enum ConsolidationAction
+{
+    /// <summary>Candidate is distinct/compatible knowledge. Persist as new memory.</summary>
+    Add,
+
+    /// <summary>Candidate supersedes, contradicts, or updates an existing memory.</summary>
+    Update,
+
+    /// <summary>Candidate and existing memory represent compatible knowledge that merges into canonical form.</summary>
+    Merge,
+
+    /// <summary>Candidate adds no meaningful persistent knowledge (duplicate or non-salient).</summary>
+    NoAction
+}
 
 public class ConsolidationEvaluationResult
 {
-    public bool IsSameKnowledge { get; set; }
+    public ConsolidationAction Action { get; set; } = ConsolidationAction.Add;
+
+    public bool IsSameKnowledge
+    {
+        get => Action == ConsolidationAction.Merge || Action == ConsolidationAction.NoAction;
+        set
+        {
+            if (value && Action == ConsolidationAction.Add)
+            {
+                Action = ConsolidationAction.Merge;
+            }
+        }
+    }
 
     public string? CanonicalContent { get; set; }
 

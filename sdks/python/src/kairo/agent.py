@@ -101,7 +101,9 @@ from .exceptions import KairoValidationError
 from .models import (
     CreateMemoryResult,
     DeleteMemoryResult,
+    IngestMessage,
     Memory,
+    MemoryIngestionResponse,
     MemorySearchResponse,
 )
 
