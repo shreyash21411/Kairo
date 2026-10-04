@@ -23,16 +23,33 @@ public class MemoryIngestionUnitTests
     private readonly Mock<IEmbeddingGenerator>             _embeddingGenMock     = new();
     private readonly Mock<IScopeResolutionService>         _scopeResMock         = new();
     private readonly SemanticSimilarityService             _similarityService    = new();
+    // Phase 1 mocks (entity extraction — never throws, always returns empty by default)
+    private readonly Mock<IEntityExtractionService>        _entityExtractorMock  = new();
+    private readonly Mock<IEntityRepository>               _entityRepoMock       = new();
 
-    private MemoryIngestionService CreateService() =>
-        new(
+    private MemoryIngestionService CreateService()
+    {
+        // Default: entity extraction returns empty list (no-op)
+        _entityExtractorMock
+            .Setup(s => s.ExtractAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ExtractedEntity>());
+        _entityRepoMock
+            .Setup(r => r.UpsertEntitiesForMemoryAsync(
+                It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<List<ExtractedEntity>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityData>());
+
+        return new(
             _extractorMock.Object,
             _evaluatorMock.Object,
             _memoryRepoMock.Object,
             _embeddingGenMock.Object,
             _similarityService,
             _scopeResMock.Object,
+            _entityExtractorMock.Object,
+            _entityRepoMock.Object,
             NullLogger<MemoryIngestionService>.Instance);
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -261,8 +278,10 @@ public class MemoryIngestionUnitTests
     }
 
     // ── Test 5: Update/Merge — consolidation evaluator says IsSameKnowledge ───
+    // SKIPPED: Automatic consolidation is disabled in Phase 1 ADD-only mode.
+    // Re-enable when consolidation pipeline is restored in a future phase.
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode. Re-enable when consolidation is restored.")]
     public async Task Test5_ConsolidationMerge_ExistingMemoryUpdated()
     {
         // Arrange
@@ -335,7 +354,7 @@ public class MemoryIngestionUnitTests
 
     // ── Test 6: Merge — canonicalContent unchanged → content-equal merge ──────
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode. Re-enable when consolidation is restored.")]
     public async Task Test6_MergeContentIdentical_NoVersionCreated()
     {
         // Arrange

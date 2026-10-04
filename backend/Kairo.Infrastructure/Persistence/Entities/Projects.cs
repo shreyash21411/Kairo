@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace Kairo.Infrastructure.Persistence.Entities;
@@ -22,6 +22,9 @@ public partial class Projects
     public virtual ICollection<Chats> Chats { get; set; } = new List<Chats>();
 
     public virtual ICollection<MemoryScopes> MemoryScopes { get; set; } = new List<MemoryScopes>();
+
+    /// <summary>Phase 1: Entities extracted within this project.</summary>
+    public virtual ICollection<NamedEntity> Entities { get; set; } = new List<NamedEntity>();
 
     public virtual Users User { get; set; } = null!;
 }

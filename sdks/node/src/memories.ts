@@ -79,19 +79,30 @@ export class MemoryResource {
         if (!request.content || request.content.trim() === "") {
             throw new KairoValidationError("content must not be empty.", 400);
         }
-        if (!request.actorId || request.actorId.trim() === "") {
-            throw new KairoValidationError("actorId must not be empty.", 400);
+        if (request.actorId !== undefined) {
+            if (request.actorId.trim() === "") {
+                throw new KairoValidationError("actorId must not be empty.", 400);
+            }
+        } else if (!request.scope) {
+            throw new KairoValidationError("actorId or scope must be provided.", 400);
+        }
+
+        const payload: Record<string, unknown> = {
+            content: request.content,
+            memoryType: request.memoryType,
+        };
+        if (request.actorId) {
+            payload.actorId = request.actorId;
+        }
+        if (request.scope) {
+            payload.scope = request.scope;
         }
 
         // The backend accepts the JSON field name 'memoryType' and 'actorId' (camelCase).
         const data = await this._client.request<Memory | _DuplicateResult>(
             "POST",
             "/api/v1/memories",
-            {
-                content: request.content,
-                memoryType: request.memoryType,
-                actorId: request.actorId,
-            }
+            payload
         );
 
         // Backend returns HTTP 200 with { isDuplicate: true, reason: "..." }
@@ -291,11 +302,15 @@ export class MemoryResource {
         if (!request.query || request.query.trim() === "") {
             throw new KairoValidationError("query must not be empty.", 400);
         }
-        if (!request.actorId || request.actorId.trim() === "") {
-            throw new KairoValidationError("actorId must not be empty.", 400);
-        }
-        if (request.actorId.trim().length > 128) {
-            throw new KairoValidationError("actorId must not exceed 128 characters.", 400);
+        if (request.actorId !== undefined) {
+            if (request.actorId.trim() === "") {
+                throw new KairoValidationError("actorId must not be empty.", 400);
+            }
+            if (request.actorId.trim().length > 128) {
+                throw new KairoValidationError("actorId must not exceed 128 characters.", 400);
+            }
+        } else if (!request.scope) {
+            throw new KairoValidationError("actorId or scope must be provided.", 400);
         }
 
         const topK = request.topK ?? 5;
@@ -307,14 +322,24 @@ export class MemoryResource {
             );
         }
 
+        const payload: Record<string, unknown> = {
+            query: request.query,
+            topK,
+        };
+        if (request.actorId) {
+            payload.actorId = request.actorId;
+        }
+        if (request.scope) {
+            payload.scope = request.scope;
+        }
+        if (request.hybrid !== undefined) {
+            payload.hybrid = request.hybrid;
+        }
+
         return this._client.request<MemorySearchResponse>(
             "POST",
             "/api/v1/memories/search",
-            {
-                query: request.query,
-                actorId: request.actorId,
-                topK,
-            }
+            payload
         );
     }
 
@@ -353,11 +378,15 @@ export class MemoryResource {
      * ```
      */
     async ingest(request: IngestRequest): Promise<IngestResponse> {
-        if (!request.actorId || request.actorId.trim() === "") {
-            throw new KairoValidationError("actorId must not be empty.", 400);
-        }
-        if (request.actorId.trim().length > 128) {
-            throw new KairoValidationError("actorId must not exceed 128 characters.", 400);
+        if (request.actorId !== undefined) {
+            if (request.actorId.trim() === "") {
+                throw new KairoValidationError("actorId must not be empty.", 400);
+            }
+            if (request.actorId.trim().length > 128) {
+                throw new KairoValidationError("actorId must not exceed 128 characters.", 400);
+            }
+        } else if (!request.scope) {
+            throw new KairoValidationError("actorId or scope must be provided.", 400);
         }
         if (!request.messages || !Array.isArray(request.messages) || request.messages.length === 0) {
             throw new KairoValidationError("messages must be a non-empty array.", 400);
@@ -385,13 +414,20 @@ export class MemoryResource {
             content: msg.content.trim(),
         }));
 
+        const payload: Record<string, unknown> = {
+            messages: sanitizedMessages,
+        };
+        if (request.actorId) {
+            payload.actorId = request.actorId.trim();
+        }
+        if (request.scope) {
+            payload.scope = request.scope;
+        }
+
         const data = await this._client.request<IngestResponse>(
             "POST",
             "/api/v1/memories/ingest",
-            {
-                actorId: request.actorId.trim(),
-                messages: sanitizedMessages,
-            }
+            payload
         );
 
         // Normalise: guarantee the shape even if backend returns partial data

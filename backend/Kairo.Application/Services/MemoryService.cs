@@ -113,17 +113,26 @@ public class MemoryService : IMemoryService
         long? scopeId = null;
         if (projectId.HasValue)
         {
-            if (string.IsNullOrWhiteSpace(request.ActorId))
+            if (request.Scope != null && !request.Scope.IsEmpty)
+            {
+                scopeId = await _scopeResolutionService.GetOrCreateFromScopeKeyAsync(
+                    projectId.Value,
+                    request.Scope,
+                    cancellationToken);
+            }
+            else if (!string.IsNullOrWhiteSpace(request.ActorId))
+            {
+                scopeId = await _scopeResolutionService.GetOrCreateScopeAsync(
+                    projectId.Value,
+                    request.ActorId,
+                    cancellationToken);
+            }
+            else
             {
                 throw new ArgumentException(
-                    "ActorId cannot be empty.",
+                    "ActorId or Scope must be provided.",
                     nameof(request.ActorId));
             }
-
-            scopeId = await _scopeResolutionService.GetOrCreateScopeAsync(
-                projectId.Value,
-                request.ActorId,
-                cancellationToken);
         }
 
         // ── Verify authenticated user exists ──────────────────────────────────
@@ -444,30 +453,51 @@ public class MemoryService : IMemoryService
         long? scopeId = null;
         if (projectId.HasValue)
         {
-            if (string.IsNullOrWhiteSpace(request.ActorId))
+            if (request.Scope != null && !request.Scope.IsEmpty)
+            {
+                try
+                {
+                    scopeId = await _scopeResolutionService.ResolveFromScopeKeyAsync(
+                        projectId.Value,
+                        request.Scope,
+                        cancellationToken);
+                }
+                catch (MemoryScopeNotFoundException)
+                {
+                    return new MemorySearchResponse
+                    {
+                        Query = request.Query,
+                        Count = 0,
+                        Memories = []
+                    };
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(request.ActorId))
+            {
+                try
+                {
+                    scopeId = await _scopeResolutionService.ResolveScopeAsync(
+                        projectId.Value,
+                        request.ActorId,
+                        cancellationToken);
+                }
+                catch (MemoryScopeNotFoundException)
+                {
+                    // An actor who has never created a memory has no MemoryScope record yet.
+                    // A search for an actor with no memories is a valid read-only query that returns empty results.
+                    return new MemorySearchResponse
+                    {
+                        Query = request.Query,
+                        Count = 0,
+                        Memories = []
+                    };
+                }
+            }
+            else
             {
                 throw new ArgumentException(
-                    "ActorId cannot be empty.",
+                    "ActorId or Scope must be provided.",
                     nameof(request.ActorId));
-            }
-
-            try
-            {
-                scopeId = await _scopeResolutionService.ResolveScopeAsync(
-                    projectId.Value,
-                    request.ActorId,
-                    cancellationToken);
-            }
-            catch (MemoryScopeNotFoundException)
-            {
-                // An actor who has never created a memory has no MemoryScope record yet.
-                // A search for an actor with no memories is a valid read-only query that returns empty results.
-                return new MemorySearchResponse
-                {
-                    Query = request.Query,
-                    Count = 0,
-                    Memories = []
-                };
             }
         }
 

@@ -43,6 +43,7 @@ from .models import (
     IngestionMemoryResult,
     Memory,
     MemoryIngestionResponse,
+    MemoryScope,
     MemorySearchResponse,
     RetrievedMemory,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "KairoConnectionError",
     # Models
     "Memory",
+    "MemoryScope",
     "CreateMemoryResult",
     "RetrievedMemory",
     "MemorySearchResponse",

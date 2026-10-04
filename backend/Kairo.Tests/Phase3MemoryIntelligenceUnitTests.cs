@@ -27,16 +27,32 @@ public class Phase3MemoryIntelligenceUnitTests
     private readonly Mock<IEmbeddingGenerator>           _embeddingGenMock  = new();
     private readonly Mock<IScopeResolutionService>       _scopeResMock      = new();
     private readonly SemanticSimilarityService           _similarityService = new();
+    // Phase 1 mocks (entity extraction — no-op by default)
+    private readonly Mock<IEntityExtractionService>      _entityExtractorMock = new();
+    private readonly Mock<IEntityRepository>             _entityRepoMock      = new();
 
-    private MemoryIngestionService CreateService() =>
-        new(
+    private MemoryIngestionService CreateService()
+    {
+        _entityExtractorMock
+            .Setup(s => s.ExtractAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ExtractedEntity>());
+        _entityRepoMock
+            .Setup(r => r.UpsertEntitiesForMemoryAsync(
+                It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<List<ExtractedEntity>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityData>());
+
+        return new(
             _extractorMock.Object,
             _evaluatorMock.Object,
             _memoryRepoMock.Object,
             _embeddingGenMock.Object,
             _similarityService,
             _scopeResMock.Object,
+            _entityExtractorMock.Object,
+            _entityRepoMock.Object,
             NullLogger<MemoryIngestionService>.Instance);
+    }
 
     private static IngestConversationRequest BuildRequest(
         string actorId,
@@ -56,7 +72,7 @@ public class Phase3MemoryIntelligenceUnitTests
 
     // ── Test 1: Update on evolving fact (e.g. relocation Pune -> Mumbai) ────────
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode.")]
     public async Task Test1_EvolvingFact_UpdatesExistingMemoryAndCreatesVersion()
     {
         // Arrange
@@ -138,7 +154,7 @@ public class Phase3MemoryIntelligenceUnitTests
 
     // ── Test 2: Update on contradictory preference (e.g. Postgres -> MongoDB) ───
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode.")]
     public async Task Test2_ContradictoryPreference_UpdatesExistingMemory()
     {
         // Arrange
@@ -354,7 +370,7 @@ public class Phase3MemoryIntelligenceUnitTests
 
     // ── Test 5: Evaluator returns NoAction for semantic redundancy ─────────────
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode.")]
     public async Task Test5_EvaluatorReturnsNoAction_NoNewMemoryCreated()
     {
         // Arrange
@@ -425,7 +441,7 @@ public class Phase3MemoryIntelligenceUnitTests
 
     // ── Test 6: Evaluator returns Merge with canonical content ─────────────────
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode.")]
     public async Task Test6_EvaluatorReturnsMerge_UpdatesCanonicalAndCreatesMergeVersion()
     {
         // Arrange
@@ -505,7 +521,7 @@ public class Phase3MemoryIntelligenceUnitTests
 
     // ── Test 7: Merge when canonical content is identical does not create version ──
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode.")]
     public async Task Test7_MergeWhenContentIdentical_NoVersionCreated()
     {
         // Arrange
@@ -612,7 +628,7 @@ public class Phase3MemoryIntelligenceUnitTests
 
     // ── Test 9: Sequential updates (Pune -> Mumbai -> Delhi) ───────────────────
 
-    [Fact]
+    [Fact(Skip = "Automatic consolidation disabled in Phase 1 ADD-only mode.")]
     public async Task Test9_SequentialUpdates_VersionsChainedAndLatestPersisted()
     {
         // Arrange

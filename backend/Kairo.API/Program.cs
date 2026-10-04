@@ -157,6 +157,12 @@ builder.Services.AddHttpClient<
 // ── Phase A: Full Consolidation Pipeline (Tasks 3+4) ─────────────────────
 builder.Services.AddScoped<IFullConsolidationService, FullConsolidationService>();
 
+// ── Phase 1 (V2): Multi-dimensional scopes + Entity extraction + Hybrid retrieval ──
+builder.Services.AddHttpClient<IEntityExtractionService, MistralEntityExtractionService>();
+builder.Services.AddScoped<IEntityRepository, EntityRepository>();
+builder.Services.AddScoped<IKeywordSearchRepository, KeywordSearchRepository>();
+builder.Services.AddScoped<HybridRetrievalService>();
+
 
 // ── Phase 9: MCP Integration Layer ────────────────────────────────────────
 // Registers the MCP server (Streamable HTTP transport) and discovers Kairo

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace Kairo.Infrastructure.Persistence.Entities;
@@ -26,6 +26,9 @@ public partial class Memories
     public virtual ICollection<MemoryEmbeddings> MemoryEmbeddings { get; set; } = new List<MemoryEmbeddings>();
 
     public virtual ICollection<MemoryVersions> MemoryVersions { get; set; } = new List<MemoryVersions>();
+
+    /// <summary>Phase 1: Entities extracted from this memory.</summary>
+    public virtual ICollection<MemoryEntities> MemoryEntities { get; set; } = new List<MemoryEntities>();
 
     public virtual MemoryScopes? Scope { get; set; }
 

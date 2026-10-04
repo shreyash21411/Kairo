@@ -40,6 +40,7 @@ export {
 export type {
     MemoryType,
     Memory,
+    MemoryScopeKey,
     RetrievedMemory,
     MemorySearchResponse,
     CreateMemoryRequest,

@@ -2,6 +2,7 @@ using Kairo.Application;
 using Kairo.Application.Abstractions.Security;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
+using Kairo.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -22,15 +23,18 @@ public class MemoryController : ControllerBase
     private readonly IMemoryService _memoryService;
     private readonly IMemoryIngestionService _ingestionService;
     private readonly IApiKeyContext _apiKeyContext;
+    private readonly HybridRetrievalService _hybridRetrieval;
 
     public MemoryController(
         IMemoryService memoryService,
         IMemoryIngestionService ingestionService,
-        IApiKeyContext apiKeyContext)
+        IApiKeyContext apiKeyContext,
+        HybridRetrievalService hybridRetrieval)
     {
         _memoryService    = memoryService;
         _ingestionService = ingestionService;
         _apiKeyContext    = apiKeyContext;
+        _hybridRetrieval  = hybridRetrieval;
     }
 
     // ── POST /api/v1/memories ────────────────────────────────────────────────
@@ -332,14 +336,66 @@ public class MemoryController : ControllerBase
     {
         try
         {
-            var userId = _apiKeyContext.UserId;
+            var userId    = _apiKeyContext.UserId;
             var projectId = _apiKeyContext.ProjectId;
 
-            var result =
-                await _memoryService.SearchMemoriesAsync(
-                    request,
-                    userId,
-                    projectId);
+            // Phase 1: Route to hybrid retrieval when explicitly requested.
+            if (request.Hybrid == true)
+            {
+                long? scopeId = null;
+                if (request.Scope != null && !request.Scope.IsEmpty)
+                {
+                    try
+                    {
+                        var scopeResolver = HttpContext.RequestServices
+                            .GetRequiredService<IScopeResolutionService>();
+                        scopeId = await scopeResolver.ResolveFromScopeKeyAsync(
+                            projectId, request.Scope);
+                    }
+                    catch (MemoryScopeNotFoundException)
+                    {
+                        return Ok(new MemorySearchResponse
+                        {
+                            Query = request.Query,
+                            Count = 0,
+                            Memories = []
+                        });
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(request.ActorId))
+                {
+                    try
+                    {
+                        var scopeResolver = HttpContext.RequestServices
+                            .GetRequiredService<IScopeResolutionService>();
+                        scopeId = await scopeResolver.ResolveScopeAsync(
+                            projectId, request.ActorId!);
+                    }
+                    catch (MemoryScopeNotFoundException)
+                    {
+                        return Ok(new MemorySearchResponse
+                        {
+                            Query = request.Query,
+                            Count = 0,
+                            Memories = []
+                        });
+                    }
+                }
+
+                var hybridResults = await _hybridRetrieval.RetrieveAsync(
+                    userId, projectId, request.Query, request.TopK, scopeId);
+
+                return Ok(new MemorySearchResponse
+                {
+                    Query    = request.Query,
+                    Count    = hybridResults.Count,
+                    Memories = hybridResults
+                });
+            }
+
+            // V1 semantic-only path (unchanged)
+            var result = await _memoryService.SearchMemoriesAsync(
+                request, userId, projectId);
 
             return Ok(result);
         }
@@ -390,9 +446,9 @@ public class MemoryController : ControllerBase
     {
         // ── Controller-level validation ────────────────────────────────────────
 
-        if (string.IsNullOrWhiteSpace(request?.ActorId))
+        if (string.IsNullOrWhiteSpace(request?.ActorId) && (request?.Scope == null || request.Scope.IsEmpty))
         {
-            return BadRequest(new { message = "actorId is required and must not be empty." });
+            return BadRequest(new { message = "actorId or scope is required and must not be empty." });
         }
 
         if (request.Messages == null || request.Messages.Count == 0)

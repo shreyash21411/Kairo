@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Kairo.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -18,9 +18,13 @@ public partial class KairoDbContext : DbContext
 
     public virtual DbSet<Chats> Chats { get; set; }
 
+    public virtual DbSet<NamedEntity> Entities { get; set; }
+
     public virtual DbSet<Memories> Memories { get; set; }
 
     public virtual DbSet<MemoryEmbeddings> MemoryEmbeddings { get; set; }
+
+    public virtual DbSet<MemoryEntities> MemoryEntities { get; set; }
 
     public virtual DbSet<MemoryScopes> MemoryScopes { get; set; }
 
@@ -174,9 +178,66 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasPrecision(3);
             entity.Property(e => e.UpdatedAt).HasPrecision(3);
 
+            // Phase 1: optional multi-dimensional scope columns
+            entity.Property(e => e.UserId).HasMaxLength(256);
+            entity.Property(e => e.AgentId).HasMaxLength(256);
+            entity.Property(e => e.SessionId).HasMaxLength(256);
+            entity.Property(e => e.RunId).HasMaxLength(256);
+
             entity.HasOne(d => d.Project).WithMany(p => p.MemoryScopes)
                 .HasForeignKey(d => d.ProjectId)
                 .HasConstraintName("FK_MemoryScopes_Projects");
+        });
+
+        // ── Phase 1: Entities ────────────────────────────────────────────────
+
+        modelBuilder.Entity<NamedEntity>(entity =>
+        {
+            entity.ToTable("Entities");
+            entity.HasKey(e => e.EntityId);
+
+            entity.HasIndex(e => e.ProjectId, "IX_Entities_ProjectId");
+
+            entity.HasIndex(e => new { e.ProjectId, e.NormalizedName }, "UX_Entities_ProjectId_NormalizedName").IsUnique();
+
+            entity.Property(e => e.NormalizedName).HasMaxLength(256);
+            entity.Property(e => e.DisplayName).HasMaxLength(256);
+            entity.Property(e => e.EntityType).HasMaxLength(64);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(3)
+                .HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.UpdatedAt)
+                .HasPrecision(3)
+                .HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.Entities)
+                .HasForeignKey(d => d.ProjectId)
+                .HasConstraintName("FK_Entities_Projects");
+        });
+
+        // ── Phase 1: MemoryEntities ──────────────────────────────────────────
+
+        modelBuilder.Entity<MemoryEntities>(entity =>
+        {
+            entity.HasKey(e => e.MemoryEntityId);
+
+            entity.HasIndex(e => e.MemoryId, "IX_MemoryEntities_MemoryId");
+            entity.HasIndex(e => e.EntityId, "IX_MemoryEntities_EntityId");
+            entity.HasIndex(e => new { e.MemoryId, e.EntityId }, "UX_MemoryEntities_MemoryId_EntityId").IsUnique();
+
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(3)
+                .HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Memory).WithMany(p => p.MemoryEntities)
+                .HasForeignKey(d => d.MemoryId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MemoryEntities_Memories");
+
+            entity.HasOne(d => d.Entity).WithMany(p => p.MemoryEntities)
+                .HasForeignKey(d => d.EntityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MemoryEntities_Entities");
         });
 
         modelBuilder.Entity<MemorySettingHistory>(entity =>

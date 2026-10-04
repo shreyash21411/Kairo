@@ -15,11 +15,17 @@ public class CreateMemoryRequest
     public string MemoryType { get; set; } = null!;
 
     /// <summary>
-    /// The actor identifier for this memory within the authenticated project.
+    /// V1 legacy actor identifier for this memory within the authenticated project.
     /// Combined with the project's ProjectId to resolve the target MemoryScope.
-    /// Must not be null, empty, or whitespace.
+    /// Must not be null, empty, or whitespace when Scope is not provided.
     /// </summary>
     public string ActorId { get; set; } = null!;
+
+    /// <summary>
+    /// Phase 1: Optional multi-dimensional scope key. When provided, takes precedence
+    /// over ActorId for scope resolution. ActorId is still used for V1 backward compat.
+    /// </summary>
+    public MemoryScopeKey? Scope { get; set; }
 }
 
 /// <summary>
@@ -47,11 +53,23 @@ public class MemorySearchRequest
     public int TopK { get; set; } = 5;
 
     /// <summary>
-    /// The actor identifier for the memory scope to search within the authenticated project.
+    /// V1 legacy actor identifier for the memory scope to search within the authenticated project.
     /// Combined with the project's ProjectId to resolve the target MemoryScope.
-    /// Must not be null, empty, or whitespace.
+    /// Must not be null, empty, or whitespace when Scope is not provided.
     /// </summary>
-    public string ActorId { get; set; } = null!;
+    public string? ActorId { get; set; }
+
+    /// <summary>
+    /// Phase 1: Optional multi-dimensional scope key. When provided, takes precedence
+    /// over ActorId for scope resolution.
+    /// </summary>
+    public MemoryScopeKey? Scope { get; set; }
+
+    /// <summary>
+    /// Phase 1: When true, uses hybrid retrieval (semantic + keyword + entity).
+    /// When false or omitted, falls back to semantic-only retrieval (V1 compat).
+    /// </summary>
+    public bool? Hybrid { get; set; }
 }
 
 // ── Response DTOs ─────────────────────────────────────────────────────────────
@@ -125,11 +143,17 @@ public class IngestMessageItem
 public class IngestConversationRequest
 {
     /// <summary>
-    /// The actor identifier for this ingestion within the authenticated project.
+    /// V1 legacy actor identifier for this ingestion within the authenticated project.
     /// Combined with the project's ProjectId to resolve or create the target MemoryScope.
-    /// Must not be null, empty, or whitespace.
+    /// Must not be null, empty, or whitespace when Scope is not provided.
     /// </summary>
     public string ActorId { get; set; } = null!;
+
+    /// <summary>
+    /// Phase 1: Optional multi-dimensional scope key. When provided, takes precedence
+    /// over ActorId for scope resolution/creation.
+    /// </summary>
+    public MemoryScopeKey? Scope { get; set; }
 
     /// <summary>
     /// The conversation messages to analyze. Must contain at least one message.

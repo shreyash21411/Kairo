@@ -58,4 +58,27 @@ public interface IScopeResolutionService
         long projectId,
         string actorId,
         CancellationToken cancellationToken = default);
+
+    // ── Phase 1: Multi-dimensional scope resolution ────────────────────────────
+
+    /// <summary>
+    /// Phase 1: Resolves or creates a scope for a <see cref="DTOs.MemoryScopeKey"/>.
+    /// When <paramref name="key"/> contains only <c>ActorId</c>, this delegates
+    /// to the V1 <see cref="GetOrCreateScopeAsync"/> path.
+    /// When any of UserId/AgentId/SessionId/RunId is set, the multi-dimensional
+    /// path is used and a synthetic ActorId is derived.
+    /// </summary>
+    Task<long> GetOrCreateFromScopeKeyAsync(
+        long projectId,
+        Kairo.Application.DTOs.MemoryScopeKey key,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 1: Resolves (read-only) a scope for a <see cref="DTOs.MemoryScopeKey"/>.
+    /// Throws <see cref="Kairo.Application.MemoryScopeNotFoundException"/> if not found.
+    /// </summary>
+    Task<long> ResolveFromScopeKeyAsync(
+        long projectId,
+        Kairo.Application.DTOs.MemoryScopeKey key,
+        CancellationToken cancellationToken = default);
 }

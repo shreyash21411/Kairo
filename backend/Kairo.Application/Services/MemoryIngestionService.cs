@@ -7,16 +7,18 @@ using Microsoft.Extensions.Logging;
 namespace Kairo.Application.Services;
 
 /// <summary>
-/// Implements the Phase 2 conversational memory ingestion pipeline.
+/// Implements the conversational memory ingestion pipeline.
 ///
-/// Per-candidate flow:
+/// Per-candidate flow (Phase 1 — ADD-only mode):
 ///   1. Check exact text duplicate via IMemoryRepository.ExistsAsync → NoAction.
 ///   2. Generate embedding for the candidate.
-///   3. Check semantic similarity against existing scope embeddings.
-///   4. If similar existing memory found → run IMemoryConsolidationEvaluator.
-///      - IsSameKnowledge = true  → Merge (update canonical memory, preserve version).
-///      - IsSameKnowledge = false → Add (it's a genuinely different fact).
-///   5. If no similar memory found → Add (persist through MemoryService).
+///   3. ADD the candidate as a new memory (no similarity / consolidation check).
+///
+/// NOTE — Automatic consolidation is intentionally disabled in the current
+/// ADD-only ingestion mode.
+/// The existing UPDATE/MERGE/NoAction consolidation logic
+/// (IMemoryConsolidationEvaluator, similarity scan, MergeMemoryAsync, UpdateMemoryAsync)
+/// is fully preserved in this file and will be re-enabled in a future phase.
 ///
 /// Scope note:
 ///   Ingestion uses GetOrCreateScopeAsync because it is a write operation that may
@@ -31,6 +33,8 @@ public class MemoryIngestionService : IMemoryIngestionService
     private readonly IEmbeddingGenerator _embeddingGenerator;
     private readonly SemanticSimilarityService _similarityService;
     private readonly IScopeResolutionService _scopeResolutionService;
+    private readonly IEntityExtractionService _entityExtractionService;
+    private readonly IEntityRepository _entityRepository;
     private readonly ILogger<MemoryIngestionService> _logger;
 
     // Threshold at which a candidate is considered close enough in domain
@@ -68,6 +72,8 @@ public class MemoryIngestionService : IMemoryIngestionService
         IEmbeddingGenerator embeddingGenerator,
         SemanticSimilarityService similarityService,
         IScopeResolutionService scopeResolutionService,
+        IEntityExtractionService entityExtractionService,
+        IEntityRepository entityRepository,
         ILogger<MemoryIngestionService> logger)
     {
         _extractor               = extractor;
@@ -76,6 +82,8 @@ public class MemoryIngestionService : IMemoryIngestionService
         _embeddingGenerator      = embeddingGenerator;
         _similarityService       = similarityService;
         _scopeResolutionService  = scopeResolutionService;
+        _entityExtractionService = entityExtractionService;
+        _entityRepository        = entityRepository;
         _logger                  = logger;
     }
 
@@ -149,10 +157,20 @@ public class MemoryIngestionService : IMemoryIngestionService
 
         try
         {
-            scopeId = await _scopeResolutionService.GetOrCreateScopeAsync(
-                projectId,
-                request.ActorId,
-                cancellationToken);
+            if (request.Scope != null && !request.Scope.IsEmpty)
+            {
+                scopeId = await _scopeResolutionService.GetOrCreateFromScopeKeyAsync(
+                    projectId,
+                    request.Scope,
+                    cancellationToken);
+            }
+            else
+            {
+                scopeId = await _scopeResolutionService.GetOrCreateScopeAsync(
+                    projectId,
+                    request.ActorId,
+                    cancellationToken);
+            }
         }
         catch (Exception ex)
         {
@@ -168,7 +186,8 @@ public class MemoryIngestionService : IMemoryIngestionService
         // within a single ingestion call, two identical candidates are not both persisted.
 
         var existingEmbeddings =
-            await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+            await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId)
+            ?? new List<MemoryEmbeddingData>();
 
         // ── Step 5: Process each candidate ───────────────────────────────────────
 
@@ -192,6 +211,7 @@ public class MemoryIngestionService : IMemoryIngestionService
                 candidate.Content,
                 memoryType,
                 userId,
+                projectId,
                 scopeId,
                 existingEmbeddings,
                 cancellationToken);
@@ -216,6 +236,7 @@ public class MemoryIngestionService : IMemoryIngestionService
         string content,
         string memoryType,
         long userId,
+        long projectId,
         long scopeId,
         List<MemoryEmbeddingData> existingEmbeddings,
         CancellationToken cancellationToken)
@@ -255,85 +276,23 @@ public class MemoryIngestionService : IMemoryIngestionService
             };
         }
 
-        // ── 5c: Semantic similarity scan ──────────────────────────────────────
-        // Find existing memories with similarity above threshold, ordered highest first.
-        var candidatesAboveThreshold = existingEmbeddings
-            .Where(e => e.Dimensions == candidateEmbedding.Length)
-            .Select(e => new
-            {
-                Existing   = e,
-                Similarity = _similarityService.CalculateCosineSimilarity(candidateEmbedding, e.Embedding)
-            })
-            .Where(x => x.Similarity >= ConsolidationCandidateThreshold)
-            .OrderByDescending(x => x.Similarity)
-            .Take(3)
-            .ToList();
+        // ── 5c–5e: Automatic consolidation is intentionally disabled in the current
+        //           ADD-only ingestion mode.
+        //
+        //           The similarity scan (against existingEmbeddings using
+        //           ConsolidationCandidateThreshold), the IMemoryConsolidationEvaluator
+        //           call, and the resulting MergeMemoryAsync / UpdateMemoryAsync /
+        //           NoAction handling are preserved in this file (below) and will be
+        //           re-enabled in a future phase when automatic memory consolidation
+        //           is reintroduced to the ingestion pipeline.
+        //
+        //           TODO (future phase): Restore the similarity scan and evaluator
+        //           loop here. Re-enable MergeMemoryAsync, UpdateMemoryAsync, and
+        //           NoAction return paths.
 
-        // ── 5d: No similar memory → Add ───────────────────────────────────────
-        if (candidatesAboveThreshold.Count == 0)
-        {
-            return await AddNewMemoryAsync(
-                content, memoryType, userId, scopeId,
-                candidateEmbedding, existingEmbeddings);
-        }
-
-        // ── 5e: Evaluate candidates in descending similarity order ───────────
-        foreach (var candidateMatch in candidatesAboveThreshold)
-        {
-            var consolidationCandidate = new MemoryConsolidationCandidate
-            {
-                MemoryIdA  = candidateMatch.Existing.MemoryId,
-                MemoryIdB  = 0, // 0 = new candidate, not yet persisted
-                Similarity = candidateMatch.Similarity,
-                ContentA   = candidateMatch.Existing.Content,
-                ContentB   = content
-            };
-
-            ConsolidationEvaluationResult evaluation;
-            try
-            {
-                evaluation = await _consolidationEvaluator.EvaluateAsync(consolidationCandidate);
-                _logger.LogInformation(
-                    "[Ingestion] Evaluator result for candidate '{Candidate}' vs existing {ExistingId} '{ExistingContent}': Action={Action} Canonical='{Canonical}' Reason='{Reason}'",
-                    content, candidateMatch.Existing.MemoryId, candidateMatch.Existing.Content,
-                    evaluation.Action, evaluation.CanonicalContent, evaluation.Reason);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "[Ingestion] Consolidation evaluation failed for candidate pair {MemoryId}. Continuing to next candidate.",
-                    candidateMatch.Existing.MemoryId);
-                continue;
-            }
-
-            if (evaluation.Action == ConsolidationAction.NoAction)
-            {
-                return new IngestionMemoryResult
-                {
-                    Action   = IngestionOperation.NoAction,
-                    MemoryId = candidateMatch.Existing.MemoryId,
-                    Content  = candidateMatch.Existing.Content,
-                    Reason   = evaluation.Reason ?? "Duplicate or non-salient knowledge."
-                };
-            }
-
-            if (evaluation.Action == ConsolidationAction.Merge)
-            {
-                return await MergeMemoryAsync(candidateMatch.Existing, evaluation, userId, scopeId);
-            }
-
-            if (evaluation.Action == ConsolidationAction.Update)
-            {
-                return await UpdateMemoryAsync(candidateMatch.Existing, evaluation, userId, scopeId);
-            }
-
-            // ConsolidationAction.Add: candidate is distinct/compatible with this memory.
-            // Continue checking next candidate in candidatesAboveThreshold.
-        }
-
-        // Evaluator determined candidate encodes distinct facts from all candidates → Add
+        // ── 5d: ADD — always persist as a new memory in Phase 1 ──────────────
         return await AddNewMemoryAsync(
-            content, memoryType, userId, scopeId,
+            content, memoryType, userId, projectId, scopeId,
             candidateEmbedding, existingEmbeddings);
     }
 
@@ -343,6 +302,7 @@ public class MemoryIngestionService : IMemoryIngestionService
         string content,
         string memoryType,
         long userId,
+        long projectId,
         long scopeId,
         float[] embedding,
         List<MemoryEmbeddingData> existingEmbeddings)
@@ -378,6 +338,10 @@ public class MemoryIngestionService : IMemoryIngestionService
             throw;
         }
 
+        // Phase 1: Extract and persist entities for this memory.
+        // Entity extraction must NEVER block or fail the ingestion pipeline.
+        await ExtractAndPersistEntitiesAsync(content, projectId, memoryId);
+
         // Update the in-memory working set so subsequent candidates in the same
         // ingestion call can detect this new memory as a potential duplicate.
         existingEmbeddings.Add(new MemoryEmbeddingData
@@ -398,7 +362,41 @@ public class MemoryIngestionService : IMemoryIngestionService
         };
     }
 
-    // ── Merge helper ─────────────────────────────────────────────────────────────
+    // ── Entity extraction helper ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Extracts entities from memory content and persists them.
+    /// Never throws — all failures are logged and silently swallowed.
+    /// </summary>
+    private async Task ExtractAndPersistEntitiesAsync(
+        string content,
+        long projectId,
+        long memoryId)
+    {
+        try
+        {
+            var entities = await _entityExtractionService.ExtractAsync(content);
+
+            if (entities.Count == 0)
+                return;
+
+            await _entityRepository.UpsertEntitiesForMemoryAsync(
+                projectId, memoryId, entities);
+
+            _logger.LogInformation(
+                "[Ingestion] Extracted {Count} entities for MemoryId={MemoryId}.",
+                entities.Count, memoryId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "[Ingestion] Entity extraction/persistence failed for MemoryId={MemoryId}. Continuing.",
+                memoryId);
+        }
+    }
+
+    // ── Merge helper ──────────────────────────────────────────────────────────────
+    // NOTE: Preserved for future phase when automatic consolidation is re-enabled.
 
     private async Task<IngestionMemoryResult> MergeMemoryAsync(
         MemoryEmbeddingData existing,
@@ -469,7 +467,8 @@ public class MemoryIngestionService : IMemoryIngestionService
         };
     }
 
-    // ── Update helper ────────────────────────────────────────────────────────────
+    // ── Update helper ─────────────────────────────────────────────────────────────
+    // NOTE: Preserved for future phase when automatic consolidation is re-enabled.
 
     private async Task<IngestionMemoryResult> UpdateMemoryAsync(
         MemoryEmbeddingData existing,

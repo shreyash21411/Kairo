@@ -212,7 +212,44 @@ class DeleteMemoryResult:
         return f"DeleteMemoryResult(memory_id={self.memory_id!r})"
 
 
+# ── Phase 1: Multi-dimensional Memory Scope ──────────────────────────────────
+
+@dataclass
+class MemoryScope:
+    """Multi-dimensional memory scope for Phase 1+ scoping.
+
+    Supports scoping across:
+    - actor_id: Legacy V1 actor identifier
+    - user_id: Application-level user identifier
+    - agent_id: Agent identifier
+    - session_id: Conversation session identifier
+    - run_id: Execution run identifier
+    """
+
+    actor_id: Optional[str] = None
+    user_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    session_id: Optional[str] = None
+    run_id: Optional[str] = None
+
+    def to_dict(self) -> dict[str, str]:
+        """Convert scope to camelCase dictionary for API payloads."""
+        d: dict[str, str] = {}
+        if self.actor_id is not None:
+            d["actorId"] = self.actor_id
+        if self.user_id is not None:
+            d["userId"] = self.user_id
+        if self.agent_id is not None:
+            d["agentId"] = self.agent_id
+        if self.session_id is not None:
+            d["sessionId"] = self.session_id
+        if self.run_id is not None:
+            d["runId"] = self.run_id
+        return d
+
+
 # ── Phase 4: Conversational Ingestion Models ─────────────────────────────────
+
 
 @dataclass
 class IngestMessage:

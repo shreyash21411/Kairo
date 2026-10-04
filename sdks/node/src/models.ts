@@ -112,6 +112,24 @@ export interface CreateMemoryResult {
 
 // ── Request models ────────────────────────────────────────────────────────────
 
+// ── Phase 1: Multi-dimensional Memory Scope ──────────────────────────────────
+
+/**
+ * Multi-dimensional memory scope for Phase 1+ scoping.
+ */
+export interface MemoryScopeKey {
+    /** Application-level actor identifier (V1 legacy). */
+    actorId?: string;
+    /** Application-level user identifier. */
+    userId?: string;
+    /** Application-level agent identifier. */
+    agentId?: string;
+    /** Conversation session identifier. */
+    sessionId?: string;
+    /** Execution run identifier. */
+    runId?: string;
+}
+
 /** Request body for creating a new memory. */
 export interface CreateMemoryRequest {
     /** Memory content text. Maximum 10,000 characters. */
@@ -119,7 +137,9 @@ export interface CreateMemoryRequest {
     /** Memory classification. */
     memoryType: MemoryType;
     /** Application-level actor identifier for memory scoping. */
-    actorId: string;
+    actorId?: string;
+    /** Multi-dimensional memory scope key (Phase 1+). */
+    scope?: MemoryScopeKey;
 }
 
 /** Request body for updating an existing memory. */
@@ -135,9 +155,13 @@ export interface MemorySearchRequest {
     /** Natural-language search query. */
     query: string;
     /** Application-level actor identifier for memory scoping. */
-    actorId: string;
+    actorId?: string;
+    /** Multi-dimensional memory scope key (Phase 1+). */
+    scope?: MemoryScopeKey;
     /** Maximum number of memories to return. Range: 1–100. Defaults to 5. */
     topK?: number;
+    /** When true, uses hybrid retrieval (semantic + keyword + entity). */
+    hybrid?: boolean;
 }
 
 // ── Phase 4: Conversational Ingestion ─────────────────────────────────────────
@@ -161,7 +185,9 @@ export interface MemoryMessage {
  */
 export interface IngestRequest {
     /** Application-level actor identifier for memory scoping. */
-    actorId: string;
+    actorId?: string;
+    /** Multi-dimensional memory scope key (Phase 1+). */
+    scope?: MemoryScopeKey;
     /** Conversation messages to analyze. Must contain at least one message. */
     messages: MemoryMessage[];
 }

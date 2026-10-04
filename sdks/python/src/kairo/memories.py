@@ -7,7 +7,7 @@ Access via ``client.memories``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from .exceptions import KairoValidationError
 from .models import (
@@ -17,11 +17,43 @@ from .models import (
     IngestionMemoryResult,
     Memory,
     MemoryIngestionResponse,
+    MemoryScope,
     MemorySearchResponse,
 )
 
 if TYPE_CHECKING:
     from .client import Kairo
+
+
+def _parse_scope_param(
+    actor_id: Optional[str],
+    scope: Optional[Union[MemoryScope, dict]],
+) -> tuple[Optional[str], Optional[dict]]:
+    if actor_id is not None:
+        if not isinstance(actor_id, str) or not actor_id.strip():
+            raise KairoValidationError("actor_id must not be empty.", status_code=400)
+        if len(actor_id.strip()) > 128:
+            raise KairoValidationError("actor_id must not exceed 128 characters.", status_code=400)
+    elif scope is None:
+        raise KairoValidationError("actor_id or scope must be provided.", status_code=400)
+
+    scope_dict = None
+    if scope is not None:
+        if isinstance(scope, MemoryScope):
+            scope_dict = scope.to_dict()
+        elif isinstance(scope, dict):
+            key_map = {
+                "actor_id": "actorId",
+                "user_id": "userId",
+                "agent_id": "agentId",
+                "session_id": "sessionId",
+                "run_id": "runId",
+            }
+            scope_dict = {key_map.get(k, k): v for k, v in scope.items() if v is not None}
+        else:
+            raise KairoValidationError("scope must be a MemoryScope or dict.", status_code=400)
+
+    return (actor_id.strip() if actor_id else None), scope_dict
 
 
 class MemoryResource:
@@ -58,9 +90,10 @@ class MemoryResource:
         *,
         content: str,
         memory_type: str,
-        actor_id: str,
+        actor_id: Optional[str] = None,
+        scope: Optional[Union[MemoryScope, dict]] = None,
     ) -> CreateMemoryResult:
-        """Create a new memory for the authenticated user and specified actor.
+        """Create a new memory for the authenticated user and specified actor or scope.
 
         Calls ``POST /api/v1/memories``.
 
@@ -73,29 +106,27 @@ class MemoryResource:
             ``Preference``, ``Fact``, ``Goal``, ``Context``,
             ``Skill``, ``Relationship``, ``Other``.
         :param actor_id: Application-level actor identifier for memory scoping.
+        :param scope: Multi-dimensional memory scope (MemoryScope or dict).
         :returns: A :class:`~kairo.CreateMemoryResult`.
-        :raises KairoValidationError: If ``content``, ``memory_type``, or ``actor_id``
-            fails server-side validation.
+        :raises KairoValidationError: If ``content``, ``memory_type``, or scope
+            fails validation.
         :raises KairoAuthenticationError: If the API key is invalid.
-
-        Example::
-
-            result = client.memories.create(
-                content="User works in Python and prefers type hints",
-                memory_type="Fact",
-                actor_id="user-123",
-            )
-            if not result.is_duplicate:
-                print(f"Stored memory {result.memory.memory_id}")
         """
+        resolved_actor_id, scope_dict = _parse_scope_param(actor_id, scope)
+
+        payload: dict = {
+            "content": content,
+            "memoryType": memory_type,
+        }
+        if resolved_actor_id is not None:
+            payload["actorId"] = resolved_actor_id
+        if scope_dict is not None:
+            payload["scope"] = scope_dict
+
         data = self._client._request(
             "POST",
             "/api/v1/memories",
-            json={
-                "content": content,
-                "memoryType": memory_type,
-                "actorId": actor_id,
-            },
+            json=payload,
         )
 
         # Backend returns HTTP 200 with {isDuplicate: true, reason: "..."}
@@ -237,53 +268,46 @@ class MemoryResource:
         self,
         *,
         query: str,
-        actor_id: str,
+        actor_id: Optional[str] = None,
+        scope: Optional[Union[MemoryScope, dict]] = None,
         top_k: int = 5,
+        hybrid: Optional[bool] = None,
     ) -> MemorySearchResponse:
-        """Search memories semantically within an actor scope.
+        """Search memories semantically or via hybrid retrieval within an actor/scope.
 
         Calls ``POST /api/v1/memories/search``.
 
-        The backend generates an embedding for ``query``, computes
-        cosine similarity against stored memories within the resolved
-        actor scope, and applies relevance evaluation to return the most
-        contextually appropriate results.
-
         :param query: Natural-language search query.
         :param actor_id: Application-level actor identifier for memory scoping.
+        :param scope: Multi-dimensional memory scope (MemoryScope or dict).
         :param top_k: Maximum number of memories to return (1–100).
             Defaults to 5.
+        :param hybrid: When True, uses hybrid retrieval (semantic + keyword + entity).
         :returns: A :class:`~kairo.MemorySearchResponse`.
-        :raises KairoValidationError: If ``query`` is empty, ``actor_id`` is missing,
+        :raises KairoValidationError: If ``query`` is empty, scope is missing,
             or ``top_k`` is out of range.
-
-        Example::
-
-            results = client.memories.search(
-                query="What interface theme does the user prefer?",
-                actor_id="user-123",
-                top_k=3,
-            )
-            for m in results.memories:
-                print(f"[{m.similarity:.4f}] {m.content}")
         """
         if not query or not isinstance(query, str) or not query.strip():
             raise KairoValidationError("query must not be empty.", status_code=400)
-        if not actor_id or not isinstance(actor_id, str) or not actor_id.strip():
-            raise KairoValidationError("actor_id must not be empty.", status_code=400)
-        if len(actor_id.strip()) > 128:
-            raise KairoValidationError("actor_id must not exceed 128 characters.", status_code=400)
+        resolved_actor_id, scope_dict = _parse_scope_param(actor_id, scope)
         if not isinstance(top_k, int) or isinstance(top_k, bool) or top_k < 1 or top_k > 100:
             raise KairoValidationError("top_k must be an integer between 1 and 100.", status_code=400)
+
+        payload: dict = {
+            "query": query.strip(),
+            "topK": top_k,
+        }
+        if resolved_actor_id is not None:
+            payload["actorId"] = resolved_actor_id
+        if scope_dict is not None:
+            payload["scope"] = scope_dict
+        if hybrid is not None:
+            payload["hybrid"] = hybrid
 
         data = self._client._request(
             "POST",
             "/api/v1/memories/search",
-            json={
-                "query": query.strip(),
-                "actorId": actor_id.strip(),
-                "topK": top_k,
-            },
+            json=payload,
         )
         return MemorySearchResponse._from_dict(data)
 
@@ -292,39 +316,23 @@ class MemoryResource:
     def ingest(
         self,
         *,
-        actor_id: str,
+        actor_id: Optional[str] = None,
+        scope: Optional[Union[MemoryScope, dict]] = None,
         messages: list[Union[dict[str, str], IngestMessage]],
     ) -> MemoryIngestionResponse:
-        """Ingest a conversation and extract durable memories with automatic consolidation.
+        """Ingest a conversation and extract durable memories in ADD-only mode.
 
         Calls ``POST /api/v1/memories/ingest``.
 
-        The Kairo backend extracts salient knowledge from the conversation,
-        evaluates candidate memories against existing memories within the actor's scope,
-        and applies the appropriate operation: Add, Update, Merge, or NoAction.
-
         :param actor_id: Application-level actor identifier for memory scoping.
+        :param scope: Multi-dimensional memory scope (MemoryScope or dict).
         :param messages: List of conversation messages (as dicts with 'role' and 'content',
             or :class:`~kairo.models.IngestMessage` instances).
         :returns: A :class:`~kairo.models.MemoryIngestionResponse`.
-        :raises KairoValidationError: If ``actor_id`` or ``messages`` is empty or malformed.
+        :raises KairoValidationError: If scope or ``messages`` is empty or malformed.
         :raises KairoAuthenticationError: If the API key is invalid.
-
-        Example::
-
-            response = client.memories.ingest(
-                actor_id="user-123",
-                messages=[
-                    {"role": "user", "content": "I prefer PostgreSQL for backend applications."},
-                ],
-            )
-            for mem in response.memories:
-                print(f"[{mem.action}] ID: {mem.memory_id} - {mem.content}")
         """
-        if not actor_id or not isinstance(actor_id, str) or not actor_id.strip():
-            raise KairoValidationError("actor_id must not be empty.", status_code=400)
-        if len(actor_id.strip()) > 128:
-            raise KairoValidationError("actor_id must not exceed 128 characters.", status_code=400)
+        resolved_actor_id, scope_dict = _parse_scope_param(actor_id, scope)
 
         if not messages or not isinstance(messages, (list, tuple)):
             raise KairoValidationError("messages must be a non-empty list.", status_code=400)
@@ -359,13 +367,18 @@ class MemoryResource:
                 "content": content.strip(),
             })
 
+        payload: dict[str, Any] = {
+            "messages": serialized_messages,
+        }
+        if resolved_actor_id is not None:
+            payload["actorId"] = resolved_actor_id
+        if scope_dict is not None:
+            payload["scope"] = scope_dict
+
         data = self._client._request(
             "POST",
             "/api/v1/memories/ingest",
-            json={
-                "actorId": actor_id.strip(),
-                "messages": serialized_messages,
-            },
+            json=payload,
         )
         return MemoryIngestionResponse._from_dict(data or {})
 

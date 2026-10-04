@@ -29,6 +29,37 @@ public interface IMemoryScopeRepository
         long projectId,
         string actorId,
         CancellationToken cancellationToken = default);
+
+    // ── Phase 1: Multi-dimensional scope methods ──────────────────────────────
+
+    /// <summary>
+    /// Phase 1: Looks up a MemoryScope by the multi-dimensional key
+    /// (ProjectId, UserId, AgentId, SessionId, RunId).
+    /// All dimensions except ProjectId are optional and matched exactly
+    /// (null stored == null queried).
+    /// Returns null if no matching scope exists.
+    /// </summary>
+    Task<MemoryScopeData?> GetByMultiDimKeyAsync(
+        long projectId,
+        string? userId,
+        string? agentId,
+        string? sessionId,
+        string? runId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 1: Resolves or creates a MemoryScope for the given multi-dimensional key.
+    /// A synthetic ActorId derived from the supplied dimensions is used to satisfy
+    /// the existing (ProjectId, ActorId) unique constraint.
+    /// Concurrent first-time requests are handled safely.
+    /// </summary>
+    Task<MemoryScopeData> GetOrCreateMultiDimAsync(
+        long projectId,
+        string? userId,
+        string? agentId,
+        string? sessionId,
+        string? runId,
+        CancellationToken cancellationToken = default);
 }
 
 // ── Data contract returned by IMemoryScopeRepository ─────────────────────────
@@ -45,4 +76,10 @@ public class MemoryScopeData
     public long ProjectId { get; set; }
 
     public string ActorId { get; set; } = null!;
+
+    // Phase 1: multi-dimensional scope dimensions (null for V1 legacy scopes)
+    public string? UserId { get; set; }
+    public string? AgentId { get; set; }
+    public string? SessionId { get; set; }
+    public string? RunId { get; set; }
 }
