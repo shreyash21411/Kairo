@@ -26,6 +26,12 @@ public class CreateMemoryRequest
     /// over ActorId for scope resolution. ActorId is still used for V1 backward compat.
     /// </summary>
     public MemoryScopeKey? Scope { get; set; }
+
+    /// <summary>Phase 2: Event or fact occurrence timestamp (optional).</summary>
+    public DateTime? OccurredAt { get; set; }
+
+    /// <summary>Phase 2: Arbitrary application-defined metadata dictionary.</summary>
+    public Dictionary<string, object>? Metadata { get; set; }
 }
 
 /// <summary>
@@ -38,6 +44,12 @@ public class UpdateMemoryRequest
     public string Content { get; set; } = null!;
 
     public string MemoryType { get; set; } = null!;
+
+    /// <summary>Phase 2: Event or fact occurrence timestamp (optional).</summary>
+    public DateTime? OccurredAt { get; set; }
+
+    /// <summary>Phase 2: Arbitrary application-defined metadata dictionary.</summary>
+    public Dictionary<string, object>? Metadata { get; set; }
 }
 
 /// <summary>
@@ -70,6 +82,46 @@ public class MemorySearchRequest
     /// When false or omitted, falls back to semantic-only retrieval (V1 compat).
     /// </summary>
     public bool? Hybrid { get; set; }
+
+    /// <summary>Phase 2: Temporal boundary and relative window constraints.</summary>
+    public MemoryTemporalFilter? Temporal { get; set; }
+
+    /// <summary>Phase 2: Key-value metadata equality/membership filter constraints.</summary>
+    public Dictionary<string, object>? MetadataFilters { get; set; }
+
+    /// <summary>Phase 2: Structured metadata filter conditions with explicit operators.</summary>
+    public List<MetadataFilterCondition>? StructuredFilters { get; set; }
+
+    /// <summary>Phase 2: When true, enables recency-aware relevance score boosting.</summary>
+    public bool? RecencyBoost { get; set; }
+
+    /// <summary>Phase 2: Traversal depth for graph relationship retrieval (default: 1, max: 2).</summary>
+    public int? GraphDepth { get; set; }
+
+    /// <summary>
+    /// Compiles key-value MetadataFilters and explicit StructuredFilters into a unified list of filter conditions.
+    /// </summary>
+    public List<MetadataFilterCondition> GetEffectiveMetadataFilters()
+    {
+        var list = new List<MetadataFilterCondition>();
+        if (StructuredFilters != null && StructuredFilters.Count > 0)
+        {
+            list.AddRange(StructuredFilters);
+        }
+        if (MetadataFilters != null && MetadataFilters.Count > 0)
+        {
+            foreach (var (k, v) in MetadataFilters)
+            {
+                list.Add(new MetadataFilterCondition
+                {
+                    Key = k,
+                    Operator = "eq",
+                    Value = v?.ToString()
+                });
+            }
+        }
+        return list;
+    }
 }
 
 // ── Response DTOs ─────────────────────────────────────────────────────────────
@@ -92,6 +144,12 @@ public class MemoryResponse
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>Phase 2: Event or fact occurrence timestamp.</summary>
+    public DateTime? OccurredAt { get; set; }
+
+    /// <summary>Phase 2: Arbitrary application-defined metadata JSON.</summary>
+    public string? Metadata { get; set; }
 }
 
 /// <summary>
@@ -104,6 +162,9 @@ public class MemorySearchResponse
     public int Count { get; set; }
 
     public List<RetrievedMemory> Memories { get; set; } = new();
+
+    /// <summary>Phase 2: Graph relationships connecting extracted query entities.</summary>
+    public List<GraphRelationDto> Relations { get; set; } = new();
 }
 
 /// <summary>

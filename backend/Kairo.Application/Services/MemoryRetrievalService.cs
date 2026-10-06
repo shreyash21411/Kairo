@@ -23,11 +23,23 @@ public class MemoryRetrievalService
         _relevanceEvaluator = relevanceEvaluator;
     }
 
-    public async Task<List<RetrievedMemory>> RetrieveAsync(
+    public Task<List<RetrievedMemory>> RetrieveAsync(
         long userId,
         string query,
         int topK = 5,
         long? scopeId = null)
+    {
+        return RetrieveAsync(userId, query, topK, scopeId, null, null, false);
+    }
+
+    public async Task<List<RetrievedMemory>> RetrieveAsync(
+        long userId,
+        string query,
+        int topK,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        bool recencyBoost = false)
     {
         if (userId <= 0)
         {
@@ -55,14 +67,18 @@ public class MemoryRetrievalService
             await _embeddingGenerator.GenerateAsync(query);
 
         // Step 2: Load active memory embeddings
-        // for this user (filtered by ScopeId if provided).
-        var existingMemories =
-            await _memoryRepository
-                .GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+        // for this user (filtered by ScopeId, temporalFilter, and metadataFilters if provided).
+        var hasFilters = temporalFilter != null || (metadataFilters != null && metadataFilters.Count > 0);
+        var existingMemories = hasFilters
+            ? await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters)
+            : await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+
+        existingMemories ??= new List<MemoryEmbeddingData>();
 
         // Step 3: Calculate semantic similarity
         // between the query and every memory.
         var results = new List<RetrievedMemory>();
+        var now = DateTime.UtcNow;
 
         foreach (var memory in existingMemories)
         {
@@ -76,12 +92,24 @@ public class MemoryRetrievalService
                     queryEmbedding,
                     memory.Embedding);
 
+            if (recencyBoost)
+            {
+                var refDate = memory.OccurredAt ?? memory.CreatedAt;
+                var ageInDays = Math.Max(0, (now - refDate).TotalDays);
+                var recencyScore = Math.Exp(-0.05 * ageInDays);
+                similarity = (0.85 * similarity) + (0.15 * recencyScore);
+            }
+
             results.Add(new RetrievedMemory
             {
                 MemoryId = memory.MemoryId,
                 Content = memory.Content,
                 MemoryType = memory.MemoryType,
-                Similarity = similarity
+                Similarity = similarity,
+                CreatedAt = memory.CreatedAt,
+                UpdatedAt = memory.UpdatedAt,
+                OccurredAt = memory.OccurredAt,
+                Metadata = memory.Metadata
             });
         }
 

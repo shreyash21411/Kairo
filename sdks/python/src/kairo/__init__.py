@@ -39,12 +39,15 @@ from .exceptions import (
 from .models import (
     CreateMemoryResult,
     DeleteMemoryResult,
+    GraphRelation,
     IngestMessage,
     IngestionMemoryResult,
     Memory,
     MemoryIngestionResponse,
     MemoryScope,
     MemorySearchResponse,
+    MemoryTemporalFilter,
+    MetadataFilterCondition,
     RetrievedMemory,
 )
 
@@ -71,6 +74,10 @@ __all__ = [
     "RetrievedMemory",
     "MemorySearchResponse",
     "DeleteMemoryResult",
+    # Phase 2: Temporal, Metadata, Graph
+    "GraphRelation",
+    "MemoryTemporalFilter",
+    "MetadataFilterCondition",
     # Phase 4: Ingestion
     "IngestMessage",
     "IngestionMemoryResult",

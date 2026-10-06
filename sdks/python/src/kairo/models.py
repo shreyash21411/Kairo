@@ -39,12 +39,6 @@ class Memory:
     :meth:`~kairo.MemoryResource.get`,
     :meth:`~kairo.MemoryResource.list`, and
     :meth:`~kairo.MemoryResource.update`.
-
-    Example::
-
-        memory = client.memories.get(memory_id=16)
-        print(memory.content)
-        print(memory.memory_type)
     """
 
     memory_id: int
@@ -54,9 +48,21 @@ class Memory:
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    occurred_at: Optional[datetime] = None
+    metadata: Optional[dict] = None
 
     @classmethod
     def _from_dict(cls, data: dict) -> Memory:
+        occ = data.get("occurredAt")
+        raw_meta = data.get("metadata")
+        meta = raw_meta
+        if isinstance(raw_meta, str):
+            try:
+                import json
+                meta = json.loads(raw_meta)
+            except Exception:
+                meta = raw_meta
+
         return cls(
             memory_id=data["memoryId"],
             user_id=data["userId"],
@@ -65,6 +71,8 @@ class Memory:
             is_active=data["isActive"],
             created_at=_parse_dt(data["createdAt"]),
             updated_at=_parse_dt(data["updatedAt"]),
+            occurred_at=_parse_dt(occ) if occ else None,
+            metadata=meta if isinstance(meta, dict) else None,
         )
 
     def __repr__(self) -> str:
@@ -78,27 +86,7 @@ class Memory:
 
 @dataclass
 class CreateMemoryResult:
-    """Result of a memory creation request.
-
-    When the backend identifies the submitted content as an exact or
-    semantic duplicate of an existing memory, ``is_duplicate`` will be
-    ``True`` and ``memory`` will be ``None``.
-
-    When a new memory is successfully created, ``is_duplicate`` is
-    ``False`` and ``memory`` holds the created :class:`Memory`.
-
-    Example::
-
-        result = client.memories.create(
-            content="User prefers dark mode",
-            memory_type="Preference",
-            actor_id="user-123",
-        )
-        if result.is_duplicate:
-            print(f"Duplicate: {result.duplicate_reason}")
-        else:
-            print(f"Created memory {result.memory.memory_id}")
-    """
+    """Result of a memory creation request."""
 
     memory: Optional[Memory]
     is_duplicate: bool
@@ -112,30 +100,40 @@ class CreateMemoryResult:
 
 @dataclass
 class RetrievedMemory:
-    """A memory returned from a semantic search, ranked by similarity.
-
-    Example::
-
-        results = client.memories.search(
-            query="What theme does the user prefer?",
-            actor_id="user-123",
-        )
-        for m in results.memories:
-            print(f"[{m.similarity:.4f}] {m.content}")
-    """
+    """A memory returned from a search, ranked by similarity / fused score."""
 
     memory_id: int
     content: str
     memory_type: Optional[str]
     similarity: float
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    occurred_at: Optional[datetime] = None
+    metadata: Optional[dict] = None
 
     @classmethod
     def _from_dict(cls, data: dict) -> RetrievedMemory:
+        cat = data.get("createdAt")
+        uat = data.get("updatedAt")
+        occ = data.get("occurredAt")
+        raw_meta = data.get("metadata")
+        meta = raw_meta
+        if isinstance(raw_meta, str):
+            try:
+                import json
+                meta = json.loads(raw_meta)
+            except Exception:
+                meta = raw_meta
+
         return cls(
             memory_id=data["memoryId"],
             content=data["content"],
             memory_type=data.get("memoryType"),
             similarity=data["similarity"],
+            created_at=_parse_dt(cat) if cat else None,
+            updated_at=_parse_dt(uat) if uat else None,
+            occurred_at=_parse_dt(occ) if occ else None,
+            metadata=meta if isinstance(meta, dict) else None,
         )
 
     def __repr__(self) -> str:
@@ -147,24 +145,36 @@ class RetrievedMemory:
 
 
 @dataclass
-class MemorySearchResponse:
-    """Response from a semantic memory search.
+class GraphRelation:
+    """A relationship between entities returned in search results."""
 
-    Example::
+    source: str
+    relationship: str
+    target: str
+    confidence: float = 1.0
 
-        results = client.memories.search(
-            query="dark mode",
-            actor_id="user-123",
-            top_k=3,
+    @classmethod
+    def _from_dict(cls, data: dict) -> GraphRelation:
+        return cls(
+            source=data.get("source", ""),
+            relationship=data.get("relationship", ""),
+            target=data.get("target", ""),
+            confidence=float(data.get("confidence", 1.0)),
         )
-        print(f"Found {results.count} relevant memories")
-        for m in results.memories:
-            print(m.content)
-    """
+
+
+@dataclass
+class MemorySearchResponse:
+    """Response from a semantic or hybrid memory search."""
 
     query: str
     count: int
     memories: list[RetrievedMemory]
+    relations: list[GraphRelation] = None  # type: ignore
+
+    def __post_init__(self):
+        if self.relations is None:
+            self.relations = []
 
     @classmethod
     def _from_dict(cls, data: dict) -> MemorySearchResponse:
@@ -174,14 +184,74 @@ class MemorySearchResponse:
             memories=[
                 RetrievedMemory._from_dict(m) for m in data.get("memories", [])
             ],
+            relations=[
+                GraphRelation._from_dict(r) for r in data.get("relations", [])
+            ],
         )
 
     def __repr__(self) -> str:
         return (
             f"MemorySearchResponse("
             f"query={self.query!r}, "
-            f"count={self.count!r})"
+            f"count={self.count!r}, "
+            f"relations={len(self.relations)})"
         )
+
+
+@dataclass
+class MemoryTemporalFilter:
+    """Temporal constraints for memory retrieval."""
+
+    created_at_from: Optional[datetime] = None
+    created_at_to: Optional[datetime] = None
+    updated_at_from: Optional[datetime] = None
+    updated_at_to: Optional[datetime] = None
+    occurred_at_from: Optional[datetime] = None
+    occurred_at_to: Optional[datetime] = None
+    last_hours: Optional[int] = None
+    last_days: Optional[int] = None
+    last_weeks: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        d: dict = {}
+        if self.created_at_from:
+            d["createdAtFrom"] = self.created_at_from.isoformat()
+        if self.created_at_to:
+            d["createdAtTo"] = self.created_at_to.isoformat()
+        if self.updated_at_from:
+            d["updatedAtFrom"] = self.updated_at_from.isoformat()
+        if self.updated_at_to:
+            d["updatedAtTo"] = self.updated_at_to.isoformat()
+        if self.occurred_at_from:
+            d["occurredAtFrom"] = self.occurred_at_from.isoformat()
+        if self.occurred_at_to:
+            d["occurredAtTo"] = self.occurred_at_to.isoformat()
+        if self.last_hours is not None:
+            d["lastHours"] = self.last_hours
+        if self.last_days is not None:
+            d["lastDays"] = self.last_days
+        if self.last_weeks is not None:
+            d["lastWeeks"] = self.last_weeks
+        return d
+
+
+@dataclass
+class MetadataFilterCondition:
+    """Structured condition for metadata filtering."""
+
+    key: str
+    operator: str = "eq"  # "eq", "ne", "in"
+    value: Optional[str] = None
+    in_values: Optional[list[str]] = None
+
+    def to_dict(self) -> dict:
+        d = {"key": self.key, "operator": self.operator}
+        if self.value is not None:
+            d["value"] = self.value
+        if self.in_values is not None:
+            d["inValues"] = self.in_values
+        return d
+
 
 
 @dataclass

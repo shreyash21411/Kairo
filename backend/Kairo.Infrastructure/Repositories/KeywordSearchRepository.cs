@@ -1,4 +1,5 @@
 using Kairo.Application.Abstractions.Persistence;
+using Kairo.Application.DTOs;
 using Kairo.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,11 +46,23 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         _dbContext = dbContext;
     }
 
-    public async Task<List<KeywordSearchResult>> SearchAsync(
+    public Task<List<KeywordSearchResult>> SearchAsync(
         long userId,
         string query,
         long? scopeId,
         int limit = 30,
+        CancellationToken cancellationToken = default)
+    {
+        return SearchAsync(userId, query, scopeId, limit, null, null, cancellationToken);
+    }
+
+    public async Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -69,12 +82,47 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         if (scopeId.HasValue)
             memoriesQuery = memoriesQuery.Where(m => m.ScopeId == scopeId.Value);
 
-        var corpus = await memoriesQuery
-            .Select(m => new { m.MemoryId, m.Content, m.MemoryType })
+        if (temporalFilter != null)
+        {
+            var effectiveCreatedAtFrom = temporalFilter.GetEffectiveCreatedAtFrom();
+            if (effectiveCreatedAtFrom.HasValue)
+            {
+                memoriesQuery = memoriesQuery.Where(m => m.CreatedAt >= effectiveCreatedAtFrom.Value);
+            }
+            if (temporalFilter.CreatedAtTo.HasValue)
+            {
+                memoriesQuery = memoriesQuery.Where(m => m.CreatedAt <= temporalFilter.CreatedAtTo.Value);
+            }
+            if (temporalFilter.UpdatedAtFrom.HasValue)
+            {
+                memoriesQuery = memoriesQuery.Where(m => m.UpdatedAt >= temporalFilter.UpdatedAtFrom.Value);
+            }
+            if (temporalFilter.UpdatedAtTo.HasValue)
+            {
+                memoriesQuery = memoriesQuery.Where(m => m.UpdatedAt <= temporalFilter.UpdatedAtTo.Value);
+            }
+            if (temporalFilter.OccurredAtFrom.HasValue)
+            {
+                memoriesQuery = memoriesQuery.Where(m => m.OccurredAt != null && m.OccurredAt >= temporalFilter.OccurredAtFrom.Value);
+            }
+            if (temporalFilter.OccurredAtTo.HasValue)
+            {
+                memoriesQuery = memoriesQuery.Where(m => m.OccurredAt != null && m.OccurredAt <= temporalFilter.OccurredAtTo.Value);
+            }
+        }
+
+        var candidateRows = await memoriesQuery
+            .Select(m => new { m.MemoryId, m.Content, m.MemoryType, m.Metadata })
             .ToListAsync(cancellationToken);
+
+        var corpus = candidateRows
+            .Where(m => metadataFilters == null || metadataFilters.Count == 0 || MetadataFilterEvaluator.Matches(m.Metadata, metadataFilters))
+            .Select(m => new { m.MemoryId, m.Content, m.MemoryType })
+            .ToList();
 
         if (corpus.Count == 0)
             return new List<KeywordSearchResult>();
+
 
         // ── Step 2: Tokenize each document and compute per-document TF ────────
 

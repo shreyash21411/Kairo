@@ -26,7 +26,9 @@ public interface IMemoryRepository
         long userId,
         ExtractedMemory memory,
         long? sourceChatId,
-        long? scopeId = null);
+        long? scopeId = null,
+        DateTime? occurredAt = null,
+        string? metadata = null);
 
     Task SaveEmbeddingAsync(
         long memoryId,
@@ -36,6 +38,16 @@ public interface IMemoryRepository
     Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
         long userId,
         long? scopeId = null);
+
+    /// <summary>
+    /// Phase 2: Returns active memory embeddings filtered by temporal and metadata constraints.
+    /// Filtering is executed at query level before similarity scoring.
+    /// </summary>
+    Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId = null,
+        MemoryTemporalFilter? temporalFilter = null,
+        List<MetadataFilterCondition>? metadataFilters = null);
 
     // ── New methods (Task 1: Embedding Backfill) ──────────────────────────────
 
@@ -65,9 +77,14 @@ public interface IMemoryRepository
 
     /// <summary>
     /// Updates Content and stamps UpdatedAt for the given memory.
+    /// Optionally updates OccurredAt and Metadata.
     /// Does NOT create a MemoryVersion.
     /// </summary>
-    Task UpdateMemoryContentAsync(long memoryId, string newContent);
+    Task UpdateMemoryContentAsync(
+        long memoryId,
+        string newContent,
+        DateTime? occurredAt = null,
+        string? metadata = null);
 
     /// <summary>
     /// Persists a MemoryVersions row.
@@ -131,6 +148,14 @@ public class MemoryEmbeddingData
     public int Dimensions { get; set; }
 
     public float[] Embedding { get; set; } = Array.Empty<float>();
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+
+    public DateTime? OccurredAt { get; set; }
+
+    public string? Metadata { get; set; }
 }
 
 public class MemoryWithoutEmbedding
@@ -157,6 +182,10 @@ public class MemorySnapshot
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public DateTime? OccurredAt { get; set; }
+
+    public string? Metadata { get; set; }
 }
 
 public class MemoryListItem
@@ -170,4 +199,8 @@ public class MemoryListItem
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public DateTime? OccurredAt { get; set; }
+
+    public string? Metadata { get; set; }
 }

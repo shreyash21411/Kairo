@@ -36,5 +36,8 @@ public partial class MemoryScopes
 
     public virtual ICollection<Memories> Memories { get; set; } = new List<Memories>();
 
+    /// <summary>Phase 2: Graph relationships scoped to this MemoryScope.</summary>
+    public virtual ICollection<EntityRelationship> EntityRelationships { get; set; } = new List<EntityRelationship>();
+
     public virtual Projects Project { get; set; } = null!;
 }

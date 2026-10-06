@@ -339,7 +339,7 @@ public class MemoryController : ControllerBase
             var userId    = _apiKeyContext.UserId;
             var projectId = _apiKeyContext.ProjectId;
 
-            // Phase 1: Route to hybrid retrieval when explicitly requested.
+            // Phase 1 & 2: Route to hybrid retrieval when explicitly requested.
             if (request.Hybrid == true)
             {
                 long? scopeId = null;
@@ -358,7 +358,8 @@ public class MemoryController : ControllerBase
                         {
                             Query = request.Query,
                             Count = 0,
-                            Memories = []
+                            Memories = [],
+                            Relations = []
                         });
                     }
                 }
@@ -377,19 +378,32 @@ public class MemoryController : ControllerBase
                         {
                             Query = request.Query,
                             Count = 0,
-                            Memories = []
+                            Memories = [],
+                            Relations = []
                         });
                     }
                 }
 
-                var hybridResults = await _hybridRetrieval.RetrieveAsync(
-                    userId, projectId, request.Query, request.TopK, scopeId);
+                int depth = request.GraphDepth.GetValueOrDefault(1);
+                var metadataConditions = request.GetEffectiveMetadataFilters();
+                var hybridResult = await _hybridRetrieval.RetrieveWithRelationsAsync(
+                    userId,
+                    projectId,
+                    request.Query,
+                    request.TopK,
+                    scopeId,
+                    temporalFilter: request.Temporal,
+                    metadataFilters: metadataConditions,
+                    recencyBoost: request.RecencyBoost.GetValueOrDefault(false),
+                    graphDepth: depth,
+                    cancellationToken: HttpContext.RequestAborted);
 
                 return Ok(new MemorySearchResponse
                 {
-                    Query    = request.Query,
-                    Count    = hybridResults.Count,
-                    Memories = hybridResults
+                    Query     = request.Query,
+                    Count     = hybridResult.Memories.Count,
+                    Memories  = hybridResult.Memories,
+                    Relations = hybridResult.Relations
                 });
             }
 

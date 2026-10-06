@@ -40,26 +40,36 @@ public class MistralEntityExtractionService : IEntityExtractionService
         string text,
         CancellationToken cancellationToken = default)
     {
+        var full = await ExtractFullAsync(text, cancellationToken);
+        return full.Entities;
+    }
+
+    public async Task<FullExtractionResult> ExtractFullAsync(
+        string text,
+        CancellationToken cancellationToken = default)
+    {
         if (string.IsNullOrWhiteSpace(text))
-            return new List<ExtractedEntity>();
+            return new FullExtractionResult();
 
         var systemPrompt = """
-            You are a named entity extraction engine for a memory platform.
+            You are a named entity and relationship extraction engine for a memory platform.
 
-            Your job is to identify important named entities in the given text
-            that represent people, organizations, products, technologies, locations,
-            projects, companies, tools, or key concepts.
+            Your job is to identify important named entities, relationships between those entities,
+            and optionally any explicit occurrence time in the given text.
 
             Entity types (use exactly):
             PERSON, ORGANIZATION, PRODUCT, TECHNOLOGY, LOCATION, PROJECT, COMPANY, TOOL, CONCEPT
 
             Rules:
-            - Extract only entities that are explicitly named (not vague references like "a tool" or "some library").
+            - Extract only entities that are explicitly named (not vague references).
             - Normalize displayName to the canonical capitalization seen in the text.
             - Normalize normalizedName to lowercase, trimmed, no special characters except hyphens.
-            - Do NOT extract common words, stop words, or filler.
-            - Return at most 10 entities per call.
-            - If there are no entities, return an empty list.
+            - For relationships, source and target MUST correspond to named entities in the text.
+            - relationshipType should be concise and lowercase (e.g. "works_at", "uses", "located_in", "created").
+            - confidence should be between 0.0 and 1.0.
+            - If text mentions an explicit event date or time when this occurred or is scheduled, return occurredAt in ISO 8601 format (e.g. "2024-10-06T12:00:00Z"). Otherwise return null.
+            - Return at most 10 entities and 10 relationships per call.
+            - If there are no entities, return empty arrays.
 
             Return ONLY valid JSON in this exact format:
             {
@@ -69,7 +79,16 @@ public class MistralEntityExtractionService : IEntityExtractionService
                   "normalizedName": "postgresql",
                   "entityType": "TECHNOLOGY"
                 }
-              ]
+              ],
+              "relationships": [
+                {
+                  "source": "Alice",
+                  "target": "PostgreSQL",
+                  "relationshipType": "uses",
+                  "confidence": 0.95
+                }
+              ],
+              "occurredAt": null
             }
             """;
 
@@ -107,7 +126,7 @@ public class MistralEntityExtractionService : IEntityExtractionService
                 _logger.LogWarning(
                     "[EntityExtraction] Mistral API returned {Status}. Returning empty entities.",
                     (int)response.StatusCode);
-                return new List<ExtractedEntity>();
+                return new FullExtractionResult();
             }
 
             using var document = JsonDocument.Parse(responseContent);
@@ -118,34 +137,65 @@ public class MistralEntityExtractionService : IEntityExtractionService
                 .GetString();
 
             if (string.IsNullOrWhiteSpace(content))
-                return new List<ExtractedEntity>();
+                return new FullExtractionResult();
 
             var extraction = JsonSerializer.Deserialize<EntityExtractionResponse>(
                 content,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-            if (extraction?.Entities == null)
-                return new List<ExtractedEntity>();
+            if (extraction == null)
+                return new FullExtractionResult();
 
-            // Normalise and validate
-            var result = new List<ExtractedEntity>();
-            foreach (var e in extraction.Entities)
+            var result = new FullExtractionResult();
+
+            // Normalise and validate entities
+            if (extraction.Entities != null)
             {
-                if (string.IsNullOrWhiteSpace(e.DisplayName) ||
-                    string.IsNullOrWhiteSpace(e.NormalizedName) ||
-                    string.IsNullOrWhiteSpace(e.EntityType))
-                    continue;
-
-                var entityType = e.EntityType.Trim().ToUpperInvariant();
-                if (!ValidEntityTypes.Contains(entityType))
-                    entityType = "CONCEPT"; // safe default
-
-                result.Add(new ExtractedEntity
+                foreach (var e in extraction.Entities)
                 {
-                    DisplayName    = e.DisplayName.Trim(),
-                    NormalizedName = e.NormalizedName.Trim().ToLowerInvariant(),
-                    EntityType     = entityType
-                });
+                    if (string.IsNullOrWhiteSpace(e.DisplayName) ||
+                        string.IsNullOrWhiteSpace(e.NormalizedName) ||
+                        string.IsNullOrWhiteSpace(e.EntityType))
+                        continue;
+
+                    var entityType = e.EntityType.Trim().ToUpperInvariant();
+                    if (!ValidEntityTypes.Contains(entityType))
+                        entityType = "CONCEPT"; // safe default
+
+                    result.Entities.Add(new ExtractedEntity
+                    {
+                        DisplayName    = e.DisplayName.Trim(),
+                        NormalizedName = e.NormalizedName.Trim().ToLowerInvariant(),
+                        EntityType     = entityType
+                    });
+                }
+            }
+
+            // Normalise and validate relationships
+            if (extraction.Relationships != null)
+            {
+                foreach (var r in extraction.Relationships)
+                {
+                    if (string.IsNullOrWhiteSpace(r.Source) ||
+                        string.IsNullOrWhiteSpace(r.Target) ||
+                        string.IsNullOrWhiteSpace(r.RelationshipType))
+                        continue;
+
+                    result.Relationships.Add(new ExtractedRelationship
+                    {
+                        Source           = r.Source.Trim(),
+                        Target           = r.Target.Trim(),
+                        RelationshipType = r.RelationshipType.Trim().ToLowerInvariant(),
+                        Confidence       = r.Confidence.HasValue ? Math.Clamp(r.Confidence.Value, 0.0, 1.0) : 1.0
+                    });
+                }
+            }
+
+            // Parse OccurredAt if present
+            if (!string.IsNullOrWhiteSpace(extraction.OccurredAt) &&
+                DateTime.TryParse(extraction.OccurredAt, out var parsedDate))
+            {
+                result.OccurredAt = DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
             }
 
             return result;
@@ -154,7 +204,7 @@ public class MistralEntityExtractionService : IEntityExtractionService
         {
             _logger.LogWarning(ex,
                 "[EntityExtraction] Extraction failed. Returning empty entities.");
-            return new List<ExtractedEntity>();
+            return new FullExtractionResult();
         }
     }
 }
@@ -162,4 +212,14 @@ public class MistralEntityExtractionService : IEntityExtractionService
 internal class EntityExtractionResponse
 {
     public List<ExtractedEntity> Entities { get; set; } = new();
+    public List<ExtractedRelationshipPayload>? Relationships { get; set; }
+    public string? OccurredAt { get; set; }
+}
+
+internal class ExtractedRelationshipPayload
+{
+    public string? Source { get; set; }
+    public string? Target { get; set; }
+    public string? RelationshipType { get; set; }
+    public double? Confidence { get; set; }
 }

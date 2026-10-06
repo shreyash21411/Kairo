@@ -56,6 +56,7 @@ public class HybridRetrievalService
 
     /// <summary>
     /// Performs hybrid retrieval: semantic + keyword + entity signals fused.
+    /// Backward-compatible overload returning memories only.
     /// </summary>
     public async Task<List<RetrievedMemory>> RetrieveAsync(
         long userId,
@@ -63,6 +64,31 @@ public class HybridRetrievalService
         string query,
         int topK = 5,
         long? scopeId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await RetrieveWithRelationsAsync(
+            userId, projectId, query, topK, scopeId,
+            temporalFilter: null, metadataFilters: null,
+            recencyBoost: false, graphDepth: 1,
+            cancellationToken: cancellationToken);
+
+        return result.Memories;
+    }
+
+    /// <summary>
+    /// Phase 2: Performs hybrid retrieval with temporal filtering, metadata filtering,
+    /// controlled recency boost, and scoped 1-hop graph relationship retrieval.
+    /// </summary>
+    public async Task<HybridRetrievalResult> RetrieveWithRelationsAsync(
+        long userId,
+        long projectId,
+        string query,
+        int topK = 5,
+        long? scopeId = null,
+        MemoryTemporalFilter? temporalFilter = null,
+        List<MetadataFilterCondition>? metadataFilters = null,
+        bool recencyBoost = false,
+        int graphDepth = 1,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -85,15 +111,21 @@ public class HybridRetrievalService
             queryEmbedding = Array.Empty<float>();
         }
 
-        var semanticScores     = new Dictionary<long, double>();
-        var semanticContentMap = new Dictionary<long, (string Content, string MemoryType)>();
+        var semanticScores   = new Dictionary<long, double>();
+        var memoryDetailsMap = new Dictionary<long, (string Content, string MemoryType, DateTime CreatedAt, DateTime UpdatedAt, DateTime? OccurredAt, string? Metadata)>();
 
-        var scopeMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+        var hasMemFilters = temporalFilter != null || (metadataFilters != null && metadataFilters.Count > 0);
+        var scopeMemories = hasMemFilters
+            ? await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters)
+            : await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+
+        scopeMemories ??= new List<MemoryEmbeddingData>();
+
         if (scopeMemories != null)
         {
             foreach (var mem in scopeMemories)
             {
-                semanticContentMap[mem.MemoryId] = (mem.Content, mem.MemoryType);
+                memoryDetailsMap[mem.MemoryId] = (mem.Content, mem.MemoryType, mem.CreatedAt, mem.UpdatedAt, mem.OccurredAt, mem.Metadata);
 
                 if (queryEmbedding.Length > 0 && mem.Dimensions == queryEmbedding.Length)
                 {
@@ -103,10 +135,13 @@ public class HybridRetrievalService
             }
         }
 
-        // ── Channel 2: Keyword ────────────────────────────────────────────────
+        // ── Channel 2: Keyword (BM25) ─────────────────────────────────────────
 
-        var keywordResults = await _keywordSearch.SearchAsync(
-            userId, query, scopeId, candidateLimit, cancellationToken);
+        var keywordResults = (temporalFilter != null || metadataFilters != null)
+            ? await _keywordSearch.SearchAsync(userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, cancellationToken)
+            : await _keywordSearch.SearchAsync(userId, query, scopeId, candidateLimit, cancellationToken);
+
+        keywordResults ??= new List<KeywordSearchResult>();
 
         var keywordRaw = keywordResults.ToDictionary(r => r.MemoryId, r => r.RawScore);
 
@@ -122,34 +157,33 @@ public class HybridRetrievalService
             .ToDictionary(g => g.Key, g => (g.First().Content, g.First().MemoryType));
 
         // ── Channel 3: Entity signal (Mistral NER on query) ──────────────────
-        //
-        // Use the real IEntityExtractionService to extract entities from the query.
-        // This is the same service used during ingestion — ensures consistency.
-        // If extraction fails, entity score falls back to 0 (search continues safely).
 
         var queryEntityTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var entityScores      = new Dictionary<long, double>();
+        Dictionary<long, List<EntityData>> memoryEntities = new();
 
         if (allMemoryIds.Count > 0)
         {
             try
             {
                 var queryEntities = await _entityExtractionService.ExtractAsync(query, cancellationToken);
-                foreach (var e in queryEntities)
-                    queryEntityTokens.Add(e.NormalizedName.Trim().ToLowerInvariant());
+                if (queryEntities != null)
+                {
+                    foreach (var e in queryEntities)
+                        queryEntityTokens.Add(e.NormalizedName.Trim().ToLowerInvariant());
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
                     "[HybridRetrieval] Query entity extraction failed. Entity signal will be 0.");
-                // Do not rethrow — semantic + BM25 channels remain functional.
             }
 
             if (queryEntityTokens.Count > 0)
             {
                 try
                 {
-                    var memoryEntities = await _entityRepository
+                    memoryEntities = await _entityRepository
                         .GetEntitiesForMemoriesAsync(allMemoryIds, cancellationToken);
 
                     foreach (var (memoryId, entities) in memoryEntities)
@@ -174,22 +208,23 @@ public class HybridRetrievalService
         // ── Fusion ────────────────────────────────────────────────────────────
 
         var candidates = new List<HybridCandidate>();
+        var now = DateTime.UtcNow;
 
         foreach (var memoryId in allMemoryIds)
         {
-            // Resolve content and type
             string content;
             string memoryType;
 
-            if (semanticContentMap.TryGetValue(memoryId, out var semContent))
+            if (memoryDetailsMap.TryGetValue(memoryId, out var details))
             {
-                content = semContent.Content;
-                memoryType = semContent.MemoryType;
+                content = details.Content;
+                memoryType = details.MemoryType;
             }
             else if (keywordContentMap.TryGetValue(memoryId, out var kwContent))
             {
                 content = kwContent.Content;
                 memoryType = kwContent.MemoryType;
+                memoryDetailsMap[memoryId] = (content, memoryType, now, now, null, null);
             }
             else continue;
 
@@ -200,6 +235,18 @@ public class HybridRetrievalService
             var fused = (semScore * SemanticWeight)
                       + (kwScore  * KeywordWeight)
                       + (entScore * EntityWeight);
+
+            // Phase 2: Controlled recency boosting
+            if (recencyBoost)
+            {
+                var refDate = memoryDetailsMap.TryGetValue(memoryId, out var d) && d.OccurredAt.HasValue
+                    ? d.OccurredAt.Value
+                    : (memoryDetailsMap.TryGetValue(memoryId, out var d2) ? d2.CreatedAt : now);
+
+                var ageInDays = Math.Max(0, (now - refDate).TotalDays);
+                var recencyScore = Math.Exp(-0.05 * ageInDays);
+                fused = (0.85 * fused) + (0.15 * recencyScore);
+            }
 
             candidates.Add(new HybridCandidate
             {
@@ -220,16 +267,24 @@ public class HybridRetrievalService
             .ToList();
 
         if (topCandidates.Count == 0)
-            return new List<RetrievedMemory>();
+            return new HybridRetrievalResult();
 
         // ── LLM Relevance evaluation ──────────────────────────────────────────
 
-        var retrievedForEval = topCandidates.Select(c => new RetrievedMemory
+        var retrievedForEval = topCandidates.Select(c =>
         {
-            MemoryId   = c.MemoryId,
-            Content    = c.Content,
-            MemoryType = c.MemoryType,
-            Similarity = c.FusedScore
+            var details = memoryDetailsMap.TryGetValue(c.MemoryId, out var d) ? d : default;
+            return new RetrievedMemory
+            {
+                MemoryId   = c.MemoryId,
+                Content    = c.Content,
+                MemoryType = c.MemoryType,
+                Similarity = c.FusedScore,
+                CreatedAt  = details.CreatedAt != default ? details.CreatedAt : null,
+                UpdatedAt  = details.UpdatedAt != default ? details.UpdatedAt : null,
+                OccurredAt = details.OccurredAt,
+                Metadata   = details.Metadata
+            };
         }).ToList();
 
         List<RetrievedMemory> relevant;
@@ -245,13 +300,78 @@ public class HybridRetrievalService
         }
 
         if (relevant == null || relevant.Count == 0)
-            return new List<RetrievedMemory>();
+            return new HybridRetrievalResult();
 
-        // Preserve fused score ordering
-        return relevant
+        // Preserve fused score ordering and take topK
+        var finalMemories = relevant
             .OrderByDescending(r => r.Similarity)
             .Take(topK)
             .ToList();
+
+        // Ensure temporal and metadata properties are fully populated on final results
+        foreach (var mem in finalMemories)
+        {
+            if (memoryDetailsMap.TryGetValue(mem.MemoryId, out var d))
+            {
+                mem.CreatedAt  ??= d.CreatedAt;
+                mem.UpdatedAt  ??= d.UpdatedAt;
+                mem.OccurredAt ??= d.OccurredAt;
+                mem.Metadata   ??= d.Metadata;
+            }
+        }
+
+        // ── Graph Memory (1-hop / multi-hop scoped entity relationships) ──────
+        var discoveredRelations = new List<GraphRelationDto>();
+        if (scopeId.HasValue && finalMemories.Count > 0)
+        {
+            try
+            {
+                var candidateEntityNames = new HashSet<string>(queryEntityTokens, StringComparer.OrdinalIgnoreCase);
+
+                var finalMemoryIds = finalMemories.Select(m => m.MemoryId).ToHashSet();
+                if (memoryEntities.Count == 0 && finalMemoryIds.Count > 0)
+                {
+                    memoryEntities = await _entityRepository.GetEntitiesForMemoriesAsync(finalMemoryIds, cancellationToken);
+                }
+
+                foreach (var memId in finalMemoryIds)
+                {
+                    if (memoryEntities.TryGetValue(memId, out var entities))
+                    {
+                        foreach (var ent in entities)
+                            candidateEntityNames.Add(ent.NormalizedName);
+                    }
+                }
+
+                if (candidateEntityNames.Count > 0)
+                {
+                    var rawRelations = await _entityRepository.GetScopedRelationshipsForEntitiesAsync(
+                        projectId,
+                        scopeId.Value,
+                        candidateEntityNames,
+                        maxDepth: Math.Clamp(graphDepth, 1, 2),
+                        cancellationToken: cancellationToken);
+
+                    discoveredRelations = rawRelations.Select(r => new GraphRelationDto
+                    {
+                        Source       = r.SourceDisplayName,
+                        Relationship = r.RelationshipType,
+                        Target       = r.TargetDisplayName,
+                        Confidence   = r.Confidence
+                    }).ToList();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[HybridRetrieval] Graph relationship traversal failed. Returning memories without relations.");
+            }
+        }
+
+        return new HybridRetrievalResult
+        {
+            Memories  = finalMemories,
+            Relations = discoveredRelations
+        };
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

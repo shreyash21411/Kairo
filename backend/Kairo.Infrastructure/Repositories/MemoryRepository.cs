@@ -19,7 +19,9 @@ public class MemoryRepository : IMemoryRepository
         long userId,
         ExtractedMemory memory,
         long? sourceChatId,
-        long? scopeId = null)
+        long? scopeId = null,
+        DateTime? occurredAt = null,
+        string? metadata = null)
     {
         var entity = new Memories
         {
@@ -28,6 +30,8 @@ public class MemoryRepository : IMemoryRepository
             MemoryType = memory.MemoryType,
             SourceChatId = sourceChatId,
             ScopeId = scopeId,
+            OccurredAt = occurredAt,
+            Metadata = metadata,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -92,6 +96,16 @@ public class MemoryRepository : IMemoryRepository
         long userId,
         long? scopeId = null)
     {
+        return await GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null);
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId = null,
+        MemoryTemporalFilter? temporalFilter = null,
+        List<MetadataFilterCondition>? metadataFilters = null)
+    {
         var query = _dbContext.MemoryEmbeddings
             .AsNoTracking()
             .Where(embedding =>
@@ -103,6 +117,35 @@ public class MemoryRepository : IMemoryRepository
             query = query.Where(embedding => embedding.Memory.ScopeId == scopeId.Value);
         }
 
+        if (temporalFilter != null)
+        {
+            var effectiveCreatedAtFrom = temporalFilter.GetEffectiveCreatedAtFrom();
+            if (effectiveCreatedAtFrom.HasValue)
+            {
+                query = query.Where(e => e.Memory.CreatedAt >= effectiveCreatedAtFrom.Value);
+            }
+            if (temporalFilter.CreatedAtTo.HasValue)
+            {
+                query = query.Where(e => e.Memory.CreatedAt <= temporalFilter.CreatedAtTo.Value);
+            }
+            if (temporalFilter.UpdatedAtFrom.HasValue)
+            {
+                query = query.Where(e => e.Memory.UpdatedAt >= temporalFilter.UpdatedAtFrom.Value);
+            }
+            if (temporalFilter.UpdatedAtTo.HasValue)
+            {
+                query = query.Where(e => e.Memory.UpdatedAt <= temporalFilter.UpdatedAtTo.Value);
+            }
+            if (temporalFilter.OccurredAtFrom.HasValue)
+            {
+                query = query.Where(e => e.Memory.OccurredAt != null && e.Memory.OccurredAt >= temporalFilter.OccurredAtFrom.Value);
+            }
+            if (temporalFilter.OccurredAtTo.HasValue)
+            {
+                query = query.Where(e => e.Memory.OccurredAt != null && e.Memory.OccurredAt <= temporalFilter.OccurredAtTo.Value);
+            }
+        }
+
         var embeddings =
             await query
                 .Select(embedding => new
@@ -110,6 +153,10 @@ public class MemoryRepository : IMemoryRepository
                     embedding.MemoryId,
                     embedding.Memory.Content,
                     embedding.Memory.MemoryType,
+                    embedding.Memory.CreatedAt,
+                    embedding.Memory.UpdatedAt,
+                    embedding.Memory.OccurredAt,
+                    embedding.Memory.Metadata,
                     embedding.Model,
                     embedding.Dimensions,
                     embedding.VectorData
@@ -120,6 +167,12 @@ public class MemoryRepository : IMemoryRepository
 
         foreach (var embedding in embeddings)
         {
+            if (metadataFilters != null && metadataFilters.Count > 0)
+            {
+                if (!MetadataFilterEvaluator.Matches(embedding.Metadata, metadataFilters))
+                    continue;
+            }
+
             var vector =
                 System.Text.Json.JsonSerializer.Deserialize<float[]>(
                     embedding.VectorData);
@@ -136,7 +189,11 @@ public class MemoryRepository : IMemoryRepository
                 MemoryType = embedding.MemoryType ?? string.Empty,
                 Model = embedding.Model,
                 Dimensions = embedding.Dimensions,
-                Embedding = vector
+                Embedding = vector,
+                CreatedAt = embedding.CreatedAt,
+                UpdatedAt = embedding.UpdatedAt,
+                OccurredAt = embedding.OccurredAt,
+                Metadata = embedding.Metadata
             });
         }
 
@@ -178,7 +235,9 @@ public class MemoryRepository : IMemoryRepository
                 MemoryType  = m.MemoryType,
                 IsActive    = m.IsActive,
                 CreatedAt   = m.CreatedAt,
-                UpdatedAt   = m.UpdatedAt
+                UpdatedAt   = m.UpdatedAt,
+                OccurredAt  = m.OccurredAt,
+                Metadata    = m.Metadata
             })
             .FirstOrDefaultAsync();
     }
@@ -198,9 +257,6 @@ public class MemoryRepository : IMemoryRepository
         memory.UpdatedAt = DateTime.UtcNow;
 
         // ── Phase 1: Clean up MemoryEntities links (Defect 5 fix) ─────────────
-        // Database soft-delete does NOT trigger cascade delete, so we must
-        // remove MemoryEntities rows explicitly to prevent orphan rows.
-        // The NamedEntity records are NOT removed (they are project-scoped).
         var entityLinks = await _dbContext.MemoryEntities
             .Where(me => me.MemoryId == memoryId)
             .ToListAsync();
@@ -208,10 +264,33 @@ public class MemoryRepository : IMemoryRepository
         if (entityLinks.Count > 0)
             _dbContext.MemoryEntities.RemoveRange(entityLinks);
 
+        // ── Phase 2: Clean up RelationshipEvidence & orphan EntityRelationships ──
+        var evidence = await _dbContext.RelationshipEvidence
+            .Where(e => e.MemoryId == memoryId)
+            .ToListAsync();
+
+        if (evidence.Count > 0)
+        {
+            var affectedRelIds = evidence.Select(e => e.RelationshipId).Distinct().ToList();
+            _dbContext.RelationshipEvidence.RemoveRange(evidence);
+            await _dbContext.SaveChangesAsync();
+
+            var orphanRels = await _dbContext.EntityRelationships
+                .Where(r => affectedRelIds.Contains(r.RelationshipId) && !r.Evidence.Any())
+                .ToListAsync();
+
+            if (orphanRels.Count > 0)
+                _dbContext.EntityRelationships.RemoveRange(orphanRels);
+        }
+
         await _dbContext.SaveChangesAsync();
     }
 
-    public async Task UpdateMemoryContentAsync(long memoryId, string newContent)
+    public async Task UpdateMemoryContentAsync(
+        long memoryId,
+        string newContent,
+        DateTime? occurredAt = null,
+        string? metadata = null)
     {
         var memory = await _dbContext.Memories
             .FirstOrDefaultAsync(m => m.MemoryId == memoryId);
@@ -223,6 +302,10 @@ public class MemoryRepository : IMemoryRepository
         }
 
         memory.Content = newContent;
+        if (occurredAt.HasValue)
+            memory.OccurredAt = occurredAt.Value;
+        if (metadata != null)
+            memory.Metadata = metadata;
         memory.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync();
@@ -293,7 +376,9 @@ public class MemoryRepository : IMemoryRepository
                 MemoryType = m.MemoryType,
                 IsActive   = m.IsActive,
                 CreatedAt  = m.CreatedAt,
-                UpdatedAt  = m.UpdatedAt
+                UpdatedAt  = m.UpdatedAt,
+                OccurredAt = m.OccurredAt,
+                Metadata   = m.Metadata
             })
             .FirstOrDefaultAsync();
     }
@@ -329,7 +414,9 @@ public class MemoryRepository : IMemoryRepository
                 Content    = m.Content,
                 MemoryType = m.MemoryType,
                 CreatedAt  = m.CreatedAt,
-                UpdatedAt  = m.UpdatedAt
+                UpdatedAt  = m.UpdatedAt,
+                OccurredAt = m.OccurredAt,
+                Metadata   = m.Metadata
             })
             .ToListAsync();
     }

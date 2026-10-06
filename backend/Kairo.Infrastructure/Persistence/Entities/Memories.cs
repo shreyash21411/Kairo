@@ -23,12 +23,21 @@ public partial class Memories
 
     public long? ScopeId { get; set; }
 
+    /// <summary>Phase 2: Event or fact occurrence timestamp (optional).</summary>
+    public DateTime? OccurredAt { get; set; }
+
+    /// <summary>Phase 2: Arbitrary application-defined metadata JSON.</summary>
+    public string? Metadata { get; set; }
+
     public virtual ICollection<MemoryEmbeddings> MemoryEmbeddings { get; set; } = new List<MemoryEmbeddings>();
 
     public virtual ICollection<MemoryVersions> MemoryVersions { get; set; } = new List<MemoryVersions>();
 
     /// <summary>Phase 1: Entities extracted from this memory.</summary>
     public virtual ICollection<MemoryEntities> MemoryEntities { get; set; } = new List<MemoryEntities>();
+
+    /// <summary>Phase 2: Graph relationship evidence linked to this memory.</summary>
+    public virtual ICollection<RelationshipEvidence> RelationshipEvidence { get; set; } = new List<RelationshipEvidence>();
 
     public virtual MemoryScopes? Scope { get; set; }
 

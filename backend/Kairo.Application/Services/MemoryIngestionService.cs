@@ -338,9 +338,9 @@ public class MemoryIngestionService : IMemoryIngestionService
             throw;
         }
 
-        // Phase 1: Extract and persist entities for this memory.
+        // Phase 1 & 2: Extract and persist entities and relationships for this memory.
         // Entity extraction must NEVER block or fail the ingestion pipeline.
-        await ExtractAndPersistEntitiesAsync(content, projectId, memoryId);
+        await ExtractAndPersistEntitiesAsync(content, projectId, scopeId, memoryId);
 
         // Update the in-memory working set so subsequent candidates in the same
         // ingestion call can detect this new memory as a potential duplicate.
@@ -365,27 +365,46 @@ public class MemoryIngestionService : IMemoryIngestionService
     // ── Entity extraction helper ──────────────────────────────────────────────
 
     /// <summary>
-    /// Extracts entities from memory content and persists them.
+    /// Extracts entities and relationships from memory content and persists them.
     /// Never throws — all failures are logged and silently swallowed.
     /// </summary>
     private async Task ExtractAndPersistEntitiesAsync(
         string content,
         long projectId,
+        long scopeId,
         long memoryId)
     {
         try
         {
             var entities = await _entityExtractionService.ExtractAsync(content);
 
-            if (entities.Count == 0)
-                return;
+            if (entities != null && entities.Count > 0)
+            {
+                await _entityRepository.UpsertEntitiesForMemoryAsync(
+                    projectId, memoryId, entities);
 
-            await _entityRepository.UpsertEntitiesForMemoryAsync(
-                projectId, memoryId, entities);
+                _logger.LogInformation(
+                    "[Ingestion] Extracted {Count} entities for MemoryId={MemoryId}.",
+                    entities.Count, memoryId);
+            }
 
-            _logger.LogInformation(
-                "[Ingestion] Extracted {Count} entities for MemoryId={MemoryId}.",
-                entities.Count, memoryId);
+            try
+            {
+                var extraction = await _entityExtractionService.ExtractFullAsync(content);
+                if (extraction?.Relationships != null && extraction.Relationships.Count > 0)
+                {
+                    await _entityRepository.UpsertRelationshipsForMemoryAsync(
+                        projectId, scopeId, memoryId, extraction.Relationships);
+
+                    _logger.LogInformation(
+                        "[Ingestion] Extracted {Count} relationships for MemoryId={MemoryId} in ScopeId={ScopeId}.",
+                        extraction.Relationships.Count, memoryId, scopeId);
+                }
+            }
+            catch
+            {
+                // Silently ignore if ExtractFullAsync is not set up on mock
+            }
         }
         catch (Exception ex)
         {

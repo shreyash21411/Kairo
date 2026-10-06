@@ -38,4 +38,8 @@ public partial class NamedEntity
     public virtual Projects Project { get; set; } = null!;
 
     public virtual ICollection<MemoryEntities> MemoryEntities { get; set; } = new List<MemoryEntities>();
+
+    public virtual ICollection<EntityRelationship> SourceRelationships { get; set; } = new List<EntityRelationship>();
+
+    public virtual ICollection<EntityRelationship> TargetRelationships { get; set; } = new List<EntityRelationship>();
 }

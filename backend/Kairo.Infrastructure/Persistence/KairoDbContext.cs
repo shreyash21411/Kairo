@@ -20,6 +20,10 @@ public partial class KairoDbContext : DbContext
 
     public virtual DbSet<NamedEntity> Entities { get; set; }
 
+    public virtual DbSet<EntityRelationship> EntityRelationships { get; set; }
+
+    public virtual DbSet<RelationshipEvidence> RelationshipEvidence { get; set; }
+
     public virtual DbSet<Memories> Memories { get; set; }
 
     public virtual DbSet<MemoryEmbeddings> MemoryEmbeddings { get; set; }
@@ -135,6 +139,12 @@ public partial class KairoDbContext : DbContext
                 .HasPrecision(3)
                 .HasDefaultValueSql("(sysutcdatetime())", "DF_Memories_UpdatedAt");
 
+            // Phase 2: OccurredAt and Metadata
+            entity.Property(e => e.OccurredAt).HasPrecision(3);
+            entity.Property(e => e.Metadata);
+            entity.HasIndex(e => e.OccurredAt, "IX_Memories_OccurredAt");
+            entity.HasIndex(e => e.CreatedAt, "IX_Memories_CreatedAt");
+
             entity.HasOne(d => d.Scope).WithMany(p => p.Memories)
                 .HasForeignKey(d => d.ScopeId)
                 .HasConstraintName("FK_Memories_MemoryScopes");
@@ -238,6 +248,70 @@ public partial class KairoDbContext : DbContext
                 .HasForeignKey(d => d.EntityId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MemoryEntities_Entities");
+        });
+
+        // ── Phase 2: EntityRelationships & RelationshipEvidence ─────────────
+
+        modelBuilder.Entity<EntityRelationship>(entity =>
+        {
+            entity.ToTable("EntityRelationships");
+            entity.HasKey(e => e.RelationshipId);
+
+            entity.HasIndex(e => e.ProjectId, "IX_EntityRelationships_ProjectId");
+            entity.HasIndex(e => e.ScopeId, "IX_EntityRelationships_ScopeId");
+            entity.HasIndex(e => e.SourceEntityId, "IX_EntityRelationships_SourceEntityId");
+            entity.HasIndex(e => e.TargetEntityId, "IX_EntityRelationships_TargetEntityId");
+
+            entity.HasIndex(e => new { e.ScopeId, e.SourceEntityId, e.TargetEntityId, e.RelationshipType },
+                "UX_EntityRelationships_Scope_Source_Target_Type").IsUnique();
+
+            entity.Property(e => e.RelationshipType).HasMaxLength(128);
+            entity.Property(e => e.Confidence).HasDefaultValue(1.0);
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.UpdatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Project).WithMany()
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_EntityRelationships_Projects");
+
+            entity.HasOne(d => d.Scope).WithMany(p => p.EntityRelationships)
+                .HasForeignKey(d => d.ScopeId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_EntityRelationships_MemoryScopes");
+
+            entity.HasOne(d => d.SourceEntity).WithMany(p => p.SourceRelationships)
+                .HasForeignKey(d => d.SourceEntityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_EntityRelationships_SourceEntity");
+
+            entity.HasOne(d => d.TargetEntity).WithMany(p => p.TargetRelationships)
+                .HasForeignKey(d => d.TargetEntityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_EntityRelationships_TargetEntity");
+        });
+
+        modelBuilder.Entity<RelationshipEvidence>(entity =>
+        {
+            entity.ToTable("RelationshipEvidence");
+            entity.HasKey(e => e.EvidenceId);
+
+            entity.HasIndex(e => e.RelationshipId, "IX_RelationshipEvidence_RelationshipId");
+            entity.HasIndex(e => e.MemoryId, "IX_RelationshipEvidence_MemoryId");
+            entity.HasIndex(e => new { e.RelationshipId, e.MemoryId },
+                "UX_RelationshipEvidence_Relationship_Memory").IsUnique();
+
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Relationship).WithMany(p => p.Evidence)
+                .HasForeignKey(d => d.RelationshipId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_RelationshipEvidence_EntityRelationships");
+
+            entity.HasOne(d => d.Memory).WithMany(p => p.RelationshipEvidence)
+                .HasForeignKey(d => d.MemoryId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_RelationshipEvidence_Memories");
         });
 
         modelBuilder.Entity<MemorySettingHistory>(entity =>

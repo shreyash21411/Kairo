@@ -17,4 +17,23 @@ public interface IEntityExtractionService
     Task<List<ExtractedEntity>> ExtractAsync(
         string text,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 2: Extracts named entities, relationships, and optional event occurrence time in a single call.
+    /// Provides a default implementation delegating to ExtractAsync for backward compatibility.
+    /// </summary>
+    async Task<FullExtractionResult> ExtractFullAsync(
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        var entities = await ExtractAsync(text, cancellationToken);
+        return new FullExtractionResult { Entities = entities };
+    }
+}
+
+public class FullExtractionResult
+{
+    public List<ExtractedEntity> Entities { get; set; } = new();
+    public List<ExtractedRelationship> Relationships { get; set; } = new();
+    public DateTime? OccurredAt { get; set; }
 }

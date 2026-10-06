@@ -7,18 +7,22 @@ Access via ``client.memories``.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 from .exceptions import KairoValidationError
 from .models import (
     CreateMemoryResult,
     DeleteMemoryResult,
+    GraphRelation,
     IngestMessage,
     IngestionMemoryResult,
     Memory,
     MemoryIngestionResponse,
     MemoryScope,
     MemorySearchResponse,
+    MemoryTemporalFilter,
+    MetadataFilterCondition,
 )
 
 if TYPE_CHECKING:
@@ -61,23 +65,6 @@ class MemoryResource:
 
     Accessed as ``client.memories`` on a :class:`~kairo.Kairo` instance.
     Do not instantiate this class directly.
-
-    Example::
-
-        client = Kairo(api_key="kairo_live_xxx")
-
-        # Create
-        result = client.memories.create(
-            content="User prefers dark mode",
-            memory_type="Preference",
-            actor_id="user-123",
-        )
-
-        # Search
-        results = client.memories.search(
-            query="What UI theme does the user prefer?",
-            actor_id="user-123",
-        )
     """
 
     def __init__(self, client: Kairo) -> None:
@@ -92,26 +79,10 @@ class MemoryResource:
         memory_type: str,
         actor_id: Optional[str] = None,
         scope: Optional[Union[MemoryScope, dict]] = None,
+        occurred_at: Optional[Union[datetime, str]] = None,
+        metadata: Optional[dict] = None,
     ) -> CreateMemoryResult:
-        """Create a new memory for the authenticated user and specified actor or scope.
-
-        Calls ``POST /api/v1/memories``.
-
-        The backend automatically detects exact and semantic duplicates.
-        When a duplicate is detected, no new record is created. Check
-        ``result.is_duplicate`` to distinguish the two cases.
-
-        :param content: The memory content (max 10,000 characters).
-        :param memory_type: Memory classification. One of:
-            ``Preference``, ``Fact``, ``Goal``, ``Context``,
-            ``Skill``, ``Relationship``, ``Other``.
-        :param actor_id: Application-level actor identifier for memory scoping.
-        :param scope: Multi-dimensional memory scope (MemoryScope or dict).
-        :returns: A :class:`~kairo.CreateMemoryResult`.
-        :raises KairoValidationError: If ``content``, ``memory_type``, or scope
-            fails validation.
-        :raises KairoAuthenticationError: If the API key is invalid.
-        """
+        """Create a new memory for the authenticated user and specified actor or scope."""
         resolved_actor_id, scope_dict = _parse_scope_param(actor_id, scope)
 
         payload: dict = {
@@ -122,6 +93,10 @@ class MemoryResource:
             payload["actorId"] = resolved_actor_id
         if scope_dict is not None:
             payload["scope"] = scope_dict
+        if occurred_at is not None:
+            payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else str(occurred_at)
+        if metadata is not None:
+            payload["metadata"] = metadata
 
         data = self._client._request(
             "POST",
@@ -129,8 +104,6 @@ class MemoryResource:
             json=payload,
         )
 
-        # Backend returns HTTP 200 with {isDuplicate: true, reason: "..."}
-        # for duplicates, and HTTP 201 with MemoryResponse for new records.
         if data and data.get("isDuplicate") is True:
             return CreateMemoryResult(
                 memory=None,
@@ -147,20 +120,7 @@ class MemoryResource:
     # ── Get ───────────────────────────────────────────────────────────────────
 
     def get(self, memory_id: int) -> Memory:
-        """Retrieve a single memory by ID.
-
-        Calls ``GET /api/v1/memories/{memoryId}``.
-
-        :param memory_id: The integer ID of the memory to retrieve.
-        :returns: A :class:`~kairo.Memory`.
-        :raises KairoNotFoundError: If the memory does not exist or
-            does not belong to the authenticated user.
-
-        Example::
-
-            memory = client.memories.get(memory_id=16)
-            print(memory.content)
-        """
+        """Retrieve a single memory by ID."""
         data = self._client._request(
             "GET",
             f"/api/v1/memories/{memory_id}",
@@ -170,25 +130,11 @@ class MemoryResource:
     # ── List ──────────────────────────────────────────────────────────────────
 
     def list(self) -> list[Memory]:
-        """List all active memories for the authenticated user.
-
-        Calls ``GET /api/v1/memories``.
-
-        Results are returned newest-first.
-
-        :returns: A list of :class:`~kairo.Memory` objects.
-
-        Example::
-
-            memories = client.memories.list()
-            for memory in memories:
-                print(f"[{memory.memory_id}] {memory.content}")
-        """
+        """List all active memories for the authenticated user."""
         data = self._client._request(
             "GET",
             "/api/v1/memories",
         )
-        # Backend envelope: { userId, count, memories: [...] }
         raw_list = data.get("memories", []) if data else []
         return [Memory._from_dict(m) for m in raw_list]
 
@@ -200,62 +146,30 @@ class MemoryResource:
         memory_id: int,
         content: str,
         memory_type: str,
+        occurred_at: Optional[Union[datetime, str]] = None,
+        metadata: Optional[dict] = None,
     ) -> Memory:
-        """Update the content and type of an existing memory.
+        """Update the content and type of an existing memory."""
+        payload: dict = {
+            "content": content,
+            "memoryType": memory_type,
+        }
+        if occurred_at is not None:
+            payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else str(occurred_at)
+        if metadata is not None:
+            payload["metadata"] = metadata
 
-        Calls ``PUT /api/v1/memories/{memoryId}``.
-
-        The backend archives the previous version and regenerates the
-        embedding for the updated content.
-
-        :param memory_id: The ID of the memory to update.
-        :param content: The new memory content (max 10,000 characters).
-        :param memory_type: The new memory type. One of:
-            ``Preference``, ``Fact``, ``Goal``, ``Context``,
-            ``Skill``, ``Relationship``, ``Other``.
-        :returns: The updated :class:`~kairo.Memory`.
-        :raises KairoNotFoundError: If the memory does not exist or
-            does not belong to the authenticated user.
-
-        Example::
-
-            updated = client.memories.update(
-                memory_id=16,
-                content="User strongly prefers dark mode",
-                memory_type="Preference",
-            )
-        """
         data = self._client._request(
             "PUT",
             f"/api/v1/memories/{memory_id}",
-            json={
-                "content": content,
-                "memoryType": memory_type,
-            },
+            json=payload,
         )
         return Memory._from_dict(data)
 
     # ── Delete ────────────────────────────────────────────────────────────────
 
     def delete(self, memory_id: int) -> DeleteMemoryResult:
-        """Deactivate (soft-delete) a memory.
-
-        Calls ``DELETE /api/v1/memories/{memoryId}``.
-
-        The memory record is preserved in the Kairo database. It is
-        marked inactive and will no longer appear in list or search
-        results. This operation cannot be undone through the SDK.
-
-        :param memory_id: The ID of the memory to deactivate.
-        :returns: A :class:`~kairo.DeleteMemoryResult`.
-        :raises KairoNotFoundError: If the memory does not exist or
-            does not belong to the authenticated user.
-
-        Example::
-
-            result = client.memories.delete(memory_id=16)
-            print(result.message)
-        """
+        """Deactivate (soft-delete) a memory."""
         data = self._client._request(
             "DELETE",
             f"/api/v1/memories/{memory_id}",
@@ -272,21 +186,13 @@ class MemoryResource:
         scope: Optional[Union[MemoryScope, dict]] = None,
         top_k: int = 5,
         hybrid: Optional[bool] = None,
+        temporal: Optional[Union[MemoryTemporalFilter, dict]] = None,
+        metadata_filters: Optional[dict] = None,
+        structured_filters: Optional[list[Union[MetadataFilterCondition, dict]]] = None,
+        recency_boost: Optional[bool] = None,
+        graph_depth: Optional[int] = None,
     ) -> MemorySearchResponse:
-        """Search memories semantically or via hybrid retrieval within an actor/scope.
-
-        Calls ``POST /api/v1/memories/search``.
-
-        :param query: Natural-language search query.
-        :param actor_id: Application-level actor identifier for memory scoping.
-        :param scope: Multi-dimensional memory scope (MemoryScope or dict).
-        :param top_k: Maximum number of memories to return (1–100).
-            Defaults to 5.
-        :param hybrid: When True, uses hybrid retrieval (semantic + keyword + entity).
-        :returns: A :class:`~kairo.MemorySearchResponse`.
-        :raises KairoValidationError: If ``query`` is empty, scope is missing,
-            or ``top_k`` is out of range.
-        """
+        """Search memories semantically or via hybrid retrieval with temporal, metadata, and graph support."""
         if not query or not isinstance(query, str) or not query.strip():
             raise KairoValidationError("query must not be empty.", status_code=400)
         resolved_actor_id, scope_dict = _parse_scope_param(actor_id, scope)
@@ -304,12 +210,27 @@ class MemoryResource:
         if hybrid is not None:
             payload["hybrid"] = hybrid
 
+        if temporal is not None:
+            payload["temporal"] = temporal.to_dict() if isinstance(temporal, MemoryTemporalFilter) else temporal
+        if metadata_filters is not None:
+            payload["metadataFilters"] = metadata_filters
+        if structured_filters is not None:
+            payload["structuredFilters"] = [
+                f.to_dict() if isinstance(f, MetadataFilterCondition) else f
+                for f in structured_filters
+            ]
+        if recency_boost is not None:
+            payload["recencyBoost"] = recency_boost
+        if graph_depth is not None:
+            payload["graphDepth"] = graph_depth
+
         data = self._client._request(
             "POST",
             "/api/v1/memories/search",
             json=payload,
         )
         return MemorySearchResponse._from_dict(data)
+
 
     # ── Ingest ────────────────────────────────────────────────────────────────
 

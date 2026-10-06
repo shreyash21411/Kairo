@@ -20,6 +20,19 @@ public interface IKeywordSearchRepository
         long? scopeId,
         int limit = 30,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 2: Returns BM25 memory candidates with temporal and metadata filtering applied
+    /// at candidate selection before corpus statistics and scoring are computed.
+    /// </summary>
+    Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

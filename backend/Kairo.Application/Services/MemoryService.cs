@@ -208,11 +208,17 @@ public class MemoryService : IMemoryService
             MemoryType = request.MemoryType
         };
 
+        var metadataJson = request.Metadata != null && request.Metadata.Count > 0
+            ? System.Text.Json.JsonSerializer.Serialize(request.Metadata)
+            : null;
+
         var memoryId = await _memoryRepository.CreateAsync(
             userId,
             extractedMemory,
             sourceChatId: null,
-            scopeId: scopeId);
+            scopeId: scopeId,
+            occurredAt: request.OccurredAt,
+            metadata: metadataJson);
 
         // ── Step 5: Persist embedding ─────────────────────────────────────────
 
@@ -279,7 +285,9 @@ public class MemoryService : IMemoryService
             MemoryType = item.MemoryType,
             IsActive = true,
             CreatedAt = item.CreatedAt,
-            UpdatedAt = item.UpdatedAt
+            UpdatedAt = item.UpdatedAt,
+            OccurredAt = item.OccurredAt,
+            Metadata = item.Metadata
         }).ToList();
     }
 
@@ -352,9 +360,15 @@ public class MemoryService : IMemoryService
 
         // ── Step 2: Update canonical content ──────────────────────────────────
 
+        var metadataJson = request.Metadata != null && request.Metadata.Count > 0
+            ? System.Text.Json.JsonSerializer.Serialize(request.Metadata)
+            : null;
+
         await _memoryRepository.UpdateMemoryContentAsync(
             memoryId,
-            request.Content.Trim());
+            request.Content.Trim(),
+            request.OccurredAt,
+            metadataJson);
 
         // ── Step 3: Regenerate and replace the embedding ──────────────────────
 
@@ -501,15 +515,18 @@ public class MemoryService : IMemoryService
             }
         }
 
-        // Delegate entirely to the existing retrieval pipeline:
-        //
-        // embedding → cosine similarity → Mistral relevance evaluation.
+        var metadataConditions = request.GetEffectiveMetadataFilters();
+
+        // Delegate to retrieval pipeline (with temporalFilter, metadataFilters, recencyBoost):
         var memories =
             await _retrievalService.RetrieveAsync(
                 userId,
                 request.Query,
                 request.TopK,
-                scopeId);
+                scopeId,
+                request.Temporal,
+                metadataConditions,
+                request.RecencyBoost.GetValueOrDefault(false));
 
         return new MemorySearchResponse
         {
@@ -552,7 +569,9 @@ public class MemoryService : IMemoryService
             MemoryType = snapshot.MemoryType,
             IsActive = snapshot.IsActive,
             CreatedAt = snapshot.CreatedAt,
-            UpdatedAt = snapshot.UpdatedAt
+            UpdatedAt = snapshot.UpdatedAt,
+            OccurredAt = snapshot.OccurredAt,
+            Metadata = snapshot.Metadata
         };
     }
 }

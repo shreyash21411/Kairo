@@ -43,6 +43,39 @@ public interface IEntityRepository
     Task DeleteLinksForMemoryAsync(
         long memoryId,
         CancellationToken cancellationToken = default);
+
+    // ── Phase 2: Graph Memory Methods ─────────────────────────────────────────
+
+    /// <summary>
+    /// Phase 2: Persists extracted entity relationships scoped to a MemoryScope and links
+    /// them to the source Memory via RelationshipEvidence.
+    /// Deduplication key: (ScopeId, SourceEntityId, TargetEntityId, RelationshipType).
+    /// </summary>
+    Task<List<GraphRelationData>> UpsertRelationshipsForMemoryAsync(
+        long projectId,
+        long scopeId,
+        long memoryId,
+        List<ExtractedRelationship> relationships,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 2: Retrieves relationships involving the specified entities strictly
+    /// within the given scopeId. Default depth is 1 (1-hop traversal).
+    /// </summary>
+    Task<List<GraphRelationData>> GetScopedRelationshipsForEntitiesAsync(
+        long projectId,
+        long scopeId,
+        IEnumerable<string> normalizedEntityNames,
+        int maxDepth = 1,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 2: Removes relationship evidence associated with a soft-deleted memory,
+    /// and cleans up any relationships that have no remaining active evidence.
+    /// </summary>
+    Task CleanupRelationshipsForMemoryAsync(
+        long memoryId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
