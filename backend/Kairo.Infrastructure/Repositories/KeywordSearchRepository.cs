@@ -5,15 +5,30 @@ using Microsoft.EntityFrameworkCore;
 namespace Kairo.Infrastructure.Repositories;
 
 /// <summary>
-/// Phase 1: Keyword search over active memories using SQL LIKE pattern matching.
-/// This provides BM25-like signals without requiring SQL Server Full-Text Search.
-/// Score = number of distinct query words found in the memory content.
+/// Phase 1: BM25 keyword search over the active scoped memory corpus.
+///
+/// Implements the standard Okapi BM25 formula:
+///
+///   score(D, Q) = Σ_t [ IDF(t) * TF(t,D) * (k1 + 1) / (TF(t,D) + k1 * (1 - b + b * |D| / avgdl)) ]
+///
+///   IDF(t) = ln(1 + (N - DF(t) + 0.5) / (DF(t) + 0.5))
+///
+///   Parameters:
+///     k1   = 1.2   (term frequency saturation)
+///     b    = 0.75  (document length normalization)
+///
+/// The corpus is ALWAYS the caller's authorized scoped active memories only.
+/// IDF is NEVER computed from memories outside the caller's scope.
 /// </summary>
 public class KeywordSearchRepository : IKeywordSearchRepository
 {
     private readonly KairoDbContext _dbContext;
 
-    // Stop words — common terms that add noise without signal.
+    // BM25 parameters
+    private const double K1 = 1.2;
+    private const double B  = 0.75;
+
+    // Stop words — common terms that add noise without BM25 signal.
     private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
     {
         "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
@@ -40,12 +55,13 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         if (string.IsNullOrWhiteSpace(query))
             return new List<KeywordSearchResult>();
 
-        // Extract meaningful keywords from the query
-        var keywords = ExtractKeywords(query);
-        if (keywords.Count == 0)
+        // Tokenize the query (preserves stop-word removal; no dedup — IDF only needs distinct query terms)
+        var queryTerms = TokenizeForBm25(query);
+        if (queryTerms.Count == 0)
             return new List<KeywordSearchResult>();
 
-        // Load active memories for this user/scope
+        // ── Step 1: Load the entire authorized scoped active-memory corpus ────
+
         var memoriesQuery = _dbContext.Memories
             .AsNoTracking()
             .Where(m => m.UserId == userId && m.IsActive);
@@ -53,48 +69,140 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         if (scopeId.HasValue)
             memoriesQuery = memoriesQuery.Where(m => m.ScopeId == scopeId.Value);
 
-        var memories = await memoriesQuery
+        var corpus = await memoriesQuery
             .Select(m => new { m.MemoryId, m.Content, m.MemoryType })
             .ToListAsync(cancellationToken);
 
-        // Score each memory by keyword overlap (in-process)
+        if (corpus.Count == 0)
+            return new List<KeywordSearchResult>();
+
+        // ── Step 2: Tokenize each document and compute per-document TF ────────
+
+        // tokens[i] = list of ALL tokens in document i (with repetitions for TF)
+        var docTokens = corpus
+            .Select(m => TokenizeForBm25WithRepeats(m.Content))
+            .ToList();
+
+        int N = corpus.Count;
+
+        // ── Step 3: Compute document frequencies (DF) for each query term ─────
+        // DF(t) = number of documents that contain term t at least once.
+
+        var df = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var term in queryTerms)
+        {
+            int count = 0;
+            foreach (var tokens in docTokens)
+            {
+                if (tokens.Contains(term, StringComparer.OrdinalIgnoreCase))
+                    count++;
+            }
+            df[term] = count;
+        }
+
+        // ── Step 4: Compute average document length (avgdl) ───────────────────
+
+        double avgdl = docTokens.Count > 0
+            ? docTokens.Average(t => (double)t.Count)
+            : 1.0;
+
+        // Avoid division by zero
+        if (avgdl < 1e-9) avgdl = 1.0;
+
+        // ── Step 5: Compute IDF for each query term ───────────────────────────
+        // IDF(t) = ln(1 + (N - DF(t) + 0.5) / (DF(t) + 0.5))
+
+        var idf = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var term in queryTerms)
+        {
+            int dft = df.TryGetValue(term, out var v) ? v : 0;
+            idf[term] = Math.Log(1.0 + (N - dft + 0.5) / (dft + 0.5));
+        }
+
+        // ── Step 6: Score each document with BM25 ────────────────────────────
+
         var results = new List<KeywordSearchResult>();
 
-        foreach (var memory in memories)
+        for (int i = 0; i < corpus.Count; i++)
         {
-            if (string.IsNullOrWhiteSpace(memory.Content))
-                continue;
+            var mem    = corpus[i];
+            var tokens = docTokens[i];
+            int dl     = tokens.Count;
 
-            var contentLower = memory.Content.ToLowerInvariant();
-            var matchCount   = keywords.Count(kw => contentLower.Contains(kw));
+            double bm25Score = 0.0;
 
-            if (matchCount > 0)
+            foreach (var term in queryTerms)
+            {
+                // TF(t, D) = occurrences of term t in this document
+                int tf = tokens.Count(t => string.Equals(t, term, StringComparison.OrdinalIgnoreCase));
+                if (tf == 0) continue;
+
+                double idfTerm = idf.TryGetValue(term, out var iv) ? iv : 0.0;
+
+                // BM25 numerator and denominator
+                double numerator   = tf * (K1 + 1.0);
+                double denominator = tf + K1 * (1.0 - B + B * dl / avgdl);
+
+                bm25Score += idfTerm * numerator / denominator;
+            }
+
+            if (bm25Score > 0.0)
             {
                 results.Add(new KeywordSearchResult
                 {
-                    MemoryId   = memory.MemoryId,
-                    Content    = memory.Content,
-                    MemoryType = memory.MemoryType ?? string.Empty,
-                    RawScore   = matchCount
+                    MemoryId   = mem.MemoryId,
+                    Content    = mem.Content,
+                    MemoryType = mem.MemoryType ?? string.Empty,
+                    RawScore   = bm25Score
                 });
             }
         }
 
+        // ── Step 7: Rank by BM25 score, apply limit ───────────────────────────
         return results
             .OrderByDescending(r => r.RawScore)
             .Take(limit)
             .ToList();
     }
 
-    private static List<string> ExtractKeywords(string query)
+    // ── Tokenizers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tokenizes query text into distinct filtered terms for IDF/query matching.
+    /// Removes stop words and very short tokens. Deduplication is safe for query terms
+    /// because we only need each distinct term once to compute the BM25 contribution.
+    /// </summary>
+    public static List<string> TokenizeForBm25(string text)
     {
-        // Tokenize and filter stop words + short tokens
-        return query
+        return text
             .ToLowerInvariant()
-            .Split(new[] { ' ', '\t', '\n', '\r', '.', ',', '?', '!', ';', ':', '-', '_' },
-                   StringSplitOptions.RemoveEmptyEntries)
-            .Where(token => token.Length >= 3 && !StopWords.Contains(token))
-            .Distinct()
+            .Split(Separators, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2 && !StopWords.Contains(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>
+    /// Tokenizes document text preserving ALL token repetitions.
+    /// TF computation REQUIRES repeated terms — "python python python" must
+    /// produce TF=3, not TF=1.
+    /// </summary>
+    public static List<string> TokenizeForBm25WithRepeats(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<string>();
+
+        return text
+            .ToLowerInvariant()
+            .Split(Separators, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2 && !StopWords.Contains(t))
+            .ToList();   // NO Distinct — repetitions are intentional for TF
+    }
+
+    private static readonly char[] Separators =
+    {
+        ' ', '\t', '\n', '\r', '.', ',', '?', '!', ';', ':', '-', '_',
+        '/', '\\', '(', ')', '[', ']', '{', '}', '"', '\'', '`', '~',
+        '@', '#', '$', '%', '^', '&', '*', '+', '=', '<', '>', '|'
+    };
 }

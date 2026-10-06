@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Kairo.Application.Abstractions.Persistence;
 using Kairo.Infrastructure.Persistence;
 using Kairo.Infrastructure.Persistence.Entities;
@@ -163,29 +165,50 @@ public class MemoryScopeRepository : IMemoryScopeRepository
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds a deterministic synthetic ActorId from the multi-dimensional scope key.
-    /// This encodes all Phase 1 dimensions into the existing ActorId column so the
-    /// (ProjectId, ActorId) unique constraint still enforces deduplication.
+    /// Builds a deterministic, collision-resistant synthetic ActorId from the
+    /// multi-dimensional scope key.  This encodes all Phase 1 dimensions into
+    /// the existing ActorId column so the (ProjectId, ActorId) unique constraint
+    /// still enforces deduplication.
     ///
-    /// Format: "mdim:u={userId}|a={agentId}|s={sessionId}|r={runId}"
-    /// Empty/null dimensions are encoded as "-".
-    /// Truncated to 128 chars (the ActorId column max length) if needed.
+    /// Algorithm:
+    ///   1. Normalize each dimension (null/whitespace → empty string).
+    ///   2. Build a canonical representation using length-prefixed segments.
+    ///      Format: "u:<len>:<value>;a:<len>:<value>;s:<len>:<value>;r:<len>:<value>"
+    ///      Length-prefixed encoding prevents any delimiter injection attack:
+    ///      a value containing ';' or ':' cannot collide with a different combination
+    ///      because the length field unambiguously separates values.
+    ///   3. Compute SHA-256 of the canonical UTF-8 bytes.
+    ///   4. Return "mdim:" + lower-hex SHA-256 (5 + 64 = 69 chars — safely under 128).
+    ///
+    /// Properties:
+    ///   - Deterministic: same inputs → same output.
+    ///   - Collision-resistant: SHA-256 makes collisions computationally infeasible.
+    ///   - Fixed length: always 69 characters — no truncation.
+    ///   - Backward compatible: V1 ActorIds (not starting with "mdim:") are unaffected.
     /// </summary>
-    internal static string BuildSyntheticActorId(
+    public static string BuildSyntheticActorId(
         string? userId,
         string? agentId,
         string? sessionId,
         string? runId)
     {
-        static string Seg(string? v) =>
-            string.IsNullOrWhiteSpace(v) ? "-" : v.Trim();
+        // Normalize: null or whitespace → empty string
+        static string Norm(string? v) => string.IsNullOrWhiteSpace(v) ? string.Empty : v.Trim();
 
-        var composite =
-            $"mdim:u={Seg(userId)}|a={Seg(agentId)}|s={Seg(sessionId)}|r={Seg(runId)}";
+        var u = Norm(userId);
+        var a = Norm(agentId);
+        var s = Norm(sessionId);
+        var r = Norm(runId);
 
-        if (composite.Length > 128)
-            composite = composite[..128];
+        // Length-prefixed canonical form prevents delimiter injection.
+        // E.g. u="alice|a=bot" becomes "u:11:alice|a=bot;a:0:;s:0:;r:0:"
+        // which is distinct from u="alice", a="bot" → "u:5:alice;a:3:bot;s:0:;r:0:"
+        var canonical = $"u:{u.Length}:{u};a:{a.Length}:{a};s:{s.Length}:{s};r:{r.Length}:{r}";
 
-        return composite;
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
+        var hashHex   = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        // "mdim:" (5) + 64 hex chars = 69 chars — always under the 128-char column limit.
+        return "mdim:" + hashHex;
     }
 }

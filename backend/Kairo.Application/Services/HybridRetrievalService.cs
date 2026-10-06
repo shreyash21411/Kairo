@@ -15,7 +15,7 @@ namespace Kairo.Application.Services;
 ///
 /// Score normalization:
 ///   - Semantic scores (cosine, 0-1) are used directly.
-///   - Keyword raw scores are min-max normalized to [0, 1].
+///   - Keyword raw BM25 scores are min-max normalized to [0, 1].
 ///   - Entity overlap is Jaccard similarity of entity name sets.
 ///   - Final score = weighted sum of normalized signals.
 /// </summary>
@@ -31,6 +31,7 @@ public class HybridRetrievalService
     private readonly IMemoryRelevanceEvaluator _relevanceEvaluator;
     private readonly IKeywordSearchRepository _keywordSearch;
     private readonly IEntityRepository _entityRepository;
+    private readonly IEntityExtractionService _entityExtractionService;
     private readonly ILogger<HybridRetrievalService> _logger;
 
     public HybridRetrievalService(
@@ -40,15 +41,17 @@ public class HybridRetrievalService
         IMemoryRelevanceEvaluator relevanceEvaluator,
         IKeywordSearchRepository keywordSearch,
         IEntityRepository entityRepository,
+        IEntityExtractionService entityExtractionService,
         ILogger<HybridRetrievalService> logger)
     {
-        _memoryRepository  = memoryRepository;
-        _embeddingGenerator = embeddingGenerator;
-        _similarityService  = similarityService;
-        _relevanceEvaluator = relevanceEvaluator;
-        _keywordSearch      = keywordSearch;
-        _entityRepository   = entityRepository;
-        _logger             = logger;
+        _memoryRepository        = memoryRepository;
+        _embeddingGenerator      = embeddingGenerator;
+        _similarityService       = similarityService;
+        _relevanceEvaluator      = relevanceEvaluator;
+        _keywordSearch           = keywordSearch;
+        _entityRepository        = entityRepository;
+        _entityExtractionService = entityExtractionService;
+        _logger                  = logger;
     }
 
     /// <summary>
@@ -82,17 +85,21 @@ public class HybridRetrievalService
             queryEmbedding = Array.Empty<float>();
         }
 
-        var semanticScores = new Dictionary<long, double>();
+        var semanticScores     = new Dictionary<long, double>();
+        var semanticContentMap = new Dictionary<long, (string Content, string MemoryType)>();
 
-        if (queryEmbedding.Length > 0)
+        var scopeMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+        if (scopeMemories != null)
         {
-            var existingMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
-
-            foreach (var mem in existingMemories)
+            foreach (var mem in scopeMemories)
             {
-                if (mem.Dimensions != queryEmbedding.Length) continue;
-                var sim = _similarityService.CalculateCosineSimilarity(queryEmbedding, mem.Embedding);
-                semanticScores[mem.MemoryId] = sim;
+                semanticContentMap[mem.MemoryId] = (mem.Content, mem.MemoryType);
+
+                if (queryEmbedding.Length > 0 && mem.Dimensions == queryEmbedding.Length)
+                {
+                    var sim = _similarityService.CalculateCosineSimilarity(queryEmbedding, mem.Embedding);
+                    semanticScores[mem.MemoryId] = sim;
+                }
             }
         }
 
@@ -110,45 +117,57 @@ public class HybridRetrievalService
 
         var allMemoryIds = semanticScores.Keys.Union(keywordRaw.Keys).ToHashSet();
 
-        // Build a content lookup from semantic results (already in memory)
-        var semanticContentMap = new Dictionary<long, (string Content, string MemoryType)>();
-        {
-            var existingMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
-            foreach (var mem in existingMemories)
-                semanticContentMap[mem.MemoryId] = (mem.Content, mem.MemoryType);
-        }
+        var keywordContentMap = keywordResults
+            .GroupBy(r => r.MemoryId)
+            .ToDictionary(g => g.Key, g => (g.First().Content, g.First().MemoryType));
 
-        var keywordContentMap = keywordResults.ToDictionary(r => r.MemoryId,
-            r => (r.Content, r.MemoryType));
+        // ── Channel 3: Entity signal (Mistral NER on query) ──────────────────
+        //
+        // Use the real IEntityExtractionService to extract entities from the query.
+        // This is the same service used during ingestion — ensures consistency.
+        // If extraction fails, entity score falls back to 0 (search continues safely).
 
-        // ── Channel 3: Entity signal ──────────────────────────────────────────
+        var queryEntityTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entityScores      = new Dictionary<long, double>();
 
-        // Extract query entities (normalize to lowercase tokens for overlap)
-        var queryEntityTokens = ExtractQueryEntityTokens(query);
-        var entityScores = new Dictionary<long, double>();
-
-        if (queryEntityTokens.Count > 0 && allMemoryIds.Count > 0)
+        if (allMemoryIds.Count > 0)
         {
             try
             {
-                var memoryEntities = await _entityRepository
-                    .GetEntitiesForMemoriesAsync(allMemoryIds, cancellationToken);
-
-                foreach (var (memoryId, entities) in memoryEntities)
-                {
-                    var memEntityTokens = entities
-                        .Select(e => e.NormalizedName)
-                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                    // Jaccard similarity = |intersection| / |union|
-                    var intersect = queryEntityTokens.Intersect(memEntityTokens).Count();
-                    var union = queryEntityTokens.Union(memEntityTokens).Count();
-                    entityScores[memoryId] = union > 0 ? (double)intersect / union : 0.0;
-                }
+                var queryEntities = await _entityExtractionService.ExtractAsync(query, cancellationToken);
+                foreach (var e in queryEntities)
+                    queryEntityTokens.Add(e.NormalizedName.Trim().ToLowerInvariant());
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[HybridRetrieval] Entity signal computation failed. Skipping entity channel.");
+                _logger.LogWarning(ex,
+                    "[HybridRetrieval] Query entity extraction failed. Entity signal will be 0.");
+                // Do not rethrow — semantic + BM25 channels remain functional.
+            }
+
+            if (queryEntityTokens.Count > 0)
+            {
+                try
+                {
+                    var memoryEntities = await _entityRepository
+                        .GetEntitiesForMemoriesAsync(allMemoryIds, cancellationToken);
+
+                    foreach (var (memoryId, entities) in memoryEntities)
+                    {
+                        var memEntityTokens = entities
+                            .Select(e => e.NormalizedName)
+                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                        // Jaccard similarity = |intersection| / |union|
+                        var intersect = queryEntityTokens.Intersect(memEntityTokens).Count();
+                        var union     = queryEntityTokens.Union(memEntityTokens).Count();
+                        entityScores[memoryId] = union > 0 ? (double)intersect / union : 0.0;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[HybridRetrieval] Entity signal computation failed. Skipping entity channel.");
+                }
             }
         }
 
@@ -249,17 +268,5 @@ public class HybridRetrievalService
             return raw.ToDictionary(kv => kv.Key, _ => 1.0);
 
         return raw.ToDictionary(kv => kv.Key, kv => (kv.Value - min) / range);
-    }
-
-    private static HashSet<string> ExtractQueryEntityTokens(string query)
-    {
-        // Simple heuristic: extract capitalized words as likely entity signals
-        var tokens = query
-            .Split(new[] { ' ', '\t', '\n', ',', '.', '?', '!' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length >= 3 && char.IsLetter(t[0]))
-            .Select(t => t.Trim('.', ',', '?', '!').ToLowerInvariant())
-            .ToHashSet();
-
-        return tokens;
     }
 }

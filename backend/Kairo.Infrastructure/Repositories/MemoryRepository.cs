@@ -197,6 +197,17 @@ public class MemoryRepository : IMemoryRepository
         memory.IsActive = false;
         memory.UpdatedAt = DateTime.UtcNow;
 
+        // ── Phase 1: Clean up MemoryEntities links (Defect 5 fix) ─────────────
+        // Database soft-delete does NOT trigger cascade delete, so we must
+        // remove MemoryEntities rows explicitly to prevent orphan rows.
+        // The NamedEntity records are NOT removed (they are project-scoped).
+        var entityLinks = await _dbContext.MemoryEntities
+            .Where(me => me.MemoryId == memoryId)
+            .ToListAsync();
+
+        if (entityLinks.Count > 0)
+            _dbContext.MemoryEntities.RemoveRange(entityLinks);
+
         await _dbContext.SaveChangesAsync();
     }
 

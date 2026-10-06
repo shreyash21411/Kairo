@@ -34,6 +34,15 @@ public interface IEntityRepository
         long projectId,
         IEnumerable<string> normalizedNames,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes all MemoryEntities links for the specified memory.
+    /// Called as part of soft-deletion to prevent orphan entity link rows.
+    /// Does NOT delete the NamedEntity records themselves (entities are project-scoped).
+    /// </summary>
+    Task DeleteLinksForMemoryAsync(
+        long memoryId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
