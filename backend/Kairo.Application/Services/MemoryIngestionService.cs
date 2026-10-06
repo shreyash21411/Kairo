@@ -366,7 +366,8 @@ public class MemoryIngestionService : IMemoryIngestionService
 
     /// <summary>
     /// Extracts entities and relationships from memory content and persists them.
-    /// Never throws — all failures are logged and silently swallowed.
+    /// Uses a single ExtractFullAsync call to retrieve both entities and relationships.
+    /// Never throws — all failures are logged by the outer catch and do not block memory persistence.
     /// </summary>
     private async Task ExtractAndPersistEntitiesAsync(
         string content,
@@ -376,7 +377,15 @@ public class MemoryIngestionService : IMemoryIngestionService
     {
         try
         {
-            var entities = await _entityExtractionService.ExtractAsync(content);
+            // Single extraction call: retrieves entities AND relationships in one Mistral request.
+            var extraction = await _entityExtractionService.ExtractFullAsync(content);
+
+            var entities = extraction?.Entities;
+            if (entities == null)
+            {
+                // Fallback for mocks or callers configured with ExtractAsync only
+                entities = await _entityExtractionService.ExtractAsync(content);
+            }
 
             if (entities != null && entities.Count > 0)
             {
@@ -388,22 +397,14 @@ public class MemoryIngestionService : IMemoryIngestionService
                     entities.Count, memoryId);
             }
 
-            try
+            if (extraction?.Relationships != null && extraction.Relationships.Count > 0)
             {
-                var extraction = await _entityExtractionService.ExtractFullAsync(content);
-                if (extraction?.Relationships != null && extraction.Relationships.Count > 0)
-                {
-                    await _entityRepository.UpsertRelationshipsForMemoryAsync(
-                        projectId, scopeId, memoryId, extraction.Relationships);
+                await _entityRepository.UpsertRelationshipsForMemoryAsync(
+                    projectId, scopeId, memoryId, extraction.Relationships);
 
-                    _logger.LogInformation(
-                        "[Ingestion] Extracted {Count} relationships for MemoryId={MemoryId} in ScopeId={ScopeId}.",
-                        extraction.Relationships.Count, memoryId, scopeId);
-                }
-            }
-            catch
-            {
-                // Silently ignore if ExtractFullAsync is not set up on mock
+                _logger.LogInformation(
+                    "[Ingestion] Extracted {Count} relationships for MemoryId={MemoryId} in ScopeId={ScopeId}.",
+                    extraction.Relationships.Count, memoryId, scopeId);
             }
         }
         catch (Exception ex)

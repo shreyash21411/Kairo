@@ -108,6 +108,17 @@ public class MemoryService : IMemoryService
                 nameof(request.MemoryType));
         }
 
+        var metadataJson = request.Metadata != null && request.Metadata.Count > 0
+            ? System.Text.Json.JsonSerializer.Serialize(request.Metadata)
+            : null;
+
+        if (metadataJson != null && metadataJson.Length > 8_192)
+        {
+            throw new ArgumentException(
+                "Metadata must not exceed 8,192 characters when serialized as JSON.",
+                nameof(request.Metadata));
+        }
+
         // ── Step 0: Resolve MemoryScope (if project context is provided) ───────
 
         long? scopeId = null;
@@ -207,10 +218,6 @@ public class MemoryService : IMemoryService
             Content = request.Content.Trim(),
             MemoryType = request.MemoryType
         };
-
-        var metadataJson = request.Metadata != null && request.Metadata.Count > 0
-            ? System.Text.Json.JsonSerializer.Serialize(request.Metadata)
-            : null;
 
         var memoryId = await _memoryRepository.CreateAsync(
             userId,
@@ -363,6 +370,13 @@ public class MemoryService : IMemoryService
         var metadataJson = request.Metadata != null && request.Metadata.Count > 0
             ? System.Text.Json.JsonSerializer.Serialize(request.Metadata)
             : null;
+
+        if (metadataJson != null && metadataJson.Length > 8_192)
+        {
+            throw new ArgumentException(
+                "Metadata must not exceed 8,192 characters when serialized as JSON.",
+                nameof(request.Metadata));
+        }
 
         await _memoryRepository.UpdateMemoryContentAsync(
             memoryId,

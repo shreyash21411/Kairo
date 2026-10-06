@@ -48,6 +48,12 @@ export type {
     MemorySearchRequest,
     CreateMemoryResult,
     DeleteMemoryResult,
+    // Phase 2: Temporal filtering
+    MemoryTemporalFilter,
+    // Phase 2: Metadata filtering
+    MetadataFilterCondition,
+    // Phase 2: Graph relations
+    GraphRelation,
     // Phase 4: Conversational Ingestion
     MemoryMessage,
     IngestRequest,

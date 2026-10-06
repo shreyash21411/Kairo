@@ -6,12 +6,15 @@ import {
     CreateMemoryRequest,
     CreateMemoryResult,
     DeleteMemoryResult,
+    GraphRelation,
     IngestRequest,
     IngestResponse,
     Memory,
     MemoryMessage,
     MemorySearchRequest,
     MemorySearchResponse,
+    MetadataFilterCondition,
+    MemoryTemporalFilter,
     UpdateMemoryRequest,
 } from "./models";
 
@@ -96,6 +99,13 @@ export class MemoryResource {
         }
         if (request.scope) {
             payload.scope = request.scope;
+        }
+        // Phase 2 fields — only included when explicitly provided.
+        if (request.occurredAt !== undefined && request.occurredAt !== null) {
+            payload.occurredAt = request.occurredAt;
+        }
+        if (request.metadata !== undefined && request.metadata !== null) {
+            payload.metadata = request.metadata;
         }
 
         // The backend accepts the JSON field name 'memoryType' and 'actorId' (camelCase).
@@ -225,13 +235,23 @@ export class MemoryResource {
         if (!request.content || request.content.trim() === "") {
             throw new KairoValidationError("content must not be empty.");
         }
+        const updatePayload: Record<string, unknown> = {
+            content: request.content,
+            memoryType: request.memoryType,
+        };
+        // Phase 2 fields — only included when explicitly provided.
+        // Pass null to explicitly clear occurredAt or metadata on the server.
+        if (request.occurredAt !== undefined) {
+            updatePayload.occurredAt = request.occurredAt;
+        }
+        if (request.metadata !== undefined) {
+            updatePayload.metadata = request.metadata;
+        }
+
         return this._client.request<Memory>(
             "PUT",
             `/api/v1/memories/${memoryId}`,
-            {
-                content: request.content,
-                memoryType: request.memoryType,
-            }
+            updatePayload
         );
     }
 
@@ -335,12 +355,36 @@ export class MemoryResource {
         if (request.hybrid !== undefined) {
             payload.hybrid = request.hybrid;
         }
+        // Phase 2 optional parameters — only sent when explicitly provided.
+        if (request.temporal !== undefined && request.temporal !== null) {
+            payload.temporal = request.temporal;
+        }
+        if (request.metadataFilters !== undefined && request.metadataFilters !== null) {
+            payload.metadataFilters = request.metadataFilters;
+        }
+        if (request.structuredFilters !== undefined && request.structuredFilters !== null) {
+            payload.structuredFilters = request.structuredFilters;
+        }
+        if (request.recencyBoost !== undefined) {
+            payload.recencyBoost = request.recencyBoost;
+        }
+        if (request.graphDepth !== undefined && request.graphDepth !== null) {
+            payload.graphDepth = request.graphDepth;
+        }
 
-        return this._client.request<MemorySearchResponse>(
+        const raw = await this._client.request<MemorySearchResponse>(
             "POST",
             "/api/v1/memories/search",
             payload
         );
+
+        // Normalise: guarantee relations is always an array even if backend omits it.
+        return {
+            query: raw?.query ?? request.query,
+            count: raw?.count ?? 0,
+            memories: raw?.memories ?? [],
+            relations: (raw as any)?.relations ?? [],
+        };
     }
 
     // ── Ingest ────────────────────────────────────────────────────────────────

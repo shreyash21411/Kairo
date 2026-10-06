@@ -43,10 +43,14 @@ export interface Memory {
     createdAt: string;
     /** ISO 8601 last-updated timestamp. */
     updatedAt: string;
+    /** Phase 2: ISO 8601 event or fact occurrence timestamp. Null when not set. */
+    occurredAt?: string | null;
+    /** Phase 2: Arbitrary application-defined metadata JSON string. Null when not set. */
+    metadata?: string | null;
 }
 
 /**
- * A memory returned from a semantic search, ranked by similarity score.
+ * A memory returned from a semantic or hybrid search, ranked by similarity score.
  */
 export interface RetrievedMemory {
     memoryId: number;
@@ -54,10 +58,32 @@ export interface RetrievedMemory {
     memoryType: string | null;
     /** Cosine similarity score in the range [0, 1]. Higher is more relevant. */
     similarity: number;
+    /** Phase 2: ISO 8601 event or fact occurrence timestamp. Null when not set. */
+    occurredAt?: string | null;
+    /** Phase 2: Arbitrary application-defined metadata JSON string. Null when not set. */
+    metadata?: string | null;
+}
+
+// ── Phase 2: Graph Relations ──────────────────────────────────────────────────
+
+/**
+ * Phase 2: A directed relationship between two named entities in the knowledge graph.
+ *
+ * Returned in MemorySearchResponse.relations when hybrid search is used.
+ */
+export interface GraphRelation {
+    /** Display name of the source entity. */
+    source: string;
+    /** Relationship type / predicate (e.g. "works_at", "located_in"). */
+    relationship: string;
+    /** Display name of the target entity. */
+    target: string;
+    /** Confidence score in the range [0, 1]. */
+    confidence: number;
 }
 
 /**
- * Response from a semantic memory search.
+ * Response from a semantic or hybrid memory search.
  */
 export interface MemorySearchResponse {
     /** The original query string. */
@@ -66,6 +92,12 @@ export interface MemorySearchResponse {
     count: number;
     /** Relevant memories, ordered by descending similarity. */
     memories: RetrievedMemory[];
+    /**
+     * Phase 2: Scoped knowledge graph relationships connecting entities
+     * found in the query. Empty when hybrid search was not requested or
+     * no relationships exist for the extracted entities.
+     */
+    relations: GraphRelation[];
 }
 
 /**
@@ -130,6 +162,70 @@ export interface MemoryScopeKey {
     runId?: string;
 }
 
+// ── Phase 2: Temporal Filters ─────────────────────────────────────────────────
+
+/**
+ * Phase 2: Temporal filtering constraints for memory retrieval.
+ *
+ * Supports absolute UTC timestamp boundaries and relative-time convenience windows.
+ * All boundary comparisons are inclusive. UTC is assumed for all timestamps.
+ *
+ * Relative windows (lastHours, lastDays, lastWeeks) apply to the CreatedAt column.
+ * When multiple relative constraints are provided, the most restrictive (latest) bound is used.
+ *
+ * @example
+ * ```typescript
+ * // Search memories created in the last 7 days
+ * const results = await kairo.memories.search({
+ *     query: "recent preferences",
+ *     actorId: "user-123",
+ *     hybrid: true,
+ *     temporal: { lastDays: 7 },
+ * });
+ * ```
+ */
+export interface MemoryTemporalFilter {
+    /** Include memories created at or after this UTC timestamp. */
+    createdAtFrom?: string;
+    /** Include memories created at or before this UTC timestamp. */
+    createdAtTo?: string;
+    /** Include memories updated at or after this UTC timestamp. */
+    updatedAtFrom?: string;
+    /** Include memories updated at or before this UTC timestamp. */
+    updatedAtTo?: string;
+    /** Include memories whose occurredAt is at or after this UTC timestamp. */
+    occurredAtFrom?: string;
+    /** Include memories whose occurredAt is at or before this UTC timestamp. */
+    occurredAtTo?: string;
+    /** Include memories created within the last N hours. */
+    lastHours?: number;
+    /** Include memories created within the last N days. */
+    lastDays?: number;
+    /** Include memories created within the last N weeks. */
+    lastWeeks?: number;
+}
+
+// ── Phase 2: Metadata Filters ─────────────────────────────────────────────────
+
+/**
+ * Phase 2: A structured metadata filter condition with an explicit operator.
+ *
+ * Supported operators:
+ * - `"eq"` (default): exact match (case-insensitive)
+ * - `"ne"`: not equal
+ * - `"in"`: value contained in the provided list (use `inValues`)
+ */
+export interface MetadataFilterCondition {
+    /** Metadata JSON property key. */
+    key: string;
+    /** Comparison operator: "eq", "ne", or "in". Defaults to "eq". */
+    operator: "eq" | "ne" | "in";
+    /** Value for "eq" or "ne" comparisons. */
+    value?: string;
+    /** Values for "in" membership comparisons. */
+    inValues?: string[];
+}
+
 /** Request body for creating a new memory. */
 export interface CreateMemoryRequest {
     /** Memory content text. Maximum 10,000 characters. */
@@ -140,6 +236,17 @@ export interface CreateMemoryRequest {
     actorId?: string;
     /** Multi-dimensional memory scope key (Phase 1+). */
     scope?: MemoryScopeKey;
+    /**
+     * Phase 2: ISO 8601 event or fact occurrence timestamp.
+     * Represents when the fact or event described in the memory occurred,
+     * as opposed to when the memory was created in Kairo.
+     */
+    occurredAt?: string;
+    /**
+     * Phase 2: Arbitrary application-defined metadata dictionary.
+     * The serialized JSON must not exceed 8,192 characters.
+     */
+    metadata?: Record<string, unknown>;
 }
 
 /** Request body for updating an existing memory. */
@@ -148,9 +255,20 @@ export interface UpdateMemoryRequest {
     content: string;
     /** Updated memory classification. */
     memoryType: MemoryType;
+    /**
+     * Phase 2: Updated ISO 8601 event or fact occurrence timestamp.
+     * Pass null to clear a previously set occurrence time.
+     */
+    occurredAt?: string | null;
+    /**
+     * Phase 2: Updated arbitrary application-defined metadata dictionary.
+     * The serialized JSON must not exceed 8,192 characters.
+     * Pass null to clear existing metadata.
+     */
+    metadata?: Record<string, unknown> | null;
 }
 
-/** Request parameters for a semantic memory search. */
+/** Request parameters for a semantic or hybrid memory search. */
 export interface MemorySearchRequest {
     /** Natural-language search query. */
     query: string;
@@ -162,6 +280,34 @@ export interface MemorySearchRequest {
     topK?: number;
     /** When true, uses hybrid retrieval (semantic + keyword + entity). */
     hybrid?: boolean;
+    /**
+     * Phase 2: Temporal filter constraints.
+     * Only used when hybrid is true.
+     */
+    temporal?: MemoryTemporalFilter;
+    /**
+     * Phase 2: Key-value metadata equality filter (shorthand).
+     * Each key-value pair maps to an "eq" condition.
+     * For more complex operators use structuredFilters.
+     */
+    metadataFilters?: Record<string, string>;
+    /**
+     * Phase 2: Structured metadata filter conditions with explicit operators.
+     * Conditions are combined with AND semantics.
+     * Takes precedence over metadataFilters when both are supplied.
+     */
+    structuredFilters?: MetadataFilterCondition[];
+    /**
+     * Phase 2: When true, applies recency-aware relevance score boosting.
+     * Formula: 0.85 × base_score + 0.15 × exp(-0.05 × age_in_days).
+     * Default is false. V1 search behavior is unchanged when not set.
+     */
+    recencyBoost?: boolean;
+    /**
+     * Phase 2: Depth of graph relationship traversal in results (1 or 2).
+     * Default is 1. Maximum is 2. Only used when hybrid is true.
+     */
+    graphDepth?: number;
 }
 
 // ── Phase 4: Conversational Ingestion ─────────────────────────────────────────
