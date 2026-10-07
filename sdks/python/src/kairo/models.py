@@ -17,9 +17,9 @@ Backend JSON field mapping:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 
 def _parse_dt(value: str) -> datetime:
@@ -49,10 +49,10 @@ class Memory:
     created_at: datetime
     updated_at: datetime
     occurred_at: Optional[datetime] = None
-    metadata: Optional[dict] = None
+    metadata: Optional[dict[str, Any]] = None
 
     @classmethod
-    def _from_dict(cls, data: dict) -> Memory:
+    def _from_dict(cls, data: dict[str, Any]) -> Memory:
         occ = data.get("occurredAt")
         raw_meta = data.get("metadata")
         meta = raw_meta
@@ -109,10 +109,10 @@ class RetrievedMemory:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     occurred_at: Optional[datetime] = None
-    metadata: Optional[dict] = None
+    metadata: Optional[dict[str, Any]] = None
 
     @classmethod
-    def _from_dict(cls, data: dict) -> RetrievedMemory:
+    def _from_dict(cls, data: dict[str, Any]) -> RetrievedMemory:
         cat = data.get("createdAt")
         uat = data.get("updatedAt")
         occ = data.get("occurredAt")
@@ -154,7 +154,7 @@ class GraphRelation:
     confidence: float = 1.0
 
     @classmethod
-    def _from_dict(cls, data: dict) -> GraphRelation:
+    def _from_dict(cls, data: dict[str, Any]) -> GraphRelation:
         return cls(
             source=data.get("source", ""),
             relationship=data.get("relationship", ""),
@@ -170,14 +170,13 @@ class MemorySearchResponse:
     query: str
     count: int
     memories: list[RetrievedMemory]
-    relations: list[GraphRelation] = None  # type: ignore
+    relations: list[GraphRelation] = field(default_factory=list)
 
-    def __post_init__(self):
-        if self.relations is None:
-            self.relations = []
+    def __post_init__(self) -> None:
+        pass
 
     @classmethod
-    def _from_dict(cls, data: dict) -> MemorySearchResponse:
+    def _from_dict(cls, data: dict[str, Any]) -> MemorySearchResponse:
         return cls(
             query=data["query"],
             count=data["count"],
@@ -212,8 +211,8 @@ class MemoryTemporalFilter:
     last_days: Optional[int] = None
     last_weeks: Optional[int] = None
 
-    def to_dict(self) -> dict:
-        d: dict = {}
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {}
         if self.created_at_from:
             d["createdAtFrom"] = self.created_at_from.isoformat()
         if self.created_at_to:
@@ -244,8 +243,8 @@ class MetadataFilterCondition:
     value: Optional[str] = None
     in_values: Optional[list[str]] = None
 
-    def to_dict(self) -> dict:
-        d = {"key": self.key, "operator": self.operator}
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"key": self.key, "operator": self.operator}
         if self.value is not None:
             d["value"] = self.value
         if self.in_values is not None:
@@ -272,7 +271,7 @@ class DeleteMemoryResult:
     message: str
 
     @classmethod
-    def _from_dict(cls, data: dict) -> DeleteMemoryResult:
+    def _from_dict(cls, data: dict[str, Any]) -> DeleteMemoryResult:
         return cls(
             memory_id=data["memoryId"],
             message=data["message"],
@@ -345,7 +344,7 @@ class IngestionMemoryResult:
     reason: Optional[str]
 
     @classmethod
-    def _from_dict(cls, data: dict) -> IngestionMemoryResult:
+    def _from_dict(cls, data: dict[str, Any]) -> IngestionMemoryResult:
         return cls(
             action=data["action"],
             memory_id=data.get("memoryId"),
@@ -374,7 +373,7 @@ class MemoryIngestionResponse:
     memories: list[IngestionMemoryResult]
 
     @classmethod
-    def _from_dict(cls, data: dict) -> MemoryIngestionResponse:
+    def _from_dict(cls, data: dict[str, Any]) -> MemoryIngestionResponse:
         return cls(
             processed=data.get("processed", False),
             extracted_count=data.get("extractedCount", 0),

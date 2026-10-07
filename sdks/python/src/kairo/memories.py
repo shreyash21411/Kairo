@@ -8,7 +8,7 @@ Access via ``client.memories``.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 from .exceptions import KairoValidationError
 from .models import (
@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 
 def _parse_scope_param(
     actor_id: Optional[str],
-    scope: Optional[Union[MemoryScope, dict]],
-) -> tuple[Optional[str], Optional[dict]]:
+    scope: Optional[Union[MemoryScope, dict[str, Any]]],
+) -> tuple[Optional[str], Optional[dict[str, Any]]]:
     if actor_id is not None:
         if not isinstance(actor_id, str) or not actor_id.strip():
             raise KairoValidationError("actor_id must not be empty.", status_code=400)
@@ -41,7 +41,7 @@ def _parse_scope_param(
     elif scope is None:
         raise KairoValidationError("actor_id or scope must be provided.", status_code=400)
 
-    scope_dict = None
+    scope_dict: Optional[dict[str, Any]] = None
     if scope is not None:
         if isinstance(scope, MemoryScope):
             scope_dict = scope.to_dict()
@@ -78,14 +78,14 @@ class MemoryResource:
         content: str,
         memory_type: str,
         actor_id: Optional[str] = None,
-        scope: Optional[Union[MemoryScope, dict]] = None,
+        scope: Optional[Union[MemoryScope, dict[str, Any]]] = None,
         occurred_at: Optional[Union[datetime, str]] = None,
-        metadata: Optional[dict] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> CreateMemoryResult:
         """Create a new memory for the authenticated user and specified actor or scope."""
         resolved_actor_id, scope_dict = _parse_scope_param(actor_id, scope)
 
-        payload: dict = {
+        payload: dict[str, Any] = {
             "content": content,
             "memoryType": memory_type,
         }
@@ -94,7 +94,7 @@ class MemoryResource:
         if scope_dict is not None:
             payload["scope"] = scope_dict
         if occurred_at is not None:
-            payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else str(occurred_at)
+            payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else occurred_at
         if metadata is not None:
             payload["metadata"] = metadata
 
@@ -135,7 +135,7 @@ class MemoryResource:
             "GET",
             "/api/v1/memories",
         )
-        raw_list = data.get("memories", []) if data else []
+        raw_list: list[Any] = data.get("memories", []) if data else []
         return [Memory._from_dict(m) for m in raw_list]
 
     # ── Update ────────────────────────────────────────────────────────────────
@@ -147,15 +147,15 @@ class MemoryResource:
         content: str,
         memory_type: str,
         occurred_at: Optional[Union[datetime, str]] = None,
-        metadata: Optional[dict] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Memory:
         """Update the content and type of an existing memory."""
-        payload: dict = {
+        payload: dict[str, Any] = {
             "content": content,
             "memoryType": memory_type,
         }
         if occurred_at is not None:
-            payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else str(occurred_at)
+            payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else occurred_at
         if metadata is not None:
             payload["metadata"] = metadata
 
@@ -183,12 +183,12 @@ class MemoryResource:
         *,
         query: str,
         actor_id: Optional[str] = None,
-        scope: Optional[Union[MemoryScope, dict]] = None,
+        scope: Optional[Union[MemoryScope, dict[str, Any]]] = None,
         top_k: int = 5,
         hybrid: Optional[bool] = None,
-        temporal: Optional[Union[MemoryTemporalFilter, dict]] = None,
-        metadata_filters: Optional[dict] = None,
-        structured_filters: Optional[list[Union[MetadataFilterCondition, dict]]] = None,
+        temporal: Optional[Union[MemoryTemporalFilter, dict[str, Any]]] = None,
+        metadata_filters: Optional[dict[str, str]] = None,
+        structured_filters: Optional[List[Union[MetadataFilterCondition, dict[str, Any]]]] = None,
         recency_boost: Optional[bool] = None,
         graph_depth: Optional[int] = None,
     ) -> MemorySearchResponse:
@@ -199,7 +199,7 @@ class MemoryResource:
         if not isinstance(top_k, int) or isinstance(top_k, bool) or top_k < 1 or top_k > 100:
             raise KairoValidationError("top_k must be an integer between 1 and 100.", status_code=400)
 
-        payload: dict = {
+        payload: dict[str, Any] = {
             "query": query.strip(),
             "topK": top_k,
         }
@@ -238,8 +238,8 @@ class MemoryResource:
         self,
         *,
         actor_id: Optional[str] = None,
-        scope: Optional[Union[MemoryScope, dict]] = None,
-        messages: list[Union[dict[str, str], IngestMessage]],
+        scope: Optional[Union[MemoryScope, dict[str, Any]]] = None,
+        messages: List[Union[dict[str, str], IngestMessage]],
     ) -> MemoryIngestionResponse:
         """Ingest a conversation and extract durable memories in ADD-only mode.
 
