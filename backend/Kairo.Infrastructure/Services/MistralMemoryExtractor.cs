@@ -1,24 +1,45 @@
-using System.Net.Http.Headers;
-using System.Text;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
+using System.Threading.Tasks;
+using Kairo.Application.Abstractions.Providers;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.Configuration;
 using Kairo.Application.DTOs;
+using Kairo.Infrastructure.Providers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Kairo.Infrastructure.Services;
 
+/// <summary>
+/// Phase 4B: Adapter implementing IMemoryExtractor.
+/// Preserves exact memory extraction prompt engineering, temperature (0.1), and response schema,
+/// while delegating raw HTTP chat completion transport to ILlmProvider.
+/// </summary>
 public class MistralMemoryExtractor : IMemoryExtractor
 {
-    private readonly HttpClient _httpClient;
-    private readonly MistralOptions _options;
+    private readonly ILlmProvider _llmProvider;
 
+    /// <summary>
+    /// Modern constructor resolving ILlmProvider via DI.
+    /// </summary>
+    [ActivatorUtilitiesConstructor]
+    public MistralMemoryExtractor(ILlmProvider llmProvider)
+    {
+        _llmProvider = llmProvider ?? throw new ArgumentNullException(nameof(llmProvider));
+    }
+
+    /// <summary>
+    /// Backward-compatible constructor for existing callers and legacy test fixtures.
+    /// </summary>
     public MistralMemoryExtractor(
         HttpClient httpClient,
         IOptions<MistralOptions> options)
+        : this(new MistralLlmProvider(httpClient, options))
     {
-        _httpClient = httpClient;
-        _options = options.Value;
     }
 
     public async Task<List<ExtractedMemory>> ExtractAsync(
@@ -75,68 +96,15 @@ public class MistralMemoryExtractor : IMemoryExtractor
             }
             """;
 
-        var requestBody = new
+        var request = new LlmCompletionRequest
         {
-            model = _options.Model,
-            messages = new[]
-            {
-                new
-                {
-                    role = "system",
-                    content = systemPrompt
-                },
-                new
-                {
-                    role = "user",
-                    content = conversation
-                }
-            },
-            temperature = 0.1,
-            response_format = new
-            {
-                type = "json_object"
-            }
+            SystemPrompt = systemPrompt,
+            UserPrompt = conversation,
+            Temperature = 0.1,
+            EnforceJsonOutput = true
         };
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://api.mistral.ai/v1/chat/completions");
-
-        request.Headers.Authorization =
-            new AuthenticationHeaderValue(
-                "Bearer",
-                _options.ApiKey);
-
-        var json = JsonSerializer.Serialize(requestBody);
-
-        request.Content = new StringContent(
-            json,
-            Encoding.UTF8,
-            "application/json");
-
-        using var response =
-            await _httpClient.SendAsync(request);
-
-        var responseContent =
-            await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Mistral API request failed. " +
-                $"Status: {(int)response.StatusCode}. " +
-                $"Response: {responseContent}");
-        }
-
-        using var document =
-            JsonDocument.Parse(responseContent);
-
-        var content =
-            document.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
+        var content = await _llmProvider.GenerateChatCompletionAsync(request);
 
         if (string.IsNullOrWhiteSpace(content))
         {

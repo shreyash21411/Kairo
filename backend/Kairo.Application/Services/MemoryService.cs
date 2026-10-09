@@ -1,4 +1,5 @@
 using Kairo.Application.Abstractions.Persistence;
+using Kairo.Application.Abstractions.Providers;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.Constants;
 using Kairo.Application.DTOs;
@@ -187,6 +188,16 @@ public class MemoryService : IMemoryService
         var embedding = await _embeddingGenerator.GenerateAsync(
             request.Content);
 
+        var activeModel = _embeddingGenerator.GetModelName();
+        var expectedDimensions = _embeddingGenerator.GetExpectedDimensions();
+        if (expectedDimensions.HasValue && embedding.Length != expectedDimensions.Value)
+        {
+            throw new IncompatibleEmbeddingDimensionException(
+                activeModel,
+                expectedDimensions.Value,
+                embedding.Length);
+        }
+
         // ── Step 3: Semantic duplicate check ──────────────────────────────────
 
         var existingEmbeddings =
@@ -196,7 +207,8 @@ public class MemoryService : IMemoryService
 
         foreach (var existing in existingEmbeddings)
         {
-            if (existing.Dimensions != embedding.Length)
+            if (existing.Dimensions != embedding.Length ||
+                !EmbeddingGeneratorExtensions.IsModelCompatible(existing.Model, activeModel))
             {
                 continue;
             }
@@ -242,7 +254,7 @@ public class MemoryService : IMemoryService
 
         await _memoryRepository.SaveEmbeddingAsync(
             memoryId,
-            EmbeddingModel,
+            activeModel,
             embedding);
 
         // ── Step 6: Entity & Graph extraction (non-fatal) ─────────────────────
@@ -699,6 +711,15 @@ public class MemoryService : IMemoryService
 
             // Generate embedding
             var embedding = await _embeddingGenerator.GenerateAsync(item.Content.Trim());
+            var itemModel = _embeddingGenerator.GetModelName();
+            var itemExpectedDims = _embeddingGenerator.GetExpectedDimensions();
+            if (itemExpectedDims.HasValue && embedding.Length != itemExpectedDims.Value)
+            {
+                throw new IncompatibleEmbeddingDimensionException(
+                    itemModel,
+                    itemExpectedDims.Value,
+                    embedding.Length);
+            }
 
             // Extract entities/relationships if available
             List<ExtractedEntity>? entities = null;
@@ -741,7 +762,7 @@ public class MemoryService : IMemoryService
                 expiresAt: p.expiresAt,
                 categories: p.categories);
 
-            await _memoryRepository.SaveEmbeddingAsync(memoryId, EmbeddingModel, p.embedding);
+            await _memoryRepository.SaveEmbeddingAsync(memoryId, _embeddingGenerator.GetModelName(), p.embedding);
 
             if (_entityRepository != null)
             {

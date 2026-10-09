@@ -1,24 +1,45 @@
-using System.Text;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
+using System.Threading.Tasks;
+using Kairo.Application.Abstractions.Providers;
 using Kairo.Application.Abstractions.Services;
-using Kairo.Application.DTOs;
 using Kairo.Application.Configuration;
+using Kairo.Application.DTOs;
+using Kairo.Infrastructure.Providers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Kairo.Infrastructure.Services;
 
-public class MistralMemoryRelevanceEvaluator
-    : IMemoryRelevanceEvaluator
+/// <summary>
+/// Phase 4B: Mistral-backed memory relevance evaluator.
+/// Determines which retrieved candidate memories are relevant to the query.
+/// Delegates raw chat completion transport to ILlmProvider while preserving prompt engineering and JSON parsing.
+/// </summary>
+public class MistralMemoryRelevanceEvaluator : IMemoryRelevanceEvaluator
 {
-    private readonly HttpClient _httpClient;
-    private readonly MistralOptions _options;
+    private readonly ILlmProvider _llmProvider;
 
+    /// <summary>
+    /// Modern constructor resolving ILlmProvider via DI.
+    /// </summary>
+    [ActivatorUtilitiesConstructor]
+    public MistralMemoryRelevanceEvaluator(ILlmProvider llmProvider)
+    {
+        _llmProvider = llmProvider ?? throw new ArgumentNullException(nameof(llmProvider));
+    }
+
+    /// <summary>
+    /// Backward-compatible constructor for existing callers and legacy test fixtures.
+    /// </summary>
     public MistralMemoryRelevanceEvaluator(
         HttpClient httpClient,
         IOptions<MistralOptions> options)
+        : this(new MistralLlmProvider(httpClient, options))
     {
-        _httpClient = httpClient;
-        _options = options.Value;
     }
 
     public async Task<List<RetrievedMemory>> EvaluateAsync(
@@ -53,89 +74,35 @@ public class MistralMemoryRelevanceEvaluator
         var userPrompt =
             JsonSerializer.Serialize(promptData);
 
-        var requestBody = new
-        {
-            model = _options.Model,
-            temperature = 0,
-            response_format = new
+        var systemPrompt = """
+            You are a memory relevance evaluator.
+
+            Your job is to determine which stored memories are genuinely useful, relevant, or provide helpful context for answering the user's query.
+
+            A memory is relevant if:
+            - It directly answers, informs, or relates to the query.
+            - It represents a paraphrase, equivalent question, user preference, relevant fact, decision, or necessary context.
+
+            Reject memories that are completely unrelated or merely share coincidental words without meaningful connection.
+
+            If no memory is relevant, return an empty list.
+
+            Return valid JSON using exactly this structure:
+
             {
-                type = "json_object"
-            },
-            messages = new object[]
-            {
-                new
-                {
-                    role = "system",
-                    content =
-                        """
-                        You are a memory relevance evaluator.
-
-                        Your job is to determine which stored memories are genuinely useful, relevant, or provide helpful context for answering the user's query.
-
-                        A memory is relevant if:
-                        - It directly answers, informs, or relates to the query.
-                        - It represents a paraphrase, equivalent question, user preference, relevant fact, decision, or necessary context.
-
-                        Reject memories that are completely unrelated or merely share coincidental words without meaningful connection.
-
-                        If no memory is relevant, return an empty list.
-
-                        Return valid JSON using exactly this structure:
-
-                        {
-                          "relevantMemoryIds": [1, 2]
-                        }
-                        """
-                },
-                new
-                {
-                    role = "user",
-                    content = userPrompt
-                }
+              "relevantMemoryIds": [1, 2]
             }
+            """;
+
+        var request = new LlmCompletionRequest
+        {
+            SystemPrompt = systemPrompt,
+            UserPrompt = userPrompt,
+            Temperature = 0.0,
+            EnforceJsonOutput = true
         };
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://api.mistral.ai/v1/chat/completions");
-
-        request.Headers.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue(
-                "Bearer",
-                _options.ApiKey);
-
-        var json =
-            JsonSerializer.Serialize(requestBody);
-
-        request.Content =
-            new StringContent(
-                json,
-                Encoding.UTF8,
-                "application/json");
-
-        using var response =
-            await _httpClient.SendAsync(request);
-
-        var responseContent =
-            await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Mistral relevance evaluation failed. " +
-                $"Status: {(int)response.StatusCode}. " +
-                $"Response: {responseContent}");
-        }
-
-        using var document =
-            JsonDocument.Parse(responseContent);
-
-        var content =
-            document.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
+        var content = await _llmProvider.GenerateChatCompletionAsync(request);
 
         if (string.IsNullOrWhiteSpace(content))
         {

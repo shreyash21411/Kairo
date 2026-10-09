@@ -1,23 +1,29 @@
-using System.Net.Http.Headers;
-using System.Text;
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Kairo.Application.Abstractions.Providers;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.Configuration;
 using Kairo.Application.DTOs;
+using Kairo.Infrastructure.Providers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Kairo.Infrastructure.Services;
 
 /// <summary>
-/// Phase 1: Mistral-backed entity extraction service.
-/// Extracts named entities from memory content text.
+/// Phase 1 & 4B: Mistral-backed entity extraction service.
+/// Extracts named entities and relationships from memory content text.
+/// Delegates raw chat completion transport to ILlmProvider while retaining all prompt engineering and entity normalization.
 /// Never throws on extraction failure — returns empty list.
 /// </summary>
 public class MistralEntityExtractionService : IEntityExtractionService
 {
-    private readonly HttpClient _httpClient;
-    private readonly MistralOptions _options;
+    private readonly ILlmProvider _llmProvider;
     private readonly ILogger<MistralEntityExtractionService> _logger;
 
     private static readonly HashSet<string> ValidEntityTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -26,14 +32,27 @@ public class MistralEntityExtractionService : IEntityExtractionService
         "LOCATION", "PROJECT", "COMPANY", "TOOL", "CONCEPT"
     };
 
+    /// <summary>
+    /// Modern constructor resolving ILlmProvider via DI.
+    /// </summary>
+    [ActivatorUtilitiesConstructor]
+    public MistralEntityExtractionService(
+        ILlmProvider llmProvider,
+        ILogger<MistralEntityExtractionService> logger)
+    {
+        _llmProvider = llmProvider ?? throw new ArgumentNullException(nameof(llmProvider));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Backward-compatible constructor for existing callers and legacy test fixtures.
+    /// </summary>
     public MistralEntityExtractionService(
         HttpClient httpClient,
         IOptions<MistralOptions> options,
         ILogger<MistralEntityExtractionService> logger)
+        : this(new MistralLlmProvider(httpClient, options), logger)
     {
-        _httpClient = httpClient;
-        _options = options.Value;
-        _logger = logger;
     }
 
     public async Task<List<ExtractedEntity>> ExtractAsync(
@@ -92,49 +111,17 @@ public class MistralEntityExtractionService : IEntityExtractionService
             }
             """;
 
-        var requestBody = new
+        var request = new LlmCompletionRequest
         {
-            model = _options.Model,
-            temperature = 0.0,
-            response_format = new { type = "json_object" },
-            messages = new[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user",   content = text }
-            }
+            SystemPrompt = systemPrompt,
+            UserPrompt = text,
+            Temperature = 0.0,
+            EnforceJsonOutput = true
         };
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://api.mistral.ai/v1/chat/completions");
-
-        request.Headers.Authorization =
-            new AuthenticationHeaderValue("Bearer", _options.ApiKey);
-
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody),
-            Encoding.UTF8,
-            "application/json");
 
         try
         {
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning(
-                    "[EntityExtraction] Mistral API returned {Status}. Returning empty entities.",
-                    (int)response.StatusCode);
-                return new FullExtractionResult();
-            }
-
-            using var document = JsonDocument.Parse(responseContent);
-            var content = document.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
+            var content = await _llmProvider.GenerateChatCompletionAsync(request, cancellationToken);
 
             if (string.IsNullOrWhiteSpace(content))
                 return new FullExtractionResult();
@@ -181,12 +168,16 @@ public class MistralEntityExtractionService : IEntityExtractionService
                         string.IsNullOrWhiteSpace(r.RelationshipType))
                         continue;
 
+                    var conf = r.Confidence ?? 0.8;
+                    if (conf < 0.0) conf = 0.0;
+                    if (conf > 1.0) conf = 1.0;
+
                     result.Relationships.Add(new ExtractedRelationship
                     {
                         Source           = r.Source.Trim(),
                         Target           = r.Target.Trim(),
                         RelationshipType = r.RelationshipType.Trim().ToLowerInvariant(),
-                        Confidence       = r.Confidence.HasValue ? Math.Clamp(r.Confidence.Value, 0.0, 1.0) : 1.0
+                        Confidence       = conf
                     });
                 }
             }

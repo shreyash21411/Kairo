@@ -113,10 +113,12 @@ public class MemoryRetrievalService
         // between the query and every memory.
         var results = new List<RetrievedMemory>();
         var now = DateTime.UtcNow;
+        var activeModel = _embeddingGenerator.GetModelName();
 
         foreach (var memory in existingMemories)
         {
-            if (memory.Dimensions != queryEmbedding.Length)
+            if (memory.Dimensions != queryEmbedding.Length ||
+                !EmbeddingGeneratorExtensions.IsModelCompatible(memory.Model, activeModel))
             {
                 continue;
             }

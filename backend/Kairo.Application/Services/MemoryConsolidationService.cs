@@ -50,7 +50,8 @@ public class MemoryConsolidationService : IMemoryConsolidationService
             var memoryA = memories[i];
             var memoryB = memories[j];
 
-            if (memoryA.Dimensions != memoryB.Dimensions)
+            if (memoryA.Dimensions != memoryB.Dimensions ||
+                !EmbeddingGeneratorExtensions.IsModelCompatible(memoryA.Model, memoryB.Model ?? EmbeddingGeneratorExtensions.DefaultModelName))
             {
                 continue;
             }

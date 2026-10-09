@@ -153,6 +153,7 @@ public class HybridRetrievalService
         }
 
         scopeMemories ??= new List<MemoryEmbeddingData>();
+        var activeModel = _embeddingGenerator.GetModelName();
 
         if (scopeMemories != null)
         {
@@ -160,7 +161,9 @@ public class HybridRetrievalService
             {
                 memoryDetailsMap[mem.MemoryId] = (mem.Content, mem.MemoryType, mem.CreatedAt, mem.UpdatedAt, mem.OccurredAt, mem.Metadata, mem.ExpiresAt, mem.Categories);
 
-                if (queryEmbedding.Length > 0 && mem.Dimensions == queryEmbedding.Length)
+                if (queryEmbedding.Length > 0 &&
+                    mem.Dimensions == queryEmbedding.Length &&
+                    EmbeddingGeneratorExtensions.IsModelCompatible(mem.Model, activeModel))
                 {
                     var sim = _similarityService.CalculateCosineSimilarity(queryEmbedding, mem.Embedding);
                     semanticScores[mem.MemoryId] = sim;

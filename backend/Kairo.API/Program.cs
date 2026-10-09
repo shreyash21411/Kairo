@@ -3,9 +3,11 @@ using Kairo.Infrastructure.Persistence;
 using Kairo.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Kairo.Application.Abstractions.Services;
+using Kairo.Application.Abstractions.Providers;
 using Kairo.Application.Services;
 using Kairo.Application.Configuration;
 using Kairo.Infrastructure.Services;
+using Kairo.Infrastructure.Providers;
 using Microsoft.Extensions.Options;
 using Kairo.Application.Abstractions.Security;
 using Kairo.API.Security;
@@ -121,21 +123,39 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IMemoryScopeRepository, MemoryScopeRepository>();
 builder.Services.AddScoped<IScopeResolutionService, ScopeResolutionService>();
 
+// ── Phase 4B: Provider Abstraction Layer ──────────────────────────────────────
+builder.Services.Configure<ProviderOptions>(
+    builder.Configuration.GetSection(ProviderOptions.SectionName));
 builder.Services.Configure<MistralOptions>(
     builder.Configuration.GetSection("Mistral"));
-
-builder.Services.AddHttpClient<IMemoryExtractor, MistralMemoryExtractor>();
-
 builder.Services.Configure<MistralEmbeddingOptions>(
     builder.Configuration.GetSection("MistralEmbedding"));
 
-builder.Services.AddHttpClient<
-    IEmbeddingGenerator,
-    MistralEmbeddingGenerator>();
+// Concrete HTTP provider registrations
+builder.Services.AddHttpClient<MistralLlmProvider>();
+builder.Services.AddHttpClient<MistralEmbeddingProvider>();
 
-builder.Services.AddHttpClient<
-    IMemoryRelevanceEvaluator,
-    MistralMemoryRelevanceEvaluator>();
+// Validate configured provider names at startup
+var providerOpts = builder.Configuration.GetSection(ProviderOptions.SectionName).Get<ProviderOptions>() ?? new ProviderOptions();
+if (!string.Equals(providerOpts.DefaultLlmProvider, "Mistral", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException($"Configured LLM provider '{providerOpts.DefaultLlmProvider}' is not supported. Supported providers: Mistral.");
+}
+if (!string.Equals(providerOpts.DefaultEmbeddingProvider, "Mistral", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException($"Configured Embedding provider '{providerOpts.DefaultEmbeddingProvider}' is not supported. Supported providers: Mistral.");
+}
+
+// Active provider abstraction bindings
+builder.Services.AddScoped<ILlmProvider>(sp => sp.GetRequiredService<MistralLlmProvider>());
+builder.Services.AddScoped<IEmbeddingProvider>(sp => sp.GetRequiredService<MistralEmbeddingProvider>());
+
+// High-level service adapters delegating to providers
+builder.Services.AddScoped<IEmbeddingGenerator, MistralEmbeddingGenerator>();
+builder.Services.AddScoped<IMemoryExtractor, MistralMemoryExtractor>();
+builder.Services.AddScoped<IMemoryRelevanceEvaluator, MistralMemoryRelevanceEvaluator>();
+builder.Services.AddScoped<IMemoryConsolidationEvaluator, MistralMemoryConsolidationEvaluator>();
+builder.Services.AddScoped<IEntityExtractionService, MistralEntityExtractionService>();
 
 builder.Services.AddScoped<SemanticSimilarityService>();
 builder.Services.AddScoped<MemoryRetrievalService>();
@@ -149,16 +169,10 @@ builder.Services.AddScoped<IMemoryIngestionService, MemoryIngestionService>();
 // ── Phase A: Embedding Backfill (Task 1) ──────────────────────────────────
 builder.Services.AddScoped<IEmbeddingBackfillService, EmbeddingBackfillService>();
 
-// ── Phase A: Mistral Consolidation Evaluator (Task 3) ────────────────────
-builder.Services.AddHttpClient<
-    IMemoryConsolidationEvaluator,
-    MistralMemoryConsolidationEvaluator>();
-
 // ── Phase A: Full Consolidation Pipeline (Tasks 3+4) ─────────────────────
 builder.Services.AddScoped<IFullConsolidationService, FullConsolidationService>();
 
 // ── Phase 1 (V2): Multi-dimensional scopes + Entity extraction + Hybrid retrieval ──
-builder.Services.AddHttpClient<IEntityExtractionService, MistralEntityExtractionService>();
 builder.Services.AddScoped<IEntityRepository, EntityRepository>();
 builder.Services.AddScoped<IKeywordSearchRepository, KeywordSearchRepository>();
 builder.Services.AddScoped<HybridRetrievalService>();

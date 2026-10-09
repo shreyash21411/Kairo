@@ -110,10 +110,12 @@ public class ChatProcessingService : IChatProcessingService
 
                 // Step 3: Check semantic similarity.
                 var isSemanticDuplicate = false;
+                var activeModel = _embeddingGenerator.GetModelName();
 
                 foreach (var existing in existingEmbeddings)
                 {
-                    if (existing.Dimensions != embedding.Length)
+                    if (existing.Dimensions != embedding.Length ||
+                        !EmbeddingGeneratorExtensions.IsModelCompatible(existing.Model, activeModel))
                     {
                         continue;
                     }
@@ -248,10 +250,12 @@ public class ChatProcessingService : IChatProcessingService
 
             // Step 3: Semantic duplicate check.
             var isSemanticDuplicate = false;
+            var activeModel = _embeddingGenerator.GetModelName();
 
             foreach (var existing in existingEmbeddings)
             {
-                if (existing.Dimensions != embedding.Length)
+                if (existing.Dimensions != embedding.Length ||
+                    !EmbeddingGeneratorExtensions.IsModelCompatible(existing.Model, activeModel))
                 {
                     continue;
                 }

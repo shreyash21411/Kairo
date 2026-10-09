@@ -1,88 +1,52 @@
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
+using System;
+using System.Net.Http;
+using System.Threading.Tasks;
+using Kairo.Application.Abstractions.Providers;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.Configuration;
+using Kairo.Infrastructure.Providers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Kairo.Infrastructure.Services;
 
-public class MistralEmbeddingGenerator : IEmbeddingGenerator
+/// <summary>
+/// Phase 4B: Adapter implementing IEmbeddingGenerator and IEmbeddingMetadataProvider.
+/// Delegates raw vector generation to the underlying IEmbeddingProvider.
+/// Preserves backward compatibility with legacy HttpClient/Options constructor and existing callers.
+/// </summary>
+public class MistralEmbeddingGenerator : IEmbeddingGenerator, IEmbeddingMetadataProvider
 {
-    private readonly HttpClient _httpClient;
-    private readonly MistralEmbeddingOptions _options;
+    private readonly IEmbeddingProvider _provider;
 
-    public MistralEmbeddingGenerator(
-        HttpClient httpClient,
-        IOptions<MistralEmbeddingOptions> options)
+    public string ModelName => _provider.ModelName;
+    public int ExpectedDimensions => _provider.ExpectedDimensions;
+
+    /// <summary>
+    /// Modern constructor resolving IEmbeddingProvider via DI.
+    /// </summary>
+    [ActivatorUtilitiesConstructor]
+    public MistralEmbeddingGenerator(IEmbeddingProvider provider)
     {
-        _httpClient = httpClient;
-        _options = options.Value;
+        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
     }
 
-    public async Task<float[]> GenerateAsync(string text)
+    /// <summary>
+    /// Backward-compatible constructor for existing callers and legacy test fixtures.
+    /// Internal so the standard DI container sees only one public constructor and avoids
+    /// ambiguity. External callers that previously instantiated directly should use the
+    /// DI-managed constructor via IEmbeddingProvider.
+    /// </summary>
+    internal MistralEmbeddingGenerator(
+        HttpClient httpClient,
+        IOptions<MistralEmbeddingOptions> options)
+        : this(new MistralEmbeddingProvider(httpClient, options))
     {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            throw new ArgumentException(
-                "Text cannot be empty.",
-                nameof(text));
-        }
+    }
 
-        var requestBody = new
-        {
-            model = _options.Model,
-            input = new[]
-            {
-                text
-            }
-        };
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://api.mistral.ai/v1/embeddings");
-
-        request.Headers.Authorization =
-            new AuthenticationHeaderValue(
-                "Bearer",
-                _options.ApiKey);
-
-        var json = JsonSerializer.Serialize(requestBody);
-
-        request.Content = new StringContent(
-            json,
-            Encoding.UTF8,
-            "application/json");
-
-        using var response = await _httpClient.SendAsync(request);
-
-        var responseContent =
-            await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Mistral embedding request failed. " +
-                $"Status: {(int)response.StatusCode}. " +
-                $"Response: {responseContent}");
-        }
-
-        using var document =
-            JsonDocument.Parse(responseContent);
-
-        var embedding =
-            document.RootElement
-                .GetProperty("data")[0]
-                .GetProperty("embedding");
-
-        var result = new float[embedding.GetArrayLength()];
-
-        for (var i = 0; i < result.Length; i++)
-        {
-            result[i] =
-                embedding[i].GetSingle();
-        }
-
-        return result;
+    /// <inheritdoc />
+    public Task<float[]> GenerateAsync(string text)
+    {
+        return _provider.GenerateEmbeddingAsync(text);
     }
 }
