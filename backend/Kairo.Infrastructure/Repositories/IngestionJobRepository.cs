@@ -1,0 +1,213 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Kairo.Application.Abstractions.Persistence;
+using Kairo.Application.DTOs;
+using Kairo.Infrastructure.Persistence;
+using Kairo.Infrastructure.Persistence.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Kairo.Infrastructure.Repositories;
+
+/// <summary>
+/// Phase 4A: EF Core implementation of IIngestionJobRepository.
+/// Implements atomic job creation, atomic concurrency-safe leasing, and recovery.
+/// </summary>
+public class IngestionJobRepository : IIngestionJobRepository
+{
+    private readonly KairoDbContext _dbContext;
+
+    public IngestionJobRepository(KairoDbContext dbContext)
+    {
+        _dbContext = dbContext;
+    }
+
+    /// <inheritdoc />
+    public async Task<Guid> EnqueueJobAsync(
+        MemoryIngestionJobRecord job,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = new MemoryIngestionJob
+        {
+            JobId = job.JobId == Guid.Empty ? Guid.NewGuid() : job.JobId,
+            ProjectId = job.ProjectId,
+            UserId = job.UserId,
+            ScopeId = job.ScopeId,
+            MemoryId = job.MemoryId,
+            JobType = job.JobType,
+            Status = string.IsNullOrWhiteSpace(job.Status) ? "Pending" : job.Status,
+            Payload = job.Payload,
+            Attempts = job.Attempts,
+            MaxAttempts = job.MaxAttempts <= 0 ? 3 : job.MaxAttempts,
+            AvailableAt = job.AvailableAt == default ? DateTime.UtcNow : job.AvailableAt,
+            CreatedAt = job.CreatedAt == default ? DateTime.UtcNow : job.CreatedAt
+        };
+
+        _dbContext.MemoryIngestionJobs.Add(entity);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return entity.JobId;
+    }
+
+    /// <inheritdoc />
+    public async Task<MemoryIngestionJobRecord?> GetJobAsync(
+        Guid jobId,
+        long userId,
+        long projectId,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await _dbContext.MemoryIngestionJobs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                j => j.JobId == jobId && j.UserId == userId && j.ProjectId == projectId,
+                cancellationToken);
+
+        return entity == null ? null : ToRecord(entity);
+    }
+
+    /// <inheritdoc />
+    public async Task<List<MemoryIngestionJobRecord>> ClaimNextJobsAsync(
+        int batchSize,
+        string workerId,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken = default)
+    {
+        if (batchSize <= 0) batchSize = 1;
+
+        var now = DateTime.UtcNow;
+
+        // Query eligible candidates: either Pending or Processing with expired lease.
+        var candidates = await _dbContext.MemoryIngestionJobs
+            .Where(j =>
+                (j.Status == "Pending" || (j.Status == "Processing" && j.LockedUntil != null && j.LockedUntil < now))
+                && j.AvailableAt <= now
+                && j.Attempts < j.MaxAttempts)
+            .OrderBy(j => j.CreatedAt)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        if (candidates.Count == 0)
+        {
+            return new List<MemoryIngestionJobRecord>();
+        }
+
+        var claimedRecords = new List<MemoryIngestionJobRecord>();
+
+        foreach (var job in candidates)
+        {
+            job.Status = "Processing";
+            job.LockOwner = workerId;
+            job.LockedUntil = now.Add(leaseDuration);
+            job.Attempts += 1;
+
+            claimedRecords.Add(ToRecord(job));
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return claimedRecords;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CompleteJobAsync(
+        Guid jobId,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.MemoryIngestionJobs
+            .FirstOrDefaultAsync(j => j.JobId == jobId, cancellationToken);
+
+        if (job == null) return false;
+
+        job.Status = "Completed";
+        job.CompletedAt = DateTime.UtcNow;
+        job.LockedUntil = null;
+        job.LockOwner = null;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> FailJobAsync(
+        Guid jobId,
+        string error,
+        bool canRetry,
+        TimeSpan? retryDelay = null,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.MemoryIngestionJobs
+            .FirstOrDefaultAsync(j => j.JobId == jobId, cancellationToken);
+
+        if (job == null) return false;
+
+        var sanitizedError = string.IsNullOrWhiteSpace(error)
+            ? "Unknown error occurred"
+            : (error.Length > 2000 ? error.Substring(0, 2000) : error);
+
+        job.LastError = sanitizedError;
+
+        if (canRetry && job.Attempts < job.MaxAttempts)
+        {
+            job.Status = "Pending";
+            job.AvailableAt = DateTime.UtcNow.Add(retryDelay ?? TimeSpan.FromSeconds(5));
+            job.LockedUntil = null;
+            job.LockOwner = null;
+        }
+        else
+        {
+            job.Status = "Failed";
+            job.CompletedAt = DateTime.UtcNow;
+            job.LockedUntil = null;
+            job.LockOwner = null;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CancelJobAsync(
+        Guid jobId,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.MemoryIngestionJobs
+            .FirstOrDefaultAsync(j => j.JobId == jobId, cancellationToken);
+
+        if (job == null) return false;
+
+        job.Status = "Cancelled";
+        job.LastError = string.IsNullOrWhiteSpace(reason)
+            ? "Cancelled"
+            : (reason.Length > 2000 ? reason.Substring(0, 2000) : reason);
+        job.CompletedAt = DateTime.UtcNow;
+        job.LockedUntil = null;
+        job.LockOwner = null;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private static MemoryIngestionJobRecord ToRecord(MemoryIngestionJob entity) =>
+        new()
+        {
+            JobId = entity.JobId,
+            ProjectId = entity.ProjectId,
+            UserId = entity.UserId,
+            ScopeId = entity.ScopeId,
+            MemoryId = entity.MemoryId,
+            JobType = entity.JobType,
+            Status = entity.Status,
+            Payload = entity.Payload,
+            Attempts = entity.Attempts,
+            MaxAttempts = entity.MaxAttempts,
+            AvailableAt = entity.AvailableAt,
+            LockedUntil = entity.LockedUntil,
+            LockOwner = entity.LockOwner,
+            LastError = entity.LastError,
+            CreatedAt = entity.CreatedAt,
+            CompletedAt = entity.CompletedAt
+        };
+}

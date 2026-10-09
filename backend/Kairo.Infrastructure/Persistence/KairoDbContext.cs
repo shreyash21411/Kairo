@@ -38,6 +38,8 @@ public partial class KairoDbContext : DbContext
 
     public virtual DbSet<MemoryVersions> MemoryVersions { get; set; }
 
+    public virtual DbSet<MemoryIngestionJob> MemoryIngestionJobs { get; set; }
+
     public virtual DbSet<Messages> Messages { get; set; }
 
     public virtual DbSet<Projects> Projects { get; set; }
@@ -467,6 +469,44 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
                 .HasDefaultValueSql("(sysutcdatetime())", "DF_Users_UpdatedAt");
+        });
+
+        modelBuilder.Entity<MemoryIngestionJob>(entity =>
+        {
+            entity.HasKey(e => e.JobId);
+
+            entity.HasIndex(e => new { e.Status, e.AvailableAt, e.LockedUntil }, "IX_MemoryIngestionJobs_Claiming");
+            entity.HasIndex(e => new { e.UserId, e.ProjectId }, "IX_MemoryIngestionJobs_User_Project");
+            entity.HasIndex(e => e.MemoryId, "IX_MemoryIngestionJobs_MemoryId");
+
+            entity.Property(e => e.JobType).HasMaxLength(50);
+            entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue("Pending");
+            entity.Property(e => e.LockOwner).HasMaxLength(128);
+            entity.Property(e => e.LastError).HasMaxLength(2048);
+            entity.Property(e => e.AvailableAt).HasPrecision(3);
+            entity.Property(e => e.LockedUntil).HasPrecision(3);
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.CompletedAt).HasPrecision(3);
+
+            entity.HasOne(d => d.Project).WithMany()
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MemoryIngestionJobs_Projects");
+
+            entity.HasOne(d => d.User).WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MemoryIngestionJobs_Users");
+
+            entity.HasOne(d => d.Memory).WithMany()
+                .HasForeignKey(d => d.MemoryId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_MemoryIngestionJobs_Memories");
+
+            entity.HasOne(d => d.Scope).WithMany()
+                .HasForeignKey(d => d.ScopeId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_MemoryIngestionJobs_MemoryScopes");
         });
 
         OnModelCreatingPartial(modelBuilder);

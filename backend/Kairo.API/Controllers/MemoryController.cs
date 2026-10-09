@@ -24,17 +24,20 @@ public class MemoryController : ControllerBase
     private readonly IMemoryIngestionService _ingestionService;
     private readonly IApiKeyContext _apiKeyContext;
     private readonly HybridRetrievalService _hybridRetrieval;
+    private readonly IMemoryJobService? _memoryJobService;
 
     public MemoryController(
         IMemoryService memoryService,
         IMemoryIngestionService ingestionService,
         IApiKeyContext apiKeyContext,
-        HybridRetrievalService hybridRetrieval)
+        HybridRetrievalService hybridRetrieval,
+        IMemoryJobService? memoryJobService = null)
     {
         _memoryService    = memoryService;
         _ingestionService = ingestionService;
         _apiKeyContext    = apiKeyContext;
         _hybridRetrieval  = hybridRetrieval;
+        _memoryJobService = memoryJobService;
     }
 
     // ── POST /api/v1/memories ────────────────────────────────────────────────
@@ -50,17 +53,38 @@ public class MemoryController : ControllerBase
     [ProducesResponseType(
         typeof(MemoryDuplicateResult),
         StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(AsyncJobAcceptedResponse),
+        StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> CreateMemory(
-        [FromBody] CreateMemoryRequest request)
+        [FromBody] CreateMemoryRequest request,
+        [FromQuery] string? mode = null)
     {
         try
         {
             var userId = _apiKeyContext.UserId;
             var projectId = _apiKeyContext.ProjectId;
+
+            bool isAsync = string.Equals(mode, "async", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Request?.Headers["X-Kairo-Mode"], "async", StringComparison.OrdinalIgnoreCase);
+
+            if (isAsync && _memoryJobService != null)
+            {
+                var asyncResult = await _memoryJobService.EnqueueAsyncCreateMemoryAsync(
+                    request,
+                    userId,
+                    projectId,
+                    HttpContext.RequestAborted);
+
+                return AcceptedAtAction(
+                    nameof(GetJobStatus),
+                    new { jobId = asyncResult.JobId },
+                    asyncResult);
+            }
 
             var (memory, duplicate) =
                 await _memoryService.CreateMemoryAsync(
@@ -454,11 +478,15 @@ public class MemoryController : ControllerBase
     [ProducesResponseType(
         typeof(MemoryIngestionResponse),
         StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(AsyncJobAcceptedResponse),
+        StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> IngestConversation(
-        [FromBody] IngestConversationRequest request)
+        [FromBody] IngestConversationRequest request,
+        [FromQuery] string? mode = null)
     {
         // ── Controller-level validation ────────────────────────────────────────
 
@@ -501,12 +529,29 @@ public class MemoryController : ControllerBase
             }
         }
 
-        // ── Delegate to ingestion service ─────────────────────────────────────
+        // ── Delegate to ingestion or async job service ────────────────────────
 
         try
         {
             var userId    = _apiKeyContext.UserId;
             var projectId = _apiKeyContext.ProjectId;
+
+            bool isAsync = string.Equals(mode, "async", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Request?.Headers["X-Kairo-Mode"], "async", StringComparison.OrdinalIgnoreCase);
+
+            if (isAsync && _memoryJobService != null)
+            {
+                var asyncResult = await _memoryJobService.EnqueueAsyncIngestConversationAsync(
+                    request,
+                    userId,
+                    projectId,
+                    HttpContext.RequestAborted);
+
+                return AcceptedAtAction(
+                    nameof(GetJobStatus),
+                    new { jobId = asyncResult.JobId },
+                    asyncResult);
+            }
 
             var result = await _ingestionService.IngestAsync(
                 request,
@@ -531,6 +576,53 @@ public class MemoryController : ControllerBase
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
                 new { message = "An unexpected error occurred during ingestion." });
+        }
+    }
+
+    // ── Phase 4A: Job Status Endpoint ─────────────────────────────────────────
+
+    /// <summary>
+    /// Retrieves the execution status of a background memory processing job.
+    /// Access is authorized to the job's owning user and project.
+    /// </summary>
+    [HttpGet("jobs/{jobId:guid}")]
+    [ProducesResponseType(typeof(JobStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetJobStatus([FromRoute] Guid jobId)
+    {
+        try
+        {
+            var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
+
+            if (_memoryJobService == null)
+            {
+                return NotFound(new { message = $"Job {jobId} not found." });
+            }
+
+            var status = await _memoryJobService.GetJobStatusAsync(
+                jobId,
+                userId,
+                projectId,
+                HttpContext.RequestAborted);
+
+            if (status == null)
+            {
+                return NotFound(new
+                {
+                    message = $"Job {jobId} not found or does not belong to the authenticated user/project."
+                });
+            }
+
+            return Ok(status);
+        }
+        catch (Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "An unexpected error occurred while querying job status." });
         }
     }
 

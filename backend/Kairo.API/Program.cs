@@ -163,6 +163,11 @@ builder.Services.AddScoped<IEntityRepository, EntityRepository>();
 builder.Services.AddScoped<IKeywordSearchRepository, KeywordSearchRepository>();
 builder.Services.AddScoped<HybridRetrievalService>();
 
+// ── Phase 4A: Async Ingestion & Background Job Worker ─────────────────────
+builder.Services.AddScoped<IIngestionJobRepository, IngestionJobRepository>();
+builder.Services.AddScoped<IMemoryJobService, MemoryJobService>();
+builder.Services.AddHostedService<Kairo.API.Services.MemoryIngestionWorker>();
+
 
 // ── Phase 9: MCP Integration Layer ────────────────────────────────────────
 // Registers the MCP server (Streamable HTTP transport) and discovers Kairo
