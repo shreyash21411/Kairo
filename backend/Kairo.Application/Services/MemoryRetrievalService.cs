@@ -29,7 +29,29 @@ public class MemoryRetrievalService
         int topK = 5,
         long? scopeId = null)
     {
-        return RetrieveAsync(userId, query, topK, scopeId, null, null, false);
+        return RetrieveAsync(userId, query, topK, scopeId, null, null, false, null);
+    }
+
+    public Task<List<RetrievedMemory>> RetrieveAsync(
+        long userId,
+        string query,
+        int topK,
+        long? scopeId,
+        List<string>? categoryFilters)
+    {
+        return RetrieveAsync(userId, query, topK, scopeId, null, null, false, categoryFilters);
+    }
+
+    public Task<List<RetrievedMemory>> RetrieveAsync(
+        long userId,
+        string query,
+        int topK,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        bool recencyBoost = false)
+    {
+        return RetrieveAsync(userId, query, topK, scopeId, temporalFilter, metadataFilters, recencyBoost, null);
     }
 
     public async Task<List<RetrievedMemory>> RetrieveAsync(
@@ -39,7 +61,8 @@ public class MemoryRetrievalService
         long? scopeId,
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
-        bool recencyBoost = false)
+        bool recencyBoost,
+        List<string>? categoryFilters)
     {
         if (userId <= 0)
         {
@@ -67,11 +90,22 @@ public class MemoryRetrievalService
             await _embeddingGenerator.GenerateAsync(query);
 
         // Step 2: Load active memory embeddings
-        // for this user (filtered by ScopeId, temporalFilter, and metadataFilters if provided).
-        var hasFilters = temporalFilter != null || (metadataFilters != null && metadataFilters.Count > 0);
-        var existingMemories = hasFilters
-            ? await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters)
-            : await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+        // for this user (filtered by ScopeId, temporalFilter, metadataFilters, and categoryFilters if provided).
+        var hasCategoryFilter = categoryFilters != null && categoryFilters.Count > 0;
+        var hasMemFilters = temporalFilter != null || (metadataFilters != null && metadataFilters.Count > 0);
+        List<MemoryEmbeddingData> existingMemories;
+        if (hasCategoryFilter)
+        {
+            existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+        }
+        else if (hasMemFilters)
+        {
+            existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters);
+        }
+        else
+        {
+            existingMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+        }
 
         existingMemories ??= new List<MemoryEmbeddingData>();
 
@@ -83,6 +117,11 @@ public class MemoryRetrievalService
         foreach (var memory in existingMemories)
         {
             if (memory.Dimensions != queryEmbedding.Length)
+            {
+                continue;
+            }
+
+            if (!ExpirationHelper.IsNotExpired(memory.ExpiresAt, now))
             {
                 continue;
             }
@@ -109,7 +148,9 @@ public class MemoryRetrievalService
                 CreatedAt = memory.CreatedAt,
                 UpdatedAt = memory.UpdatedAt,
                 OccurredAt = memory.OccurredAt,
-                Metadata = memory.Metadata
+                Metadata = memory.Metadata,
+                ExpiresAt = memory.ExpiresAt,
+                Categories = memory.Categories
             });
         }
 

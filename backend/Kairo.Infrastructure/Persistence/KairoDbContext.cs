@@ -30,6 +30,8 @@ public partial class KairoDbContext : DbContext
 
     public virtual DbSet<MemoryEntities> MemoryEntities { get; set; }
 
+    public virtual DbSet<MemoryCategory> MemoryCategories { get; set; }
+
     public virtual DbSet<MemoryScopes> MemoryScopes { get; set; }
 
     public virtual DbSet<MemorySettingHistory> MemorySettingHistory { get; set; }
@@ -144,6 +146,11 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.Metadata);
             entity.HasIndex(e => e.OccurredAt, "IX_Memories_OccurredAt");
             entity.HasIndex(e => e.CreatedAt, "IX_Memories_CreatedAt");
+
+            // Phase 3: ExpiresAt
+            entity.Property(e => e.ExpiresAt).HasPrecision(3);
+            entity.HasIndex(e => e.ExpiresAt, "IX_Memories_ExpiresAt");
+            entity.HasIndex(e => new { e.UserId, e.IsActive, e.ExpiresAt }, "IX_Memories_Active_ExpiresAt");
 
             entity.HasOne(d => d.Scope).WithMany(p => p.Memories)
                 .HasForeignKey(d => d.ScopeId)
@@ -312,6 +319,25 @@ public partial class KairoDbContext : DbContext
                 .HasForeignKey(d => d.MemoryId)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_RelationshipEvidence_Memories");
+        });
+
+        // ── Phase 3: MemoryCategories ────────────────────────────────────────
+        modelBuilder.Entity<MemoryCategory>(entity =>
+        {
+            entity.ToTable("MemoryCategories");
+            entity.HasKey(e => e.MemoryCategoryId);
+
+            entity.HasIndex(e => e.MemoryId, "IX_MemoryCategories_MemoryId");
+            entity.HasIndex(e => e.Category, "IX_MemoryCategories_Category");
+            entity.HasIndex(e => new { e.MemoryId, e.Category }, "UX_MemoryCategories_Memory_Category").IsUnique();
+
+            entity.Property(e => e.Category).HasMaxLength(64);
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Memory).WithMany(p => p.MemoryCategories)
+                .HasForeignKey(d => d.MemoryId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MemoryCategories_Memories");
         });
 
         modelBuilder.Entity<MemorySettingHistory>(entity =>

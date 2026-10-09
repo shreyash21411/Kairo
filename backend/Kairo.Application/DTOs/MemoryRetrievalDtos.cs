@@ -28,4 +28,10 @@ public class RetrievedMemory
 
     /// <summary>Phase 2: Arbitrary application-defined metadata JSON.</summary>
     public string? Metadata { get; set; }
+
+    /// <summary>Phase 3: Expiration timestamp in UTC (optional). NULL = no expiration.</summary>
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>Phase 3: Extensible categories assigned to this memory.</summary>
+    public List<string> Categories { get; set; } = new();
 }

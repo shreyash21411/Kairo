@@ -386,6 +386,7 @@ public class MemoryController : ControllerBase
 
                 int depth = request.GraphDepth.GetValueOrDefault(1);
                 var metadataConditions = request.GetEffectiveMetadataFilters();
+                var effectiveCategories = request.GetEffectiveCategories();
                 var hybridResult = await _hybridRetrieval.RetrieveWithRelationsAsync(
                     userId,
                     projectId,
@@ -396,6 +397,7 @@ public class MemoryController : ControllerBase
                     metadataFilters: metadataConditions,
                     recencyBoost: request.RecencyBoost.GetValueOrDefault(false),
                     graphDepth: depth,
+                    categoryFilters: effectiveCategories.Count > 0 ? effectiveCategories : null,
                     cancellationToken: HttpContext.RequestAborted);
 
                 return Ok(new MemorySearchResponse
@@ -529,6 +531,123 @@ public class MemoryController : ControllerBase
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
                 new { message = "An unexpected error occurred during ingestion." });
+        }
+    }
+
+    // ── Phase 3: Batch Endpoints ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a batch of memories atomically for the authenticated user and project.
+    /// </summary>
+    [HttpPost("batch")]
+    [ProducesResponseType(typeof(BatchCreateResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> BatchCreate([FromBody] BatchCreateMemoryRequest request)
+    {
+        try
+        {
+            var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
+
+            var result = await _memoryService.BatchCreateMemoriesAsync(
+                request,
+                userId,
+                projectId,
+                HttpContext.RequestAborted);
+
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "An unexpected error occurred during batch creation." });
+        }
+    }
+
+    /// <summary>
+    /// Updates a batch of memories for the authenticated user and project.
+    /// </summary>
+    [HttpPut("batch")]
+    [ProducesResponseType(typeof(BatchUpdateResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> BatchUpdate([FromBody] BatchUpdateMemoryRequest request)
+    {
+        try
+        {
+            var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
+
+            var result = await _memoryService.BatchUpdateMemoriesAsync(
+                request,
+                userId,
+                projectId,
+                HttpContext.RequestAborted);
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "An unexpected error occurred during batch update." });
+        }
+    }
+
+    /// <summary>
+    /// Soft-deletes a batch of memories for the authenticated user and project.
+    /// </summary>
+    [HttpDelete("batch")]
+    [ProducesResponseType(typeof(BatchDeleteResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> BatchDelete([FromBody] BatchDeleteMemoryRequest request)
+    {
+        try
+        {
+            var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
+
+            var result = await _memoryService.BatchDeleteMemoriesAsync(
+                request,
+                userId,
+                projectId,
+                HttpContext.RequestAborted);
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "An unexpected error occurred during batch delete." });
         }
     }
 }

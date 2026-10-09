@@ -29,6 +29,9 @@ public partial class Memories
     /// <summary>Phase 2: Arbitrary application-defined metadata JSON.</summary>
     public string? Metadata { get; set; }
 
+    /// <summary>Phase 3: Expiration timestamp in UTC (optional). NULL = no expiration.</summary>
+    public DateTime? ExpiresAt { get; set; }
+
     public virtual ICollection<MemoryEmbeddings> MemoryEmbeddings { get; set; } = new List<MemoryEmbeddings>();
 
     public virtual ICollection<MemoryVersions> MemoryVersions { get; set; } = new List<MemoryVersions>();
@@ -38,6 +41,9 @@ public partial class Memories
 
     /// <summary>Phase 2: Graph relationship evidence linked to this memory.</summary>
     public virtual ICollection<RelationshipEvidence> RelationshipEvidence { get; set; } = new List<RelationshipEvidence>();
+
+    /// <summary>Phase 3: Extensible categories assigned to this memory.</summary>
+    public virtual ICollection<MemoryCategory> MemoryCategories { get; set; } = new List<MemoryCategory>();
 
     public virtual MemoryScopes? Scope { get; set; }
 

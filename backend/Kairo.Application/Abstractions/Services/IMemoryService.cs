@@ -68,4 +68,31 @@ public interface IMemoryService
         long userId,
         long? projectId = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 3: Atomically creates a batch of memories for the authenticated user and project.
+    /// </summary>
+    Task<BatchCreateResponse> BatchCreateMemoriesAsync(
+        BatchCreateMemoryRequest request,
+        long userId,
+        long projectId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 3: Updates a batch of memories belonging to the authenticated user and project.
+    /// </summary>
+    Task<BatchUpdateResponse> BatchUpdateMemoriesAsync(
+        BatchUpdateMemoryRequest request,
+        long userId,
+        long projectId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 3: Soft-deletes a batch of memories belonging to the authenticated user and project.
+    /// </summary>
+    Task<BatchDeleteResponse> BatchDeleteMemoriesAsync(
+        BatchDeleteMemoryRequest request,
+        long userId,
+        long projectId,
+        CancellationToken cancellationToken = default);
 }

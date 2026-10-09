@@ -54,6 +54,16 @@ export type {
     MetadataFilterCondition,
     // Phase 2: Graph relations
     GraphRelation,
+    // Phase 3: Batch operations & responses
+    BatchCreateMemoryItem,
+    BatchCreateMemoriesRequest,
+    BatchOperationError,
+    BatchCreateResponse,
+    BatchUpdateMemoryItem,
+    BatchUpdateMemoriesRequest,
+    BatchUpdateResponse,
+    BatchDeleteMemoriesRequest,
+    BatchDeleteResponse,
     // Phase 4: Conversational Ingestion
     MemoryMessage,
     IngestRequest,

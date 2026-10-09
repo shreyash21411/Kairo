@@ -3,6 +3,12 @@ import { KairoValidationError } from "./exceptions";
 import {
     _DuplicateResult,
     _MemoryListResponse,
+    BatchCreateMemoriesRequest,
+    BatchCreateResponse,
+    BatchUpdateMemoriesRequest,
+    BatchUpdateResponse,
+    BatchDeleteMemoriesRequest,
+    BatchDeleteResponse,
     CreateMemoryRequest,
     CreateMemoryResult,
     DeleteMemoryResult,
@@ -106,6 +112,19 @@ export class MemoryResource {
         }
         if (request.metadata !== undefined && request.metadata !== null) {
             payload.metadata = request.metadata;
+        }
+        // Phase 3 fields
+        if (request.expiresAt !== undefined && request.expiresAt !== null) {
+            payload.expiresAt = request.expiresAt;
+        }
+        if (request.ttl !== undefined && request.ttl !== null) {
+            payload.ttl = request.ttl;
+        }
+        if (request.category !== undefined && request.category !== null) {
+            payload.category = request.category;
+        }
+        if (request.categories !== undefined && request.categories !== null) {
+            payload.categories = request.categories;
         }
 
         // The backend accepts the JSON field name 'memoryType' and 'actorId' (camelCase).
@@ -247,6 +266,19 @@ export class MemoryResource {
         if (request.metadata !== undefined) {
             updatePayload.metadata = request.metadata;
         }
+        // Phase 3 fields
+        if (request.expiresAt !== undefined) {
+            updatePayload.expiresAt = request.expiresAt;
+        }
+        if (request.ttl !== undefined) {
+            updatePayload.ttl = request.ttl;
+        }
+        if (request.category !== undefined) {
+            updatePayload.category = request.category;
+        }
+        if (request.categories !== undefined) {
+            updatePayload.categories = request.categories;
+        }
 
         return this._client.request<Memory>(
             "PUT",
@@ -371,6 +403,13 @@ export class MemoryResource {
         if (request.graphDepth !== undefined && request.graphDepth !== null) {
             payload.graphDepth = request.graphDepth;
         }
+        // Phase 3 category filters
+        if (request.category !== undefined && request.category !== null) {
+            payload.category = request.category;
+        }
+        if (request.categories !== undefined && request.categories !== null) {
+            payload.categories = request.categories;
+        }
 
         const raw = await this._client.request<MemorySearchResponse>(
             "POST",
@@ -480,5 +519,73 @@ export class MemoryResource {
             extractedCount: data?.extractedCount ?? 0,
             memories: data?.memories ?? [],
         };
+    }
+
+    // ── Phase 3: Batch Operations ─────────────────────────────────────────────
+
+    /**
+     * Create multiple memories atomically in a single request.
+     * Calls `POST /api/v1/memories/batch`.
+     */
+    async batchCreate(request: BatchCreateMemoriesRequest): Promise<BatchCreateResponse> {
+        if (!request || !Array.isArray(request.memories)) {
+            throw new KairoValidationError("memories array must be provided.", 400);
+        }
+        if (request.memories.length === 0) {
+            throw new KairoValidationError("memories array must not be empty.", 400);
+        }
+        if (request.memories.length > 100) {
+            throw new KairoValidationError("Batch size cannot exceed 100.", 400);
+        }
+
+        return this._client.request<BatchCreateResponse>(
+            "POST",
+            "/api/v1/memories/batch",
+            request
+        );
+    }
+
+    /**
+     * Update multiple memories in a single request.
+     * Calls `PUT /api/v1/memories/batch`.
+     */
+    async batchUpdate(request: BatchUpdateMemoriesRequest): Promise<BatchUpdateResponse> {
+        if (!request || !Array.isArray(request.memories)) {
+            throw new KairoValidationError("memories array must be provided.", 400);
+        }
+        if (request.memories.length === 0) {
+            throw new KairoValidationError("memories array must not be empty.", 400);
+        }
+        if (request.memories.length > 100) {
+            throw new KairoValidationError("Batch size cannot exceed 100.", 400);
+        }
+
+        return this._client.request<BatchUpdateResponse>(
+            "PUT",
+            "/api/v1/memories/batch",
+            request
+        );
+    }
+
+    /**
+     * Soft-delete multiple memories in a single request.
+     * Calls `DELETE /api/v1/memories/batch`.
+     */
+    async batchDelete(request: BatchDeleteMemoriesRequest): Promise<BatchDeleteResponse> {
+        if (!request || !Array.isArray(request.memoryIds)) {
+            throw new KairoValidationError("memoryIds array must be provided.", 400);
+        }
+        if (request.memoryIds.length === 0) {
+            throw new KairoValidationError("memoryIds array must not be empty.", 400);
+        }
+        if (request.memoryIds.length > 100) {
+            throw new KairoValidationError("Batch size cannot exceed 100.", 400);
+        }
+
+        return this._client.request<BatchDeleteResponse>(
+            "DELETE",
+            "/api/v1/memories/batch",
+            request
+        );
     }
 }

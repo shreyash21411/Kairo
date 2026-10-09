@@ -76,10 +76,10 @@ public class HybridRetrievalService
     }
 
     /// <summary>
-    /// Phase 2: Performs hybrid retrieval with temporal filtering, metadata filtering,
-    /// controlled recency boost, and scoped 1-hop graph relationship retrieval.
+    /// Phase 2 & 3: Performs hybrid retrieval with temporal filtering, metadata filtering,
+    /// category filtering, controlled recency boost, and scoped 1-hop graph relationship retrieval.
     /// </summary>
-    public async Task<HybridRetrievalResult> RetrieveWithRelationsAsync(
+    public Task<HybridRetrievalResult> RetrieveWithRelationsAsync(
         long userId,
         long projectId,
         string query,
@@ -89,6 +89,25 @@ public class HybridRetrievalService
         List<MetadataFilterCondition>? metadataFilters = null,
         bool recencyBoost = false,
         int graphDepth = 1,
+        CancellationToken cancellationToken = default)
+    {
+        return RetrieveWithRelationsAsync(
+            userId, projectId, query, topK, scopeId,
+            temporalFilter, metadataFilters, recencyBoost,
+            graphDepth, null, cancellationToken);
+    }
+
+    public async Task<HybridRetrievalResult> RetrieveWithRelationsAsync(
+        long userId,
+        long projectId,
+        string query,
+        int topK,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        bool recencyBoost,
+        int graphDepth,
+        List<string>? categoryFilters,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -112,12 +131,26 @@ public class HybridRetrievalService
         }
 
         var semanticScores   = new Dictionary<long, double>();
-        var memoryDetailsMap = new Dictionary<long, (string Content, string MemoryType, DateTime CreatedAt, DateTime UpdatedAt, DateTime? OccurredAt, string? Metadata)>();
+        var memoryDetailsMap = new Dictionary<long, (string Content, string MemoryType, DateTime CreatedAt, DateTime UpdatedAt, DateTime? OccurredAt, string? Metadata, DateTime? ExpiresAt, List<string> Categories)>();
 
+        var hasCategoryFilter = categoryFilters != null && categoryFilters.Count > 0;
         var hasMemFilters = temporalFilter != null || (metadataFilters != null && metadataFilters.Count > 0);
-        var scopeMemories = hasMemFilters
-            ? await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters)
-            : await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+
+        List<MemoryEmbeddingData> scopeMemories;
+        if (hasCategoryFilter)
+        {
+            scopeMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+        }
+        else if (hasMemFilters)
+        {
+            scopeMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                userId, scopeId, temporalFilter, metadataFilters);
+        }
+        else
+        {
+            scopeMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+        }
 
         scopeMemories ??= new List<MemoryEmbeddingData>();
 
@@ -125,7 +158,7 @@ public class HybridRetrievalService
         {
             foreach (var mem in scopeMemories)
             {
-                memoryDetailsMap[mem.MemoryId] = (mem.Content, mem.MemoryType, mem.CreatedAt, mem.UpdatedAt, mem.OccurredAt, mem.Metadata);
+                memoryDetailsMap[mem.MemoryId] = (mem.Content, mem.MemoryType, mem.CreatedAt, mem.UpdatedAt, mem.OccurredAt, mem.Metadata, mem.ExpiresAt, mem.Categories);
 
                 if (queryEmbedding.Length > 0 && mem.Dimensions == queryEmbedding.Length)
                 {
@@ -137,9 +170,22 @@ public class HybridRetrievalService
 
         // ── Channel 2: Keyword (BM25) ─────────────────────────────────────────
 
-        var keywordResults = (temporalFilter != null || metadataFilters != null)
-            ? await _keywordSearch.SearchAsync(userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, cancellationToken)
-            : await _keywordSearch.SearchAsync(userId, query, scopeId, candidateLimit, cancellationToken);
+        List<KeywordSearchResult> keywordResults;
+        if (hasCategoryFilter)
+        {
+            keywordResults = await _keywordSearch.SearchAsync(
+                userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, categoryFilters, cancellationToken);
+        }
+        else if (hasMemFilters)
+        {
+            keywordResults = await _keywordSearch.SearchAsync(
+                userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, cancellationToken);
+        }
+        else
+        {
+            keywordResults = await _keywordSearch.SearchAsync(
+                userId, query, scopeId, candidateLimit, cancellationToken);
+        }
 
         keywordResults ??= new List<KeywordSearchResult>();
 
@@ -217,6 +263,9 @@ public class HybridRetrievalService
 
             if (memoryDetailsMap.TryGetValue(memoryId, out var details))
             {
+                if (!ExpirationHelper.IsNotExpired(details.ExpiresAt, now))
+                    continue;
+
                 content = details.Content;
                 memoryType = details.MemoryType;
             }
@@ -224,7 +273,7 @@ public class HybridRetrievalService
             {
                 content = kwContent.Content;
                 memoryType = kwContent.MemoryType;
-                memoryDetailsMap[memoryId] = (content, memoryType, now, now, null, null);
+                memoryDetailsMap[memoryId] = (content, memoryType, now, now, null, null, null, new List<string>());
             }
             else continue;
 
@@ -283,7 +332,9 @@ public class HybridRetrievalService
                 CreatedAt  = details.CreatedAt != default ? details.CreatedAt : null,
                 UpdatedAt  = details.UpdatedAt != default ? details.UpdatedAt : null,
                 OccurredAt = details.OccurredAt,
-                Metadata   = details.Metadata
+                Metadata   = details.Metadata,
+                ExpiresAt  = details.ExpiresAt,
+                Categories = details.Categories ?? new()
             };
         }).ToList();
 
@@ -308,7 +359,7 @@ public class HybridRetrievalService
             .Take(topK)
             .ToList();
 
-        // Ensure temporal and metadata properties are fully populated on final results
+        // Ensure temporal, metadata, and Phase 3 properties are fully populated on final results
         foreach (var mem in finalMemories)
         {
             if (memoryDetailsMap.TryGetValue(mem.MemoryId, out var d))
@@ -317,6 +368,9 @@ public class HybridRetrievalService
                 mem.UpdatedAt  ??= d.UpdatedAt;
                 mem.OccurredAt ??= d.OccurredAt;
                 mem.Metadata   ??= d.Metadata;
+                mem.ExpiresAt  ??= d.ExpiresAt;
+                if (d.Categories != null && d.Categories.Count > 0)
+                    mem.Categories = d.Categories;
             }
         }
 

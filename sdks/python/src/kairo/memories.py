@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 from .exceptions import KairoValidationError
 from .models import (
+    BatchCreateResponse,
+    BatchDeleteResponse,
+    BatchUpdateResponse,
     CreateMemoryResult,
     DeleteMemoryResult,
     GraphRelation,
@@ -81,6 +84,10 @@ class MemoryResource:
         scope: Optional[Union[MemoryScope, dict[str, Any]]] = None,
         occurred_at: Optional[Union[datetime, str]] = None,
         metadata: Optional[dict[str, Any]] = None,
+        expires_at: Optional[Union[datetime, str]] = None,
+        ttl: Optional[int] = None,
+        category: Optional[str] = None,
+        categories: Optional[list[str]] = None,
     ) -> CreateMemoryResult:
         """Create a new memory for the authenticated user and specified actor or scope."""
         resolved_actor_id, scope_dict = _parse_scope_param(actor_id, scope)
@@ -97,6 +104,14 @@ class MemoryResource:
             payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else occurred_at
         if metadata is not None:
             payload["metadata"] = metadata
+        if expires_at is not None:
+            payload["expiresAt"] = expires_at.isoformat() if isinstance(expires_at, datetime) else expires_at
+        if ttl is not None:
+            payload["ttl"] = ttl
+        if category is not None:
+            payload["category"] = category
+        if categories is not None:
+            payload["categories"] = categories
 
         data = self._client._request(
             "POST",
@@ -148,6 +163,10 @@ class MemoryResource:
         memory_type: str,
         occurred_at: Optional[Union[datetime, str]] = None,
         metadata: Optional[dict[str, Any]] = None,
+        expires_at: Optional[Union[datetime, str]] = None,
+        ttl: Optional[int] = None,
+        category: Optional[str] = None,
+        categories: Optional[list[str]] = None,
     ) -> Memory:
         """Update the content and type of an existing memory."""
         payload: dict[str, Any] = {
@@ -158,6 +177,14 @@ class MemoryResource:
             payload["occurredAt"] = occurred_at.isoformat() if isinstance(occurred_at, datetime) else occurred_at
         if metadata is not None:
             payload["metadata"] = metadata
+        if expires_at is not None:
+            payload["expiresAt"] = expires_at.isoformat() if isinstance(expires_at, datetime) else expires_at
+        if ttl is not None:
+            payload["ttl"] = ttl
+        if category is not None:
+            payload["category"] = category
+        if categories is not None:
+            payload["categories"] = categories
 
         data = self._client._request(
             "PUT",
@@ -191,6 +218,8 @@ class MemoryResource:
         structured_filters: Optional[List[Union[MetadataFilterCondition, dict[str, Any]]]] = None,
         recency_boost: Optional[bool] = None,
         graph_depth: Optional[int] = None,
+        category: Optional[str] = None,
+        categories: Optional[list[str]] = None,
     ) -> MemorySearchResponse:
         """Search memories semantically or via hybrid retrieval with temporal, metadata, and graph support."""
         if not query or not isinstance(query, str) or not query.strip():
@@ -223,6 +252,10 @@ class MemoryResource:
             payload["recencyBoost"] = recency_boost
         if graph_depth is not None:
             payload["graphDepth"] = graph_depth
+        if category is not None:
+            payload["category"] = category
+        if categories is not None:
+            payload["categories"] = categories
 
         data = self._client._request(
             "POST",
@@ -302,4 +335,64 @@ class MemoryResource:
             json=payload,
         )
         return MemoryIngestionResponse._from_dict(data or {})
+
+    # ── Phase 3: Batch Operations ─────────────────────────────────────────────
+
+    def batch_create(
+        self,
+        memories: list[dict[str, Any]],
+    ) -> BatchCreateResponse:
+        """Create multiple memories in a single atomic request."""
+        if not isinstance(memories, (list, tuple)):
+            raise KairoValidationError("memories must be a list.", status_code=400)
+        if len(memories) == 0:
+            raise KairoValidationError("memories list must not be empty.", status_code=400)
+        if len(memories) > 100:
+            raise KairoValidationError("Batch size cannot exceed 100.", status_code=400)
+
+        data = self._client._request(
+            "POST",
+            "/api/v1/memories/batch",
+            json={"memories": memories},
+        )
+        return BatchCreateResponse._from_dict(data or {})
+
+    def batch_update(
+        self,
+        memories: list[dict[str, Any]],
+    ) -> BatchUpdateResponse:
+        """Update multiple memories in a single request."""
+        if not isinstance(memories, (list, tuple)):
+            raise KairoValidationError("memories must be a list.", status_code=400)
+        if len(memories) == 0:
+            raise KairoValidationError("memories list must not be empty.", status_code=400)
+        if len(memories) > 100:
+            raise KairoValidationError("Batch size cannot exceed 100.", status_code=400)
+
+        data = self._client._request(
+            "PUT",
+            "/api/v1/memories/batch",
+            json={"memories": memories},
+        )
+        return BatchUpdateResponse._from_dict(data or {})
+
+    def batch_delete(
+        self,
+        memory_ids: list[int],
+    ) -> BatchDeleteResponse:
+        """Soft-delete multiple memories in a single request."""
+        if not isinstance(memory_ids, (list, tuple)):
+            raise KairoValidationError("memory_ids must be a list.", status_code=400)
+        if len(memory_ids) == 0:
+            raise KairoValidationError("memory_ids list must not be empty.", status_code=400)
+        if len(memory_ids) > 100:
+            raise KairoValidationError("Batch size cannot exceed 100.", status_code=400)
+
+        data = self._client._request(
+            "DELETE",
+            "/api/v1/memories/batch",
+            json={"memoryIds": memory_ids},
+        )
+        return BatchDeleteResponse._from_dict(data or {})
+
 

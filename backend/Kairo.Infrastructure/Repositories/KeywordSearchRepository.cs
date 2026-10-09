@@ -56,6 +56,18 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         return SearchAsync(userId, query, scopeId, limit, null, null, cancellationToken);
     }
 
+    public Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        CancellationToken cancellationToken = default)
+    {
+        return SearchAsync(userId, query, scopeId, limit, temporalFilter, metadataFilters, null, cancellationToken);
+    }
+
     public async Task<List<KeywordSearchResult>> SearchAsync(
         long userId,
         string query,
@@ -63,6 +75,7 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         int limit,
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -73,14 +86,20 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         if (queryTerms.Count == 0)
             return new List<KeywordSearchResult>();
 
-        // ── Step 1: Load the entire authorized scoped active-memory corpus ────
-
+        // ── Step 1: Load the entire authorized scoped active & unexpired memory corpus ────
+        var now = DateTime.UtcNow;
         var memoriesQuery = _dbContext.Memories
             .AsNoTracking()
-            .Where(m => m.UserId == userId && m.IsActive);
+            .Where(m => m.UserId == userId && m.IsActive && (m.ExpiresAt == null || m.ExpiresAt > now));
 
         if (scopeId.HasValue)
             memoriesQuery = memoriesQuery.Where(m => m.ScopeId == scopeId.Value);
+
+        if (categoryFilters != null && categoryFilters.Count > 0)
+        {
+            var normalizedFilters = categoryFilters.Select(c => c.Trim().ToLowerInvariant()).ToList();
+            memoriesQuery = memoriesQuery.Where(m => m.MemoryCategories.Any(c => normalizedFilters.Contains(c.Category)));
+        }
 
         if (temporalFilter != null)
         {

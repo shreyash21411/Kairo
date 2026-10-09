@@ -37,6 +37,10 @@ from .exceptions import (
     KairoValidationError,
 )
 from .models import (
+    BatchCreateResponse,
+    BatchDeleteResponse,
+    BatchOperationError,
+    BatchUpdateResponse,
     CreateMemoryResult,
     DeleteMemoryResult,
     GraphRelation,
@@ -78,6 +82,11 @@ __all__ = [
     "GraphRelation",
     "MemoryTemporalFilter",
     "MetadataFilterCondition",
+    # Phase 3: Batch Operations
+    "BatchOperationError",
+    "BatchCreateResponse",
+    "BatchUpdateResponse",
+    "BatchDeleteResponse",
     # Phase 4: Ingestion
     "IngestMessage",
     "IngestionMemoryResult",

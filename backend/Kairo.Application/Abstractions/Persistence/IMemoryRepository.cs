@@ -30,6 +30,16 @@ public interface IMemoryRepository
         DateTime? occurredAt = null,
         string? metadata = null);
 
+    Task<long> CreateAsync(
+        long userId,
+        ExtractedMemory memory,
+        long? sourceChatId,
+        long? scopeId,
+        DateTime? occurredAt,
+        string? metadata,
+        DateTime? expiresAt,
+        List<string>? categories);
+
     Task SaveEmbeddingAsync(
         long memoryId,
         string model,
@@ -48,6 +58,17 @@ public interface IMemoryRepository
         long? scopeId = null,
         MemoryTemporalFilter? temporalFilter = null,
         List<MetadataFilterCondition>? metadataFilters = null);
+
+    /// <summary>
+    /// Phase 3: Returns active memory embeddings filtered by temporal, metadata, and category constraints.
+    /// Filtering is executed at query level before similarity scoring.
+    /// </summary>
+    Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters);
 
     // ── New methods (Task 1: Embedding Backfill) ──────────────────────────────
 
@@ -85,6 +106,19 @@ public interface IMemoryRepository
         string newContent,
         DateTime? occurredAt = null,
         string? metadata = null);
+
+    /// <summary>
+    /// Phase 3: Updates Content, OccurredAt, Metadata, ExpiresAt, and Categories.
+    /// </summary>
+    Task UpdateMemoryContentAsync(
+        long memoryId,
+        string newContent,
+        DateTime? occurredAt,
+        string? metadata,
+        bool updateExpiresAt,
+        DateTime? expiresAt,
+        bool updateCategories,
+        List<string>? categories);
 
     /// <summary>
     /// Persists a MemoryVersions row.
@@ -156,6 +190,10 @@ public class MemoryEmbeddingData
     public DateTime? OccurredAt { get; set; }
 
     public string? Metadata { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public List<string> Categories { get; set; } = new();
 }
 
 public class MemoryWithoutEmbedding
@@ -186,6 +224,10 @@ public class MemorySnapshot
     public DateTime? OccurredAt { get; set; }
 
     public string? Metadata { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public List<string> Categories { get; set; } = new();
 }
 
 public class MemoryListItem
@@ -203,4 +245,8 @@ public class MemoryListItem
     public DateTime? OccurredAt { get; set; }
 
     public string? Metadata { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public List<string> Categories { get; set; } = new();
 }

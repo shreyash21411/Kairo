@@ -47,6 +47,10 @@ export interface Memory {
     occurredAt?: string | null;
     /** Phase 2: Arbitrary application-defined metadata JSON string. Null when not set. */
     metadata?: string | null;
+    /** Phase 3: ISO 8601 expiration timestamp. Null when memory does not expire. */
+    expiresAt?: string | null;
+    /** Phase 3: List of category tags associated with this memory. */
+    categories?: string[];
 }
 
 /**
@@ -62,6 +66,10 @@ export interface RetrievedMemory {
     occurredAt?: string | null;
     /** Phase 2: Arbitrary application-defined metadata JSON string. Null when not set. */
     metadata?: string | null;
+    /** Phase 3: ISO 8601 expiration timestamp. Null when memory does not expire. */
+    expiresAt?: string | null;
+    /** Phase 3: List of category tags associated with this memory. */
+    categories?: string[];
 }
 
 // ── Phase 2: Graph Relations ──────────────────────────────────────────────────
@@ -247,6 +255,14 @@ export interface CreateMemoryRequest {
      * The serialized JSON must not exceed 8,192 characters.
      */
     metadata?: Record<string, unknown>;
+    /** Phase 3: ISO 8601 expiration timestamp. */
+    expiresAt?: string;
+    /** Phase 3: Time-to-live in seconds. Converted to expiresAt = createdAt + ttl on backend. */
+    ttl?: number;
+    /** Phase 3: Extensible category tag (convenience single category). */
+    category?: string;
+    /** Phase 3: Extensible category tags for this memory. */
+    categories?: string[];
 }
 
 /** Request body for updating an existing memory. */
@@ -266,6 +282,14 @@ export interface UpdateMemoryRequest {
      * Pass null to clear existing metadata.
      */
     metadata?: Record<string, unknown> | null;
+    /** Phase 3: Updated ISO 8601 expiration timestamp. Pass null to remove expiration. */
+    expiresAt?: string | null;
+    /** Phase 3: Updated time-to-live in seconds. */
+    ttl?: number | null;
+    /** Phase 3: Updated extensible category tag (convenience single category). */
+    category?: string | null;
+    /** Phase 3: Updated category tags. Pass empty array or null to clear categories. */
+    categories?: string[] | null;
 }
 
 /** Request parameters for a semantic or hybrid memory search. */
@@ -308,6 +332,76 @@ export interface MemorySearchRequest {
      * Default is 1. Maximum is 2. Only used when hybrid is true.
      */
     graphDepth?: number;
+    /** Phase 3: Single category filter. */
+    category?: string;
+    /** Phase 3: Extensible category filters (IN condition). */
+    categories?: string[];
+}
+
+// ── Phase 3: Batch Operations ─────────────────────────────────────────────────
+
+export interface BatchCreateMemoryItem {
+    content: string;
+    memoryType?: MemoryType;
+    actorId?: string;
+    scope?: MemoryScopeKey;
+    occurredAt?: string;
+    metadata?: Record<string, unknown>;
+    expiresAt?: string;
+    ttl?: number;
+    category?: string;
+    categories?: string[];
+}
+
+export interface BatchCreateMemoriesRequest {
+    memories: BatchCreateMemoryItem[];
+}
+
+export interface BatchOperationError {
+    memoryId?: number | null;
+    index?: number | null;
+    message: string;
+}
+
+export interface BatchCreateResponse {
+    success: boolean;
+    createdCount: number;
+    memories: Memory[];
+    errors: BatchOperationError[];
+}
+
+export interface BatchUpdateMemoryItem {
+    memoryId: number;
+    content?: string;
+    memoryType?: MemoryType;
+    occurredAt?: string | null;
+    metadata?: Record<string, unknown> | null;
+    expiresAt?: string | null;
+    ttl?: number | null;
+    category?: string | null;
+    categories?: string[] | null;
+}
+
+export interface BatchUpdateMemoriesRequest {
+    memories: BatchUpdateMemoryItem[];
+}
+
+export interface BatchUpdateResponse {
+    success: boolean;
+    updatedCount: number;
+    memories: Memory[];
+    errors: BatchOperationError[];
+}
+
+export interface BatchDeleteMemoriesRequest {
+    memoryIds: number[];
+}
+
+export interface BatchDeleteResponse {
+    success: boolean;
+    deletedCount: number;
+    deletedIds: number[];
+    errors: BatchOperationError[];
 }
 
 // ── Phase 4: Conversational Ingestion ─────────────────────────────────────────

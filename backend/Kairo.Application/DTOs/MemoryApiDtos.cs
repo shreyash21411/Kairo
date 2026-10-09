@@ -32,6 +32,15 @@ public class CreateMemoryRequest
 
     /// <summary>Phase 2: Arbitrary application-defined metadata dictionary.</summary>
     public Dictionary<string, object>? Metadata { get; set; }
+
+    /// <summary>Phase 3: Extensible categories assigned to this memory.</summary>
+    public List<string>? Categories { get; set; }
+
+    /// <summary>Phase 3: Expiration timestamp in UTC (optional).</summary>
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>Phase 3: Time-to-live in seconds from creation (optional).</summary>
+    public long? Ttl { get; set; }
 }
 
 /// <summary>
@@ -50,6 +59,15 @@ public class UpdateMemoryRequest
 
     /// <summary>Phase 2: Arbitrary application-defined metadata dictionary.</summary>
     public Dictionary<string, object>? Metadata { get; set; }
+
+    /// <summary>Phase 3: Extensible categories assigned to this memory.</summary>
+    public List<string>? Categories { get; set; }
+
+    /// <summary>Phase 3: Expiration timestamp in UTC (optional).</summary>
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>Phase 3: Time-to-live in seconds from update (optional).</summary>
+    public long? Ttl { get; set; }
 }
 
 /// <summary>
@@ -97,6 +115,31 @@ public class MemorySearchRequest
 
     /// <summary>Phase 2: Traversal depth for graph relationship retrieval (default: 1, max: 2).</summary>
     public int? GraphDepth { get; set; }
+
+    /// <summary>Phase 3: Filter by a single category.</summary>
+    public string? Category { get; set; }
+
+    /// <summary>Phase 3: Filter by one or more categories (inclusion match).</summary>
+    public List<string>? Categories { get; set; }
+
+    /// <summary>
+    /// Returns unified list of normalized categories for filtering.
+    /// </summary>
+    public List<string> GetEffectiveCategories()
+    {
+        var list = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(Category))
+            list.Add(Category.Trim().ToLowerInvariant());
+        if (Categories != null)
+        {
+            foreach (var c in Categories)
+            {
+                if (!string.IsNullOrWhiteSpace(c))
+                    list.Add(c.Trim().ToLowerInvariant());
+            }
+        }
+        return new List<string>(list);
+    }
 
     /// <summary>
     /// Compiles key-value MetadataFilters and explicit StructuredFilters into a unified list of filter conditions.
@@ -150,6 +193,12 @@ public class MemoryResponse
 
     /// <summary>Phase 2: Arbitrary application-defined metadata JSON.</summary>
     public string? Metadata { get; set; }
+
+    /// <summary>Phase 3: Expiration timestamp in UTC (optional).</summary>
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>Phase 3: Extensible categories assigned to this memory.</summary>
+    public List<string> Categories { get; set; } = new();
 }
 
 /// <summary>

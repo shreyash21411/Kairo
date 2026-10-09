@@ -50,10 +50,14 @@ class Memory:
     updated_at: datetime
     occurred_at: Optional[datetime] = None
     metadata: Optional[dict[str, Any]] = None
+    expires_at: Optional[datetime] = None
+    categories: list[str] = field(default_factory=list)
 
     @classmethod
     def _from_dict(cls, data: dict[str, Any]) -> Memory:
         occ = data.get("occurredAt")
+        exp = data.get("expiresAt")
+        cats = data.get("categories") or []
         raw_meta = data.get("metadata")
         meta = raw_meta
         if isinstance(raw_meta, str):
@@ -73,6 +77,8 @@ class Memory:
             updated_at=_parse_dt(data["updatedAt"]),
             occurred_at=_parse_dt(occ) if occ else None,
             metadata=meta if isinstance(meta, dict) else None,
+            expires_at=_parse_dt(exp) if exp else None,
+            categories=list(cats) if isinstance(cats, list) else [],
         )
 
     def __repr__(self) -> str:
@@ -110,12 +116,16 @@ class RetrievedMemory:
     updated_at: Optional[datetime] = None
     occurred_at: Optional[datetime] = None
     metadata: Optional[dict[str, Any]] = None
+    expires_at: Optional[datetime] = None
+    categories: list[str] = field(default_factory=list)
 
     @classmethod
     def _from_dict(cls, data: dict[str, Any]) -> RetrievedMemory:
         cat = data.get("createdAt")
         uat = data.get("updatedAt")
         occ = data.get("occurredAt")
+        exp = data.get("expiresAt")
+        cats = data.get("categories") or []
         raw_meta = data.get("metadata")
         meta = raw_meta
         if isinstance(raw_meta, str):
@@ -134,6 +144,8 @@ class RetrievedMemory:
             updated_at=_parse_dt(uat) if uat else None,
             occurred_at=_parse_dt(occ) if occ else None,
             metadata=meta if isinstance(meta, dict) else None,
+            expires_at=_parse_dt(exp) if exp else None,
+            categories=list(cats) if isinstance(cats, list) else [],
         )
 
     def __repr__(self) -> str:
@@ -390,4 +402,82 @@ class MemoryIngestionResponse:
             f"extracted_count={self.extracted_count!r}, "
             f"memories_count={len(self.memories)})"
         )
+
+
+# ── Phase 3: Batch Operation Models ──────────────────────────────────────────
+
+
+@dataclass
+class BatchOperationError:
+    """An error that occurred for a specific item in a batch operation."""
+
+    message: str
+    memory_id: Optional[int] = None
+    index: Optional[int] = None
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> BatchOperationError:
+        return cls(
+            message=data.get("message", ""),
+            memory_id=data.get("memoryId"),
+            index=data.get("index"),
+        )
+
+
+@dataclass
+class BatchCreateResponse:
+    """Response from a batch memory creation request."""
+
+    success: bool
+    created_count: int
+    memories: list[Memory]
+    errors: list[BatchOperationError] = field(default_factory=list)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> BatchCreateResponse:
+        return cls(
+            success=data.get("success", False),
+            created_count=data.get("createdCount", 0),
+            memories=[Memory._from_dict(m) for m in data.get("memories", [])],
+            errors=[BatchOperationError._from_dict(e) for e in data.get("errors", [])],
+        )
+
+
+@dataclass
+class BatchUpdateResponse:
+    """Response from a batch memory update request."""
+
+    success: bool
+    updated_count: int
+    memories: list[Memory]
+    errors: list[BatchOperationError] = field(default_factory=list)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> BatchUpdateResponse:
+        return cls(
+            success=data.get("success", False),
+            updated_count=data.get("updatedCount", 0),
+            memories=[Memory._from_dict(m) for m in data.get("memories", [])],
+            errors=[BatchOperationError._from_dict(e) for e in data.get("errors", [])],
+        )
+
+
+@dataclass
+class BatchDeleteResponse:
+    """Response from a batch memory deletion request."""
+
+    success: bool
+    deleted_count: int
+    deleted_ids: list[int]
+    errors: list[BatchOperationError] = field(default_factory=list)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> BatchDeleteResponse:
+        return cls(
+            success=data.get("success", False),
+            deleted_count=data.get("deletedCount", 0),
+            deleted_ids=list(data.get("deletedIds", [])),
+            errors=[BatchOperationError._from_dict(e) for e in data.get("errors", [])],
+        )
+
 

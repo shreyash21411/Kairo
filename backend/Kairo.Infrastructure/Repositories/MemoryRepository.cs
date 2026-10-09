@@ -15,13 +15,26 @@ public class MemoryRepository : IMemoryRepository
         _dbContext = dbContext;
     }
 
-    public async Task<long> CreateAsync(
+    public Task<long> CreateAsync(
         long userId,
         ExtractedMemory memory,
         long? sourceChatId,
         long? scopeId = null,
         DateTime? occurredAt = null,
         string? metadata = null)
+    {
+        return CreateAsync(userId, memory, sourceChatId, scopeId, occurredAt, metadata, null, null);
+    }
+
+    public async Task<long> CreateAsync(
+        long userId,
+        ExtractedMemory memory,
+        long? sourceChatId,
+        long? scopeId,
+        DateTime? occurredAt,
+        string? metadata,
+        DateTime? expiresAt,
+        List<string>? categories)
     {
         var entity = new Memories
         {
@@ -32,10 +45,24 @@ public class MemoryRepository : IMemoryRepository
             ScopeId = scopeId,
             OccurredAt = occurredAt,
             Metadata = metadata,
+            ExpiresAt = expiresAt,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
+
+        if (categories != null && categories.Count > 0)
+        {
+            var normalizedCats = CategoryValidator.ValidateAndNormalize(categories);
+            foreach (var cat in normalizedCats)
+            {
+                entity.MemoryCategories.Add(new MemoryCategory
+                {
+                    Category = cat,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
 
         _dbContext.Memories.Add(entity);
 
@@ -96,25 +123,43 @@ public class MemoryRepository : IMemoryRepository
         long userId,
         long? scopeId = null)
     {
-        return await GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null);
+        return await GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null, null);
     }
 
-    /// <inheritdoc/>
-    public async Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+    public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
         long userId,
         long? scopeId = null,
         MemoryTemporalFilter? temporalFilter = null,
         List<MetadataFilterCondition>? metadataFilters = null)
     {
+        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, null);
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters)
+    {
+        var now = DateTime.UtcNow;
         var query = _dbContext.MemoryEmbeddings
             .AsNoTracking()
             .Where(embedding =>
                 embedding.Memory.UserId == userId &&
-                embedding.Memory.IsActive);
+                embedding.Memory.IsActive &&
+                (embedding.Memory.ExpiresAt == null || embedding.Memory.ExpiresAt > now));
 
         if (scopeId.HasValue)
         {
             query = query.Where(embedding => embedding.Memory.ScopeId == scopeId.Value);
+        }
+
+        if (categoryFilters != null && categoryFilters.Count > 0)
+        {
+            var normalizedFilters = categoryFilters.Select(c => c.Trim().ToLowerInvariant()).ToList();
+            query = query.Where(e => e.Memory.MemoryCategories.Any(c => normalizedFilters.Contains(c.Category)));
         }
 
         if (temporalFilter != null)
@@ -157,6 +202,8 @@ public class MemoryRepository : IMemoryRepository
                     embedding.Memory.UpdatedAt,
                     embedding.Memory.OccurredAt,
                     embedding.Memory.Metadata,
+                    embedding.Memory.ExpiresAt,
+                    Categories = embedding.Memory.MemoryCategories.Select(c => c.Category).ToList(),
                     embedding.Model,
                     embedding.Dimensions,
                     embedding.VectorData
@@ -193,7 +240,9 @@ public class MemoryRepository : IMemoryRepository
                 CreatedAt = embedding.CreatedAt,
                 UpdatedAt = embedding.UpdatedAt,
                 OccurredAt = embedding.OccurredAt,
-                Metadata = embedding.Metadata
+                Metadata = embedding.Metadata,
+                ExpiresAt = embedding.ExpiresAt,
+                Categories = embedding.Categories
             });
         }
 
@@ -237,7 +286,9 @@ public class MemoryRepository : IMemoryRepository
                 CreatedAt   = m.CreatedAt,
                 UpdatedAt   = m.UpdatedAt,
                 OccurredAt  = m.OccurredAt,
-                Metadata    = m.Metadata
+                Metadata    = m.Metadata,
+                ExpiresAt   = m.ExpiresAt,
+                Categories  = m.MemoryCategories.Select(c => c.Category).ToList()
             })
             .FirstOrDefaultAsync();
     }
@@ -283,14 +334,35 @@ public class MemoryRepository : IMemoryRepository
                 _dbContext.EntityRelationships.RemoveRange(orphanRels);
         }
 
+        // ── Phase 3: Clean up MemoryCategories links ──────────────────────────
+        var catLinks = await _dbContext.MemoryCategories
+            .Where(c => c.MemoryId == memoryId)
+            .ToListAsync();
+
+        if (catLinks.Count > 0)
+            _dbContext.MemoryCategories.RemoveRange(catLinks);
+
         await _dbContext.SaveChangesAsync();
+    }
+
+    public Task UpdateMemoryContentAsync(
+        long memoryId,
+        string newContent,
+        DateTime? occurredAt = null,
+        string? metadata = null)
+    {
+        return UpdateMemoryContentAsync(memoryId, newContent, occurredAt, metadata, false, null, false, null);
     }
 
     public async Task UpdateMemoryContentAsync(
         long memoryId,
         string newContent,
-        DateTime? occurredAt = null,
-        string? metadata = null)
+        DateTime? occurredAt,
+        string? metadata,
+        bool updateExpiresAt,
+        DateTime? expiresAt,
+        bool updateCategories,
+        List<string>? categories)
     {
         var memory = await _dbContext.Memories
             .FirstOrDefaultAsync(m => m.MemoryId == memoryId);
@@ -306,6 +378,32 @@ public class MemoryRepository : IMemoryRepository
             memory.OccurredAt = occurredAt.Value;
         if (metadata != null)
             memory.Metadata = metadata;
+        if (updateExpiresAt)
+            memory.ExpiresAt = expiresAt;
+
+        if (updateCategories)
+        {
+            var oldCats = await _dbContext.MemoryCategories
+                .Where(c => c.MemoryId == memoryId)
+                .ToListAsync();
+            if (oldCats.Count > 0)
+                _dbContext.MemoryCategories.RemoveRange(oldCats);
+
+            if (categories != null && categories.Count > 0)
+            {
+                var normalizedCats = CategoryValidator.ValidateAndNormalize(categories);
+                foreach (var cat in normalizedCats)
+                {
+                    _dbContext.MemoryCategories.Add(new MemoryCategory
+                    {
+                        MemoryId = memoryId,
+                        Category = cat,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
+        }
+
         memory.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync();
@@ -345,12 +443,14 @@ public class MemoryRepository : IMemoryRepository
         long? projectId = null,
         long? scopeId = null)
     {
+        var now = DateTime.UtcNow;
         var query = _dbContext.Memories
             .AsNoTracking()
             .Where(m =>
                 m.MemoryId == memoryId &&
                 m.UserId   == userId   &&
-                m.IsActive);
+                m.IsActive &&
+                (m.ExpiresAt == null || m.ExpiresAt > now));
 
         if (projectId.HasValue)
         {
@@ -378,7 +478,9 @@ public class MemoryRepository : IMemoryRepository
                 CreatedAt  = m.CreatedAt,
                 UpdatedAt  = m.UpdatedAt,
                 OccurredAt = m.OccurredAt,
-                Metadata   = m.Metadata
+                Metadata   = m.Metadata,
+                ExpiresAt  = m.ExpiresAt,
+                Categories = m.MemoryCategories.Select(c => c.Category).ToList()
             })
             .FirstOrDefaultAsync();
     }
@@ -393,9 +495,10 @@ public class MemoryRepository : IMemoryRepository
         long userId,
         long? projectId = null)
     {
+        var now = DateTime.UtcNow;
         var query = _dbContext.Memories
             .AsNoTracking()
-            .Where(m => m.UserId == userId && m.IsActive);
+            .Where(m => m.UserId == userId && m.IsActive && (m.ExpiresAt == null || m.ExpiresAt > now));
 
         if (projectId.HasValue)
         {
@@ -416,7 +519,9 @@ public class MemoryRepository : IMemoryRepository
                 CreatedAt  = m.CreatedAt,
                 UpdatedAt  = m.UpdatedAt,
                 OccurredAt = m.OccurredAt,
-                Metadata   = m.Metadata
+                Metadata   = m.Metadata,
+                ExpiresAt  = m.ExpiresAt,
+                Categories = m.MemoryCategories.Select(c => c.Category).ToList()
             })
             .ToListAsync();
     }

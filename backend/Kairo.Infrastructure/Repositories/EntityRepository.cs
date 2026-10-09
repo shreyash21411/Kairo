@@ -479,11 +479,13 @@ public class EntityRepository : IEntityRepository
 
             var frontierList = currentFrontier.ToList();
 
+            var now = DateTime.UtcNow;
             var matches = await _dbContext.EntityRelationships
                 .AsNoTracking()
                 .Where(r =>
                     r.ProjectId == projectId &&
                     r.ScopeId == scopeId &&
+                    (!r.Evidence.Any() || r.Evidence.Any(e => e.Memory.IsActive && (e.Memory.ExpiresAt == null || e.Memory.ExpiresAt > now))) &&
                     (frontierList.Contains(r.SourceEntity.NormalizedName) ||
                      frontierList.Contains(r.TargetEntity.NormalizedName)))
                 .Select(r => new GraphRelationData
