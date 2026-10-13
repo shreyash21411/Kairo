@@ -23,15 +23,16 @@ using Microsoft.OpenApi;
 using Kairo.MCP.Extensions; // Phase 9: MCP adapter layer
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
+using Kairo.API.Configuration;
 
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register Kairo database
-builder.Services.AddDbContext<KairoDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("KairoDatabase")
-    ));
+// ── Phase 4C: Fail-Fast Provider Discovery & Startup Validation ──────────────
+var providerSettings = ProviderConfigurationValidator.Validate(builder.Configuration);
+
+// Register Kairo database (conditional SQL Server default or PostgreSQL with pgvector)
+builder.Services.AddKairoDatabase(providerSettings);
 
 // Register repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -135,18 +136,7 @@ builder.Services.Configure<MistralEmbeddingOptions>(
 builder.Services.AddHttpClient<MistralLlmProvider>();
 builder.Services.AddHttpClient<MistralEmbeddingProvider>();
 
-// Validate configured provider names at startup
-var providerOpts = builder.Configuration.GetSection(ProviderOptions.SectionName).Get<ProviderOptions>() ?? new ProviderOptions();
-if (!string.Equals(providerOpts.DefaultLlmProvider, "Mistral", StringComparison.OrdinalIgnoreCase))
-{
-    throw new InvalidOperationException($"Configured LLM provider '{providerOpts.DefaultLlmProvider}' is not supported. Supported providers: Mistral.");
-}
-if (!string.Equals(providerOpts.DefaultEmbeddingProvider, "Mistral", StringComparison.OrdinalIgnoreCase))
-{
-    throw new InvalidOperationException($"Configured Embedding provider '{providerOpts.DefaultEmbeddingProvider}' is not supported. Supported providers: Mistral.");
-}
-
-// Active provider abstraction bindings
+// Active provider abstraction bindings (validated upfront by ProviderConfigurationValidator)
 builder.Services.AddScoped<ILlmProvider>(sp => sp.GetRequiredService<MistralLlmProvider>());
 builder.Services.AddScoped<IEmbeddingProvider>(sp => sp.GetRequiredService<MistralEmbeddingProvider>());
 

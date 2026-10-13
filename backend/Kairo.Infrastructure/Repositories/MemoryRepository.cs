@@ -1,5 +1,7 @@
 using Kairo.Application.Abstractions.Persistence;
+using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
+using Kairo.Application.Services;
 using Kairo.Infrastructure.Persistence;
 using Kairo.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -563,5 +565,244 @@ public class MemoryRepository : IMemoryRepository
         _dbContext.MemoryEmbeddings.Add(fresh);
 
         await _dbContext.SaveChangesAsync();
+    }
+
+    // ── Phase 4C Task 4C.4: Native vector retrieval ───────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsAsync(
+        long userId,
+        float[] queryVector,
+        string queryModel,
+        int topK,
+        long? scopeId = null,
+        MemoryTemporalFilter? temporalFilter = null,
+        List<MetadataFilterCondition>? metadataFilters = null,
+        List<string>? categoryFilters = null)
+    {
+        if (queryVector.Length == 0)
+            throw new ArgumentException("Query vector cannot be empty.", nameof(queryVector));
+        if (queryVector.Any(v => float.IsNaN(v) || float.IsInfinity(v)))
+            throw new ArgumentException("Query vector cannot contain NaN or Infinity values.", nameof(queryVector));
+        if (topK <= 0)
+            throw new ArgumentException("topK must be greater than zero.", nameof(topK));
+
+        if (_dbContext.Database.IsNpgsql())
+        {
+            return await SearchSimilarEmbeddingsNativePostgreSqlAsync(
+                userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters);
+        }
+
+        // SQL Server / fallback: load all matching embeddings and rank in-memory.
+        return await SearchSimilarEmbeddingsSqlServerFallbackAsync(
+            userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters);
+    }
+
+    // ── Phase 4C Task 4C.4: PostgreSQL native vector similarity retrieval ─────
+
+    /// <summary>
+    /// PostgreSQL-native similarity search using pgvector cosine distance
+    /// (<c>VectorData::vector &lt;=&gt; query::vector</c>).
+    /// Pushes ranking into the database engine via raw SQL; only the top-K rows
+    /// are returned. The query vector is serialized to a pgvector literal
+    /// string so no custom Npgsql type-mapping is required.
+    /// </summary>
+    private async Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsNativePostgreSqlAsync(
+        long userId,
+        float[] queryVector,
+        string queryModel,
+        int topK,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters)
+    {
+        var now = DateTime.UtcNow;
+
+        // Serialize the query vector to pgvector-compatible literal: '[x,x,x,...]' using InvariantCulture
+        var pgLiteral = "[" + string.Join(",", queryVector.Select(v => v.ToString(System.Globalization.CultureInfo.InvariantCulture))) + "]";
+
+        // Build the base EF Core query for dimension/expiry/user filtering
+        var query = _dbContext.MemoryEmbeddings
+            .AsNoTracking()
+            .Where(e =>
+                e.Memory.UserId == userId &&
+                e.Memory.IsActive &&
+                (e.Memory.ExpiresAt == null || e.Memory.ExpiresAt > now) &&
+                e.Dimensions == queryVector.Length);
+
+        // Model compatibility filter (case-insensitive and trimmed, matching IsModelCompatible)
+        if (!string.IsNullOrWhiteSpace(queryModel))
+        {
+            var trimmedQueryModel = queryModel.Trim().ToLowerInvariant();
+            query = query.Where(e =>
+                e.Model == null ||
+                e.Model == string.Empty ||
+                e.Model.ToLower() == trimmedQueryModel);
+        }
+
+        if (scopeId.HasValue)
+            query = query.Where(e => e.Memory.ScopeId == scopeId.Value);
+
+        if (categoryFilters != null && categoryFilters.Count > 0)
+        {
+            var normalized = categoryFilters.Select(c => c.Trim().ToLowerInvariant()).ToList();
+            query = query.Where(e => e.Memory.MemoryCategories.Any(c => normalized.Contains(c.Category)));
+        }
+
+        if (temporalFilter != null)
+        {
+            var effectiveFrom = temporalFilter.GetEffectiveCreatedAtFrom();
+            if (effectiveFrom.HasValue)
+                query = query.Where(e => e.Memory.CreatedAt >= effectiveFrom.Value);
+            if (temporalFilter.CreatedAtTo.HasValue)
+                query = query.Where(e => e.Memory.CreatedAt <= temporalFilter.CreatedAtTo.Value);
+            if (temporalFilter.UpdatedAtFrom.HasValue)
+                query = query.Where(e => e.Memory.UpdatedAt >= temporalFilter.UpdatedAtFrom.Value);
+            if (temporalFilter.UpdatedAtTo.HasValue)
+                query = query.Where(e => e.Memory.UpdatedAt <= temporalFilter.UpdatedAtTo.Value);
+            if (temporalFilter.OccurredAtFrom.HasValue)
+                query = query.Where(e => e.Memory.OccurredAt != null && e.Memory.OccurredAt >= temporalFilter.OccurredAtFrom.Value);
+            if (temporalFilter.OccurredAtTo.HasValue)
+                query = query.Where(e => e.Memory.OccurredAt != null && e.Memory.OccurredAt <= temporalFilter.OccurredAtTo.Value);
+        }
+
+        // Materialize filtered candidates including metadata (for in-memory metadata filter)
+        var candidates = await query
+            .Select(e => new
+            {
+                e.EmbeddingId,
+                e.MemoryId,
+                e.Memory.Content,
+                e.Memory.MemoryType,
+                e.Memory.CreatedAt,
+                e.Memory.UpdatedAt,
+                e.Memory.OccurredAt,
+                e.Memory.Metadata,
+                e.Memory.ExpiresAt,
+                Categories = e.Memory.MemoryCategories.Select(c => c.Category).ToList(),
+                e.Model,
+                e.Dimensions
+            })
+            .ToListAsync();
+
+        // Apply metadata filter in-memory (consistent with existing GetFilteredActiveMemoryEmbeddingsAsync)
+        if (metadataFilters != null && metadataFilters.Count > 0)
+        {
+            candidates = candidates
+                .Where(c => MetadataFilterEvaluator.Matches(c.Metadata, metadataFilters))
+                .ToList();
+        }
+
+        if (candidates.Count == 0)
+            return new List<RankedEmbeddingResult>();
+
+        // Build native pgvector distance query using parameterized IN list
+        // VectorData::vector <=> 'pgLiteral'::vector  returns cosine distance in [0, 2]
+        // (0 = identical, 2 = opposite)
+        var idList = string.Join(",", candidates.Select(c => c.EmbeddingId));
+        var sql = string.Format(
+            @"SELECT ""EmbeddingId"", (""VectorData""::vector <=> '{0}'::vector) AS dist
+              FROM ""MemoryEmbeddings""
+              WHERE ""EmbeddingId"" = ANY(ARRAY[{1}]::bigint[])
+              ORDER BY dist, ""EmbeddingId""
+              LIMIT {2}",
+            pgLiteral, idList, topK);
+
+        var distanceMap = new Dictionary<long, double>();
+        var conn = _dbContext.Database.GetDbConnection();
+        var wasOpen = conn.State == System.Data.ConnectionState.Open;
+        if (!wasOpen) await conn.OpenAsync();
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var embId = reader.GetInt64(0);
+                var dist = reader.GetDouble(1);
+                distanceMap[embId] = dist;
+            }
+        }
+        finally
+        {
+            if (!wasOpen) await conn.CloseAsync();
+        }
+
+        // Map survivors back to results
+        var candidateMap = candidates.ToDictionary(c => c.EmbeddingId);
+        var results = new List<RankedEmbeddingResult>();
+
+        foreach (var (embId, dist) in distanceMap)
+        {
+            if (!candidateMap.TryGetValue(embId, out var c)) continue;
+
+            results.Add(new RankedEmbeddingResult
+            {
+                MemoryId   = c.MemoryId,
+                Content    = c.Content,
+                MemoryType = c.MemoryType ?? string.Empty,
+                Model      = c.Model,
+                Dimensions = c.Dimensions,
+                Similarity = 1.0 - dist,   // cosine distance [0,2] → cosine similarity in [-1,1]; pgvector uses [0,2] range
+                CreatedAt  = c.CreatedAt,
+                UpdatedAt  = c.UpdatedAt,
+                OccurredAt = c.OccurredAt,
+                Metadata   = c.Metadata,
+                ExpiresAt  = c.ExpiresAt,
+                Categories = c.Categories
+            });
+        }
+
+        return results.OrderByDescending(r => r.Similarity).ThenBy(r => r.MemoryId).ToList();
+    }
+
+    // ── Phase 4C Task 4C.4: SQL Server / fallback in-memory similarity path ───
+
+    private async Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsSqlServerFallbackAsync(
+        long userId,
+        float[] queryVector,
+        string queryModel,
+        int topK,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters)
+    {
+        // Reuse existing full-load path for filter application
+        var embeddings = await GetFilteredActiveMemoryEmbeddingsAsync(
+            userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+
+        var similarityService = new SemanticSimilarityService();
+        var now = DateTime.UtcNow;
+        var results = new List<RankedEmbeddingResult>();
+
+        foreach (var emb in embeddings)
+        {
+            // Dimension and model compatibility guard
+            if (emb.Dimensions != queryVector.Length) continue;
+            if (!EmbeddingGeneratorExtensions.IsModelCompatible(emb.Model, queryModel)) continue;
+            if (!ExpirationHelper.IsNotExpired(emb.ExpiresAt, now)) continue;
+
+            var sim = similarityService.CalculateCosineSimilarity(queryVector, emb.Embedding);
+            results.Add(new RankedEmbeddingResult
+            {
+                MemoryId   = emb.MemoryId,
+                Content    = emb.Content,
+                MemoryType = emb.MemoryType,
+                Model      = emb.Model,
+                Dimensions = emb.Dimensions,
+                Similarity = sim,
+                CreatedAt  = emb.CreatedAt,
+                UpdatedAt  = emb.UpdatedAt,
+                OccurredAt = emb.OccurredAt,
+                Metadata   = emb.Metadata,
+                ExpiresAt  = emb.ExpiresAt,
+                Categories = emb.Categories
+            });
+        }
+
+        return results.OrderByDescending(r => r.Similarity).ThenBy(r => r.MemoryId).Take(topK).ToList();
     }
 }

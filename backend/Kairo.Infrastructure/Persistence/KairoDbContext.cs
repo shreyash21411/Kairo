@@ -514,6 +514,11 @@ public partial class KairoDbContext : DbContext
                 .HasConstraintName("FK_MemoryIngestionJobs_MemoryScopes");
         });
 
+        if (Database.IsNpgsql())
+        {
+            modelBuilder.HasPostgresExtension("vector");
+        }
+
         OnModelCreatingPartial(modelBuilder);
     }
 

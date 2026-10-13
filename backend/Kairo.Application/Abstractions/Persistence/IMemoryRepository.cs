@@ -165,9 +165,71 @@ public interface IMemoryRepository
         long memoryId,
         string model,
         float[] embedding);
+
+    // ── Phase 4C Task 4C.4: Native vector retrieval ───────────────────────────
+
+    /// <summary>
+    /// Returns the top-<paramref name="topK"/> most similar active memory embeddings
+    /// to <paramref name="queryVector"/> for <paramref name="userId"/>.
+    /// When the active database is PostgreSQL, the similarity ranking is computed
+    /// natively in the database using pgvector cosine distance (<code>&lt;=&gt;</code>).
+    /// When the active database is SQL Server, all active embeddings matching the
+    /// filters are loaded and ranked in memory by <see cref="GetFilteredActiveMemoryEmbeddingsAsync"/>.
+    /// Returns results ordered by descending similarity (1 - cosine_distance).
+    /// Expired embeddings are excluded. Dimension-mismatched embeddings are excluded.
+    /// </summary>
+    /// <param name="userId">Owner of the memories.</param>
+    /// <param name="queryVector">Normalized query embedding vector.</param>
+    /// <param name="queryModel">Model name of the query embedding — used to filter compatible records.</param>
+    /// <param name="topK">Maximum number of results to return.</param>
+    /// <param name="scopeId">Optional scope filter.</param>
+    /// <param name="temporalFilter">Optional temporal filter applied before ranking.</param>
+    /// <param name="metadataFilters">Optional metadata filter conditions applied before ranking.</param>
+    /// <param name="categoryFilters">Optional category filter applied before ranking.</param>
+    Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsAsync(
+        long userId,
+        float[] queryVector,
+        string queryModel,
+        int topK,
+        long? scopeId = null,
+        MemoryTemporalFilter? temporalFilter = null,
+        List<MetadataFilterCondition>? metadataFilters = null,
+        List<string>? categoryFilters = null);
 }
 
 // ── Data classes returned by IMemoryRepository ───────────────────────────────
+
+/// <summary>
+/// Phase 4C Task 4C.4: Result of a native vector similarity search.
+/// Similarity is cosine similarity in [-1, 1] (1 = identical, 0 = orthogonal, -1 = opposite).
+/// </summary>
+public class RankedEmbeddingResult
+{
+    public long MemoryId { get; set; }
+
+    public string Content { get; set; } = null!;
+
+    public string MemoryType { get; set; } = null!;
+
+    public string Model { get; set; } = null!;
+
+    public int Dimensions { get; set; }
+
+    /// <summary>Cosine similarity in [-1, 1]. 1 = identical direction, 0 = orthogonal, -1 = opposite.</summary>
+    public double Similarity { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+
+    public DateTime? OccurredAt { get; set; }
+
+    public string? Metadata { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public List<string> Categories { get; set; } = new();
+}
 
 public class MemoryEmbeddingData
 {
