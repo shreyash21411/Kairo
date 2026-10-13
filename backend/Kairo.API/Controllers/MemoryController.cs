@@ -585,12 +585,12 @@ public class MemoryController : ControllerBase
     /// Retrieves the execution status of a background memory processing job.
     /// Access is authorized to the job's owning user and project.
     /// </summary>
-    [HttpGet("jobs/{jobId:guid}")]
+    [HttpGet("jobs/{jobId:long}")]
     [ProducesResponseType(typeof(JobStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetJobStatus([FromRoute] Guid jobId)
+    public async Task<IActionResult> GetJobStatus([FromRoute] long jobId)
     {
         try
         {

@@ -66,6 +66,11 @@ public class Phase4AIngestionUnitTests
         Assert.Single(pk.Properties);
         Assert.Equal("JobId", pk.Properties[0].Name);
 
+        // Phase 4A (revised): JobId must be long, not Guid, and database-generated.
+        var jobIdProp = pk.Properties[0];
+        Assert.Equal(typeof(long), jobIdProp.ClrType);
+        Assert.Equal(Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.OnAdd, jobIdProp.ValueGenerated);
+
         // Check required columns exist
         Assert.NotNull(entityType.FindProperty("ProjectId"));
         Assert.NotNull(entityType.FindProperty("UserId"));
@@ -247,7 +252,7 @@ public class Phase4AIngestionUnitTests
         apiKeyContextMock.Setup(a => a.UserId).Returns(42);
         apiKeyContextMock.Setup(a => a.ProjectId).Returns(100);
 
-        var expectedJobId = Guid.NewGuid();
+        var expectedJobId = 42001L;
         jobServiceMock.Setup(j => j.EnqueueAsyncCreateMemoryAsync(
                 It.IsAny<CreateMemoryRequest>(), 42, 100, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AsyncJobAcceptedResponse
@@ -302,7 +307,7 @@ public class Phase4AIngestionUnitTests
         apiKeyContextMock.Setup(a => a.UserId).Returns(42);
         apiKeyContextMock.Setup(a => a.ProjectId).Returns(100);
 
-        var expectedJobId = Guid.NewGuid();
+        var expectedJobId = 42002L;
         jobServiceMock.Setup(j => j.EnqueueAsyncCreateMemoryAsync(
                 It.IsAny<CreateMemoryRequest>(), 42, 100, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AsyncJobAcceptedResponse
@@ -350,7 +355,7 @@ public class Phase4AIngestionUnitTests
         apiKeyContextMock.Setup(a => a.UserId).Returns(42);
         apiKeyContextMock.Setup(a => a.ProjectId).Returns(100);
 
-        var expectedJobId = Guid.NewGuid();
+        var expectedJobId = 42003L;
         jobServiceMock.Setup(j => j.EnqueueAsyncIngestConversationAsync(
                 It.IsAny<IngestConversationRequest>(), 42, 100, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AsyncJobAcceptedResponse
@@ -405,7 +410,7 @@ public class Phase4AIngestionUnitTests
         apiKeyContextMock.Setup(a => a.UserId).Returns(42);
         apiKeyContextMock.Setup(a => a.ProjectId).Returns(100);
 
-        var jobId = Guid.NewGuid();
+        var jobId = 42010L;
         var expectedStatus = new JobStatusResponse
         {
             JobId = jobId,
@@ -450,7 +455,7 @@ public class Phase4AIngestionUnitTests
         apiKeyContextMock.Setup(a => a.UserId).Returns(42);
         apiKeyContextMock.Setup(a => a.ProjectId).Returns(100);
 
-        var jobId = Guid.NewGuid();
+        var jobId = 42011L;
         // Job service returns null because ownership verification failed at repository level
         jobServiceMock.Setup(j => j.GetJobStatusAsync(jobId, 42, 100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((JobStatusResponse?)null);
@@ -501,7 +506,7 @@ public class Phase4AIngestionUnitTests
             .Returns<Func<Task>, CancellationToken>((op, ct) => op());
 
         jobRepoMock.Setup(j => j.EnqueueJobAsync(It.IsAny<MemoryIngestionJobRecord>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(42100L);
 
         var service = new MemoryJobService(
             jobRepoMock.Object,
@@ -520,7 +525,8 @@ public class Phase4AIngestionUnitTests
 
         var response = await service.EnqueueAsyncCreateMemoryAsync(request, 42, 100);
 
-        Assert.NotEqual(Guid.Empty, response.JobId);
+        Assert.NotEqual(0L, response.JobId);
+        Assert.Equal(42100L, response.JobId);
         Assert.Equal(777, response.MemoryId);
         Assert.Equal("Pending", response.Status);
 
@@ -625,7 +631,7 @@ public class Phase4AIngestionUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42201L,
             UserId = 42,
             ProjectId = 100,
             ScopeId = 50,
@@ -676,7 +682,7 @@ public class Phase4AIngestionUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42202L,
             UserId = 42,
             ProjectId = 100,
             ScopeId = 50,
@@ -732,7 +738,7 @@ public class Phase4AIngestionUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42203L,
             UserId = 42,
             ProjectId = 100,
             ScopeId = 50,
@@ -785,7 +791,7 @@ public class Phase4AIngestionUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42204L,
             UserId = 42,
             ProjectId = 100,
             ScopeId = 50,
@@ -804,7 +810,7 @@ public class Phase4AIngestionUnitTests
             It.IsNotNull<TimeSpan?>(),
             It.IsAny<CancellationToken>()), Times.Once);
 
-        jobRepoMock.Verify(j => j.CompleteJobAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        jobRepoMock.Verify(j => j.CompleteJobAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -843,7 +849,7 @@ public class Phase4AIngestionUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42205L,
             UserId = 42,
             ProjectId = 100,
             ScopeId = 50,

@@ -655,7 +655,7 @@ public class Phase4BProviderUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42301L,
             JobType = "CreateMemory",
             MemoryId = 42L,
             UserId = 1,
@@ -700,7 +700,7 @@ public class Phase4BProviderUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42302L,
             JobType = "CreateMemory",
             MemoryId = 42L,
             UserId = 1,
@@ -745,7 +745,7 @@ public class Phase4BProviderUnitTests
 
         var job = new MemoryIngestionJobRecord
         {
-            JobId = Guid.NewGuid(),
+            JobId = 42303L,
             JobType = "CreateMemory",
             MemoryId = 42L,
             UserId = 1,

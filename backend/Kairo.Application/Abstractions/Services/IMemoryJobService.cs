@@ -1,4 +1,3 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Kairo.Application.DTOs;
@@ -32,7 +31,7 @@ public interface IMemoryJobService
     /// Retrieves the status of a background processing job, authorized by user and project.
     /// </summary>
     Task<JobStatusResponse?> GetJobStatusAsync(
-        Guid jobId,
+        long jobId,
         long userId,
         long projectId,
         CancellationToken cancellationToken = default);

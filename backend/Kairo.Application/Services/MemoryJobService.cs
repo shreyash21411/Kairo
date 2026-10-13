@@ -124,7 +124,7 @@ public class MemoryJobService : IMemoryJobService
             MemoryType = request.MemoryType
         };
 
-        var jobId = Guid.NewGuid();
+        long jobId = 0;
         long createdMemoryId = 0;
 
         // Atomic transaction boundary: persist Memory AND IngestionJob together.
@@ -152,7 +152,7 @@ public class MemoryJobService : IMemoryJobService
 
             var jobRecord = new MemoryIngestionJobRecord
             {
-                JobId = jobId,
+                // JobId intentionally left as default (0) — database assigns the identity.
                 ProjectId = projectId,
                 UserId = userId,
                 ScopeId = scopeId,
@@ -166,7 +166,8 @@ public class MemoryJobService : IMemoryJobService
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _jobRepository.EnqueueJobAsync(jobRecord, cancellationToken);
+            // EnqueueJobAsync returns the database-generated BIGINT identity.
+            jobId = await _jobRepository.EnqueueJobAsync(jobRecord, cancellationToken);
         }, cancellationToken);
 
         _logger.LogInformation(
@@ -200,12 +201,11 @@ public class MemoryJobService : IMemoryJobService
             throw new ArgumentException("messages must contain at least one entry.");
         }
 
-        var jobId = Guid.NewGuid();
         var payload = JsonSerializer.Serialize(request);
 
         var jobRecord = new MemoryIngestionJobRecord
         {
-            JobId = jobId,
+            // JobId intentionally left as default (0) — database assigns the identity.
             ProjectId = projectId,
             UserId = userId,
             ScopeId = null,
@@ -219,7 +219,8 @@ public class MemoryJobService : IMemoryJobService
             CreatedAt = DateTime.UtcNow
         };
 
-        await _jobRepository.EnqueueJobAsync(jobRecord, cancellationToken);
+        // EnqueueJobAsync returns the database-generated BIGINT identity.
+        var jobId = await _jobRepository.EnqueueJobAsync(jobRecord, cancellationToken);
 
         _logger.LogInformation(
             "[AsyncIngestion] Enqueued IngestConversation job {JobId}, UserId={UserId}, ProjectId={ProjectId}",
@@ -236,7 +237,7 @@ public class MemoryJobService : IMemoryJobService
 
     /// <inheritdoc />
     public async Task<JobStatusResponse?> GetJobStatusAsync(
-        Guid jobId,
+        long jobId,
         long userId,
         long projectId,
         CancellationToken cancellationToken = default)

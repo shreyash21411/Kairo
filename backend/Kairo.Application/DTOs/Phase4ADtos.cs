@@ -5,10 +5,11 @@ namespace Kairo.Application.DTOs;
 
 /// <summary>
 /// Phase 4A: Represents an ingestion job record passed between persistence and application services.
+/// JobId is always database-generated (long / BIGINT IDENTITY).
 /// </summary>
 public class MemoryIngestionJobRecord
 {
-    public Guid JobId { get; set; }
+    public long JobId { get; set; }
 
     public long ProjectId { get; set; }
 
@@ -46,7 +47,7 @@ public class MemoryIngestionJobRecord
 /// </summary>
 public class AsyncJobAcceptedResponse
 {
-    public Guid JobId { get; set; }
+    public long JobId { get; set; }
 
     public string Status { get; set; } = "Pending";
 
@@ -62,7 +63,7 @@ public class AsyncJobAcceptedResponse
 /// </summary>
 public class JobStatusResponse
 {
-    public Guid JobId { get; set; }
+    public long JobId { get; set; }
 
     public string JobType { get; set; } = null!;
 
