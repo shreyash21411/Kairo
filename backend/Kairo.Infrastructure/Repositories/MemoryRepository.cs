@@ -295,6 +295,39 @@ public class MemoryRepository : IMemoryRepository
             .FirstOrDefaultAsync();
     }
 
+    // ── Phase 5 Task 5.3: Batch snapshot retrieval ────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<Dictionary<long, MemorySnapshot>> GetMemorySnapshotsAsync(
+        IEnumerable<long> memoryIds)
+    {
+        // Deduplicate and materialize so EF Core can build an IN predicate.
+        var ids = memoryIds?.Distinct().ToList();
+
+        if (ids == null || ids.Count == 0)
+            return new Dictionary<long, MemorySnapshot>();
+
+        return await _dbContext.Memories
+            .AsNoTracking()
+            .Where(m => ids.Contains(m.MemoryId))
+            .Select(m => new MemorySnapshot
+            {
+                MemoryId   = m.MemoryId,
+                UserId     = m.UserId,
+                Content    = m.Content,
+                MemoryType = m.MemoryType,
+                IsActive   = m.IsActive,
+                CreatedAt  = m.CreatedAt,
+                UpdatedAt  = m.UpdatedAt,
+                OccurredAt = m.OccurredAt,
+                Metadata   = m.Metadata,
+                ExpiresAt  = m.ExpiresAt,
+                Categories = m.MemoryCategories.Select(c => c.Category).ToList()
+            })
+            .ToDictionaryAsync(m => m.MemoryId);
+    }
+
+
     public async Task DeactivateMemoryAsync(long memoryId)
     {
         var memory = await _dbContext.Memories

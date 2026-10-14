@@ -87,6 +87,10 @@ public class Phase1UnitTests
                 return results.OrderByDescending(r => r.Similarity).Take(topK).ToList();
             });
 
+        // Phase 5.3: batch hydration default — returns empty dict (no keyword-only candidates in Phase 1 tests)
+        memRepo.Setup(m => m.GetMemorySnapshotsAsync(It.IsAny<IEnumerable<long>>()))
+            .ReturnsAsync(new Dictionary<long, MemorySnapshot>());
+
         return new HybridRetrievalService(
             memRepo.Object,
             (embeddingGen ?? new Mock<IEmbeddingGenerator>()).Object,

@@ -227,7 +227,9 @@ public class HybridRetrievalService
 
         keywordResults ??= new List<KeywordSearchResult>();
 
-        var keywordRaw = keywordResults.ToDictionary(r => r.MemoryId, r => r.RawScore);
+        var keywordRaw = keywordResults
+            .GroupBy(r => r.MemoryId)
+            .ToDictionary(g => g.Key, g => g.Max(r => r.RawScore));
 
         // Normalize keyword scores to [0, 1]
         var keywordNorm = NormalizeMinMax(keywordRaw);
@@ -289,33 +291,49 @@ public class HybridRetrievalService
             }
         }
 
-        // ── Hydrate missing metadata for keyword-only candidates ──────────────
-        var missingKeywordIds = allMemoryIds.Where(id => !memoryDetailsMap.ContainsKey(id)).ToList();
+        // ── Hydrate missing metadata for keyword-only candidates (batch) ─────────
+        // Keyword-only candidate IDs that are absent from semantic results need their
+        // full metadata (CreatedAt, ExpiresAt, Categories, etc.) so that expiry
+        // checks, recency boosting, and downstream annotation work correctly.
+        // We fetch ALL missing IDs in one repository call instead of per-ID queries.
+        var missingKeywordIds = allMemoryIds
+            .Where(id => !memoryDetailsMap.ContainsKey(id))
+            .ToList();
+
+        var inactiveMemoryIds = new HashSet<long>();
+
         if (missingKeywordIds.Count > 0)
         {
-            foreach (var memId in missingKeywordIds)
+            try
             {
-                try
+                var snapshots = await _memoryRepository.GetMemorySnapshotsAsync(missingKeywordIds);
+                foreach (var (memId, snapshot) in snapshots)
                 {
-                    var snapshot = await _memoryRepository.GetMemorySnapshotAsync(memId);
-                    if (snapshot != null && snapshot.IsActive)
+                    // Explicitly track inactive memories so they are excluded from candidates.
+                    if (!snapshot.IsActive)
                     {
-                        memoryDetailsMap[memId] = (
-                            snapshot.Content,
-                            snapshot.MemoryType ?? "Fact",
-                            snapshot.CreatedAt,
-                            snapshot.UpdatedAt,
-                            snapshot.OccurredAt,
-                            snapshot.Metadata,
-                            snapshot.ExpiresAt,
-                            snapshot.Categories ?? new List<string>()
-                        );
+                        inactiveMemoryIds.Add(memId);
+                        continue;
                     }
+
+                    memoryDetailsMap[memId] = (
+                        snapshot.Content,
+                        snapshot.MemoryType ?? "Fact",
+                        snapshot.CreatedAt,
+                        snapshot.UpdatedAt,
+                        snapshot.OccurredAt,
+                        snapshot.Metadata,
+                        snapshot.ExpiresAt,
+                        snapshot.Categories ?? new List<string>()
+                    );
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[HybridRetrieval] Failed to load metadata snapshot for keyword candidate {MemoryId}.", memId);
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[HybridRetrieval] Failed to load batch metadata snapshot for {Count} keyword candidate(s). " +
+                    "Those candidates will be excluded from results if metadata is unavailable.",
+                    missingKeywordIds.Count);
             }
         }
 
@@ -326,6 +344,10 @@ public class HybridRetrievalService
 
         foreach (var memoryId in allMemoryIds)
         {
+            // Inactive memories confirmed by the repository must not bypass active-memory filtering.
+            if (inactiveMemoryIds.Contains(memoryId))
+                continue;
+
             string content;
             string memoryType;
 
@@ -341,7 +363,9 @@ public class HybridRetrievalService
             {
                 content = kwContent.Content;
                 memoryType = kwContent.MemoryType;
-                memoryDetailsMap[memoryId] = (content, memoryType, now, now, null, null, null, new List<string>());
+                // Neutral fallback timestamp: DateTime.MinValue prevents granting an artificial
+                // maximum recency advantage when metadata could not be hydrated.
+                memoryDetailsMap[memoryId] = (content, memoryType, DateTime.MinValue, DateTime.MinValue, null, null, null, new List<string>());
             }
             else continue;
 
@@ -358,10 +382,10 @@ public class HybridRetrievalService
             {
                 var refDate = memoryDetailsMap.TryGetValue(memoryId, out var d) && d.OccurredAt.HasValue
                     ? d.OccurredAt.Value
-                    : (memoryDetailsMap.TryGetValue(memoryId, out var d2) ? d2.CreatedAt : now);
+                    : (memoryDetailsMap.TryGetValue(memoryId, out var d2) ? d2.CreatedAt : DateTime.MinValue);
 
                 var ageInDays = Math.Max(0, (now - refDate).TotalDays);
-                var recencyScore = Math.Exp(-0.05 * ageInDays);
+                var recencyScore = refDate == DateTime.MinValue ? 0.0 : Math.Exp(-0.05 * ageInDays);
                 fused = (0.85 * fused) + (0.15 * recencyScore);
             }
 

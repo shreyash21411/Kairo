@@ -89,6 +89,15 @@ public interface IMemoryRepository
     Task<MemorySnapshot?> GetMemorySnapshotAsync(long memoryId);
 
     /// <summary>
+    /// Phase 5 Task 5.3: Returns snapshots for a batch of memory IDs in one query.
+    /// IDs are deduplicated before querying. Returns an empty dictionary immediately
+    /// when <paramref name="memoryIds"/> is empty or null.
+    /// Does NOT filter by IsActive or expiry — callers are responsible for those checks.
+    /// Returns a dictionary keyed by <see cref="MemorySnapshot.MemoryId"/>.
+    /// </summary>
+    Task<Dictionary<long, MemorySnapshot>> GetMemorySnapshotsAsync(IEnumerable<long> memoryIds);
+
+    /// <summary>
     /// Sets IsActive = false and stamps UpdatedAt.
     /// Idempotent: if already inactive, does nothing.
     /// Does NOT create a MemoryVersion — that responsibility belongs to

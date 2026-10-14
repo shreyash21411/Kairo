@@ -83,6 +83,10 @@ public class Phase3UnitTests
                 return results.OrderByDescending(r => r.Similarity).Take(topK).ToList();
             });
 
+        // Phase 5.3: batch hydration default — returns empty dict (no keyword-only candidates in Phase 3 tests)
+        memRepo.Setup(m => m.GetMemorySnapshotsAsync(It.IsAny<IEnumerable<long>>()))
+            .ReturnsAsync(new Dictionary<long, MemorySnapshot>());
+
         var relEval = relevanceEval ?? new Mock<IMemoryRelevanceEvaluator>();
         if (relevanceEval == null)
         {
