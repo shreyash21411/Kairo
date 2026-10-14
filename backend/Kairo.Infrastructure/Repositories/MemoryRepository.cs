@@ -700,22 +700,17 @@ public class MemoryRepository : IMemoryRepository
                 query = query.Where(e => e.Memory.OccurredAt != null && e.Memory.OccurredAt <= temporalFilter.OccurredAtTo.Value);
         }
 
-        // Materialize filtered candidates including metadata (for in-memory metadata filter)
+        // Narrow candidate projection: only load identifiers, model/dimension info,
+        // and metadata (required only when client-side metadata filters are supplied).
+        // Content and Category collections are NOT loaded for candidates that may be discarded.
         var candidates = await query
             .Select(e => new
             {
                 e.EmbeddingId,
                 e.MemoryId,
-                e.Memory.Content,
-                e.Memory.MemoryType,
-                e.Memory.CreatedAt,
-                e.Memory.UpdatedAt,
-                e.Memory.OccurredAt,
-                e.Memory.Metadata,
-                e.Memory.ExpiresAt,
-                Categories = e.Memory.MemoryCategories.Select(c => c.Category).ToList(),
                 e.Model,
-                e.Dimensions
+                e.Dimensions,
+                e.Memory.Metadata
             })
             .ToListAsync();
 
@@ -763,28 +758,38 @@ public class MemoryRepository : IMemoryRepository
             if (!wasOpen) await conn.CloseAsync();
         }
 
-        // Map survivors back to results
         var candidateMap = candidates.ToDictionary(c => c.EmbeddingId);
+
+        // Hydrate full snapshots only for the surviving topK memory IDs in a single batch query
+        var survivingMemoryIds = distanceMap.Keys
+            .Where(embId => candidateMap.ContainsKey(embId))
+            .Select(embId => candidateMap[embId].MemoryId)
+            .Distinct()
+            .ToList();
+
+        var snapshots = await GetMemorySnapshotsAsync(survivingMemoryIds);
+
         var results = new List<RankedEmbeddingResult>();
 
         foreach (var (embId, dist) in distanceMap)
         {
             if (!candidateMap.TryGetValue(embId, out var c)) continue;
+            if (!snapshots.TryGetValue(c.MemoryId, out var s)) continue;
 
             results.Add(new RankedEmbeddingResult
             {
                 MemoryId   = c.MemoryId,
-                Content    = c.Content,
-                MemoryType = c.MemoryType ?? string.Empty,
+                Content    = s.Content,
+                MemoryType = s.MemoryType ?? string.Empty,
                 Model      = c.Model,
                 Dimensions = c.Dimensions,
                 Similarity = 1.0 - dist,   // cosine distance [0,2] → cosine similarity in [-1,1]; pgvector uses [0,2] range
-                CreatedAt  = c.CreatedAt,
-                UpdatedAt  = c.UpdatedAt,
-                OccurredAt = c.OccurredAt,
-                Metadata   = c.Metadata,
-                ExpiresAt  = c.ExpiresAt,
-                Categories = c.Categories
+                CreatedAt  = s.CreatedAt,
+                UpdatedAt  = s.UpdatedAt,
+                OccurredAt = s.OccurredAt,
+                Metadata   = s.Metadata,
+                ExpiresAt  = s.ExpiresAt,
+                Categories = s.Categories
             });
         }
 

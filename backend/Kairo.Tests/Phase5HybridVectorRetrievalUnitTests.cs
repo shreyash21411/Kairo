@@ -566,15 +566,16 @@ public class Phase5HybridVectorRetrievalUnitTests
     public async Task PostgreSql_HybridRetrieval_EndToEnd_UsesNativeVectorRetrieval()
     {
         var creds = DiscoverPostgresCredentials();
-        if (creds == null) return; // gracefully skip if postgres is unreachable
+        Assert.True(creds != null, "PostgreSQL test credentials could not be discovered from environment or infrastructure/docker/.env.");
 
-        var connString = BuildConnectionString(creds.Value, "kairo_vector_test");
+        var connString = BuildConnectionString(creds!.Value, "kairo_vector_test");
         var options = new DbContextOptionsBuilder<KairoDbContext>()
             .UseNpgsql(connString, o => o.UseVector())
             .Options;
 
         await using var context = new KairoDbContext(options);
-        if (!await context.Database.CanConnectAsync()) return;
+        var canConnect = await context.Database.CanConnectAsync();
+        Assert.True(canConnect, "PostgreSQL test container is unreachable or rejected connection to kairo_vector_test.");
 
         // Create isolated test user & scope
         var email = $"hybrid_pg_{Guid.NewGuid():N}@kairo-test.internal";
@@ -598,6 +599,9 @@ public class Phase5HybridVectorRetrievalUnitTests
             context.Memories.AddRange(mem1, mem2);
             await context.SaveChangesAsync();
 
+            context.MemoryCategories.Add(new MemoryCategory { MemoryId = mem1.MemoryId, Category = "database", CreatedAt = DateTime.UtcNow });
+            await context.SaveChangesAsync();
+
             var emb1 = new MemoryEmbeddings { MemoryId = mem1.MemoryId, Model = "mistral-embed", Dimensions = 4, VectorData = System.Text.Json.JsonSerializer.Serialize(new float[] { 0.9f, 0.1f, 0.0f, 0.0f }), CreatedAt = DateTime.UtcNow };
             var emb2 = new MemoryEmbeddings { MemoryId = mem2.MemoryId, Model = "mistral-embed", Dimensions = 4, VectorData = System.Text.Json.JsonSerializer.Serialize(new float[] { 0.0f, 0.0f, 0.9f, 0.1f }), CreatedAt = DateTime.UtcNow };
             context.MemoryEmbeddings.AddRange(emb1, emb2);
@@ -611,12 +615,16 @@ public class Phase5HybridVectorRetrievalUnitTests
             kwSearchMock.Setup(k => k.SearchAsync(user.UserId, "database query", scope.ScopeId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<KeywordSearchResult>());
 
+            var relEvalMock = new Mock<IMemoryRelevanceEvaluator>();
+            relEvalMock.Setup(r => r.EvaluateAsync(It.IsAny<string>(), It.IsAny<List<RetrievedMemory>>()))
+                .ReturnsAsync((string _, List<RetrievedMemory> c) => c);
+
             // Rebuild with real repo directly
             var realHybrid = new HybridRetrievalService(
                 realRepo,
                 embGenMock.Object,
                 new SemanticSimilarityService(),
-                new Mock<IMemoryRelevanceEvaluator>().Object,
+                relEvalMock.Object,
                 kwSearchMock.Object,
                 new Mock<IEntityRepository>().Object,
                 new Mock<IEntityExtractionService>().Object,
@@ -633,10 +641,15 @@ public class Phase5HybridVectorRetrievalUnitTests
             // Memory 1 must be ranked #1 by native pgvector cosine distance
             Assert.Equal(mem1.MemoryId, result.Memories[0].MemoryId);
             Assert.True(result.Memories[0].Similarity > 0.5);
+            Assert.Equal("PostgreSQL native vector storage", result.Memories[0].Content);
+            Assert.Single(result.Memories[0].Categories);
+            Assert.Equal("database", result.Memories[0].Categories[0]);
         }
         finally
         {
             // Cleanup isolated records
+            var cats = await context.MemoryCategories.Where(c => c.Memory.UserId == user.UserId).ToListAsync();
+            context.MemoryCategories.RemoveRange(cats);
             var embs = await context.MemoryEmbeddings.Where(e => e.Memory.UserId == user.UserId).ToListAsync();
             context.MemoryEmbeddings.RemoveRange(embs);
             var mems = await context.Memories.Where(m => m.UserId == user.UserId).ToListAsync();
@@ -651,15 +664,266 @@ public class Phase5HybridVectorRetrievalUnitTests
         }
     }
 
+    [Fact]
+    public async Task PostgreSql_SearchSimilarEmbeddings_NarrowsProjectionAndHydratesTopKOnly()
+    {
+        var creds = DiscoverPostgresCredentials();
+        Assert.True(creds != null, "PostgreSQL test credentials could not be discovered from environment or infrastructure/docker/.env.");
+
+        var connString = BuildConnectionString(creds!.Value, "kairo_vector_test");
+        var options = new DbContextOptionsBuilder<KairoDbContext>()
+            .UseNpgsql(connString, o => o.UseVector())
+            .Options;
+
+        await using var context = new KairoDbContext(options);
+        var canConnect = await context.Database.CanConnectAsync();
+        Assert.True(canConnect, "PostgreSQL test container is unreachable or rejected connection to kairo_vector_test.");
+
+        var email = $"narrow_proj_{Guid.NewGuid():N}@kairo-test.internal";
+        var user = new Users { Email = email, AccountStatus = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        try
+        {
+            // Seed 4 memories with 3D embeddings
+            var mem1 = new Memories { UserId = user.UserId, Content = "Candidate One (Best)", MemoryType = "Fact", IsActive = true, CreatedAt = DateTime.UtcNow.AddDays(-1), UpdatedAt = DateTime.UtcNow };
+            var mem2 = new Memories { UserId = user.UserId, Content = "Candidate Two (Good)", MemoryType = "Fact", IsActive = true, CreatedAt = DateTime.UtcNow.AddDays(-2), UpdatedAt = DateTime.UtcNow };
+            var mem3 = new Memories { UserId = user.UserId, Content = "Candidate Three (Fair)", MemoryType = "Skill", IsActive = true, CreatedAt = DateTime.UtcNow.AddDays(-3), UpdatedAt = DateTime.UtcNow };
+            var mem4 = new Memories { UserId = user.UserId, Content = "Candidate Four (Poor)", MemoryType = "Event", IsActive = true, CreatedAt = DateTime.UtcNow.AddDays(-4), UpdatedAt = DateTime.UtcNow };
+            context.Memories.AddRange(mem1, mem2, mem3, mem4);
+            await context.SaveChangesAsync();
+
+            context.MemoryCategories.Add(new MemoryCategory { MemoryId = mem1.MemoryId, Category = "alpha", CreatedAt = DateTime.UtcNow });
+            context.MemoryCategories.Add(new MemoryCategory { MemoryId = mem2.MemoryId, Category = "beta", CreatedAt = DateTime.UtcNow });
+            await context.SaveChangesAsync();
+
+            var e1 = new MemoryEmbeddings { MemoryId = mem1.MemoryId, Model = "mistral-embed", Dimensions = 3, VectorData = System.Text.Json.JsonSerializer.Serialize(new float[] { 1f, 0f, 0f }), CreatedAt = DateTime.UtcNow };
+            var e2 = new MemoryEmbeddings { MemoryId = mem2.MemoryId, Model = "mistral-embed", Dimensions = 3, VectorData = System.Text.Json.JsonSerializer.Serialize(new float[] { 0.8f, 0.6f, 0f }), CreatedAt = DateTime.UtcNow };
+            var e3 = new MemoryEmbeddings { MemoryId = mem3.MemoryId, Model = "mistral-embed", Dimensions = 3, VectorData = System.Text.Json.JsonSerializer.Serialize(new float[] { 0.5f, 0.5f, 0.7f }), CreatedAt = DateTime.UtcNow };
+            var e4 = new MemoryEmbeddings { MemoryId = mem4.MemoryId, Model = "mistral-embed", Dimensions = 3, VectorData = System.Text.Json.JsonSerializer.Serialize(new float[] { 0f, 1f, 0f }), CreatedAt = DateTime.UtcNow };
+            context.MemoryEmbeddings.AddRange(e1, e2, e3, e4);
+            await context.SaveChangesAsync();
+
+            var repo = new MemoryRepository(context);
+            // Request topK = 2
+            var results = await repo.SearchSimilarEmbeddingsAsync(user.UserId, new float[] { 1f, 0f, 0f }, "mistral-embed", topK: 2);
+
+            // Exactly topK=2 returned
+            Assert.Equal(2, results.Count);
+
+            // Verified correct ranking and full snapshot hydration on survivors
+            Assert.Equal(mem1.MemoryId, results[0].MemoryId);
+            Assert.Equal("Candidate One (Best)", results[0].Content);
+            Assert.Single(results[0].Categories);
+            Assert.Equal("alpha", results[0].Categories[0]);
+            Assert.True(results[0].Similarity > 0.99);
+
+            Assert.Equal(mem2.MemoryId, results[1].MemoryId);
+            Assert.Equal("Candidate Two (Good)", results[1].Content);
+            Assert.Single(results[1].Categories);
+            Assert.Equal("beta", results[1].Categories[0]);
+
+            // Non-surviving candidates (mem3, mem4) are not in results
+            Assert.DoesNotContain(results, r => r.MemoryId == mem3.MemoryId);
+            Assert.DoesNotContain(results, r => r.MemoryId == mem4.MemoryId);
+        }
+        finally
+        {
+            var cats = await context.MemoryCategories.Where(c => c.Memory.UserId == user.UserId).ToListAsync();
+            context.MemoryCategories.RemoveRange(cats);
+            var embs = await context.MemoryEmbeddings.Where(e => e.Memory.UserId == user.UserId).ToListAsync();
+            context.MemoryEmbeddings.RemoveRange(embs);
+            var mems = await context.Memories.Where(m => m.UserId == user.UserId).ToListAsync();
+            context.Memories.RemoveRange(mems);
+            var u = await context.Users.FindAsync(user.UserId);
+            if (u != null) context.Users.Remove(u);
+            await context.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task HybridRetrieval_TiedFusedScores_OrdersDeterministicallyByMemoryId()
+    {
+        var memRepoMock = new Mock<IMemoryRepository>();
+        var embGenMock = new Mock<IEmbeddingGenerator>();
+        var relEvalMock = new Mock<IMemoryRelevanceEvaluator>();
+        var kwSearchMock = new Mock<IKeywordSearchRepository>();
+
+        embGenMock.Setup(e => e.GenerateAsync(It.IsAny<string>()))
+            .ReturnsAsync(new float[] { 1f, 0f });
+
+        // Two semantic candidates with identical similarity 0.85
+        // Memory 20 has larger ID, Memory 10 has smaller ID
+        memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
+                It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+            .ReturnsAsync(new List<RankedEmbeddingResult>
+            {
+                new() { MemoryId = 20L, Content = "B", Similarity = 0.85, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
+                new() { MemoryId = 10L, Content = "A", Similarity = 0.85, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }
+            });
+
+        kwSearchMock.Setup(k => k.SearchAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<KeywordSearchResult>());
+
+        memRepoMock.Setup(m => m.GetMemorySnapshotsAsync(It.IsAny<IEnumerable<long>>()))
+            .ReturnsAsync(new Dictionary<long, MemorySnapshot>());
+
+        relEvalMock.Setup(r => r.EvaluateAsync(It.IsAny<string>(), It.IsAny<List<RetrievedMemory>>()))
+            .ReturnsAsync((string _, List<RetrievedMemory> c) => c);
+
+        var hybrid = new HybridRetrievalService(
+            memRepoMock.Object,
+            embGenMock.Object,
+            new SemanticSimilarityService(),
+            relEvalMock.Object,
+            kwSearchMock.Object,
+            new Mock<IEntityRepository>().Object,
+            new Mock<IEntityExtractionService>().Object,
+            new Mock<ILogger<HybridRetrievalService>>().Object);
+
+        var result = await hybrid.RetrieveWithRelationsAsync(1L, 1L, "test", topK: 2);
+
+        Assert.Equal(2, result.Memories.Count);
+        // Ties must be broken deterministically by MemoryId ascending (10 before 20)
+        Assert.Equal(10L, result.Memories[0].MemoryId);
+        Assert.Equal(20L, result.Memories[1].MemoryId);
+    }
+
+    [Fact]
+    public async Task HybridRetrieval_CandidateUnionExceedsCandidateLimit_TruncatesByFusedScoreDeterministically()
+    {
+        var memRepoMock = new Mock<IMemoryRepository>();
+        var embGenMock = new Mock<IEmbeddingGenerator>();
+        var relEvalMock = new Mock<IMemoryRelevanceEvaluator>();
+        var kwSearchMock = new Mock<IKeywordSearchRepository>();
+
+        embGenMock.Setup(e => e.GenerateAsync(It.IsAny<string>()))
+            .ReturnsAsync(new float[] { 1f, 0f });
+
+        // topK = 5 -> candidateLimit = Math.Max(5 * 3, 15) = 15
+        // Generate 10 semantic results (scores 0.90 down to 0.72)
+        var semanticResults = Enumerable.Range(1, 10).Select(i => new RankedEmbeddingResult
+        {
+            MemoryId = i,
+            Content = $"Semantic {i}",
+            Similarity = 1.0 - (i * 0.02),
+            Model = "mistral-embed",
+            Dimensions = 2,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        }).ToList();
+
+        memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
+                It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+            .ReturnsAsync(semanticResults);
+
+        // Generate 10 keyword-only results (IDs 101 to 110, raw scores 10 down to 1)
+        var kwResults = Enumerable.Range(1, 10).Select(i => new KeywordSearchResult
+        {
+            MemoryId = 100 + i,
+            Content = $"Keyword {i}",
+            MemoryType = "Fact",
+            RawScore = 11 - i
+        }).ToList();
+
+        kwSearchMock.Setup(k => k.SearchAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(kwResults);
+
+        // Snapshot hydration for keyword candidates
+        var kwSnapshots = kwResults.ToDictionary(k => k.MemoryId, k => new MemorySnapshot
+        {
+            MemoryId = k.MemoryId,
+            Content = k.Content,
+            MemoryType = "Fact",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            UpdatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        memRepoMock.Setup(m => m.GetMemorySnapshotsAsync(It.IsAny<IEnumerable<long>>()))
+            .ReturnsAsync(kwSnapshots);
+
+        List<RetrievedMemory>? capturedForEval = null;
+        relEvalMock.Setup(r => r.EvaluateAsync(It.IsAny<string>(), It.IsAny<List<RetrievedMemory>>()))
+            .Callback<string, List<RetrievedMemory>>((_, c) => capturedForEval = c)
+            .ReturnsAsync((string _, List<RetrievedMemory> c) => c);
+
+        var hybrid = new HybridRetrievalService(
+            memRepoMock.Object,
+            embGenMock.Object,
+            new SemanticSimilarityService(),
+            relEvalMock.Object,
+            kwSearchMock.Object,
+            new Mock<IEntityRepository>().Object,
+            new Mock<IEntityExtractionService>().Object,
+            new Mock<ILogger<HybridRetrievalService>>().Object);
+
+        var result = await hybrid.RetrieveWithRelationsAsync(1L, 1L, "test", topK: 5);
+
+        // Candidate union is 20 items (10 semantic + 10 keyword)
+        // candidateLimit is 15 -> exactly 15 candidates must be sent to relevance evaluator
+        Assert.NotNull(capturedForEval);
+        Assert.Equal(15, capturedForEval!.Count);
+
+        // Final result must be truncated to topK = 5
+        Assert.Equal(5, result.Memories.Count);
+
+        // The top candidate should have highest fused score
+        for (int i = 0; i < result.Memories.Count - 1; i++)
+        {
+            Assert.True(result.Memories[i].Similarity >= result.Memories[i + 1].Similarity);
+        }
+    }
+
     private static (string Host, int Port, string Username, string Password)? DiscoverPostgresCredentials()
     {
         var host = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "127.0.0.1";
-        var portStr = Environment.GetEnvironmentVariable("POSTGRES_PORT") ?? "5433";
-        var user = Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "kairo";
-        var pass = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "kairo_dev_secret";
+        var portStr = Environment.GetEnvironmentVariable("POSTGRES_HOST_PORT") ?? "5433";
+        int.TryParse(portStr, out var port);
+        if (port == 0) port = 5433;
+        var user = Environment.GetEnvironmentVariable("KAIRO_APP_USER") ?? "kairo_dev";
 
-        if (!int.TryParse(portStr, out var port)) port = 5433;
-        return (host, port, user, pass);
+        var envPass = Environment.GetEnvironmentVariable("KAIRO_APP_PASSWORD");
+        if (!string.IsNullOrWhiteSpace(envPass))
+            return (host, port, user, envPass);
+
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var dir = new DirectoryInfo(baseDir);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "infrastructure", "docker", ".env")))
+            dir = dir.Parent;
+
+        if (dir != null)
+        {
+            var envFilePath = Path.Combine(dir.FullName, "infrastructure", "docker", ".env");
+            var lines = File.ReadAllLines(envFilePath);
+            string? discoveredUser = null;
+            string? discoveredPass = null;
+            string? discoveredPort = null;
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.Trim();
+                if (line.StartsWith('#') || !line.Contains('=')) continue;
+                var parts = line.Split('=', 2);
+                var key = parts[0].Trim();
+                var val = parts[1].Trim();
+                if (key == "KAIRO_APP_USER") discoveredUser = val;
+                if (key == "KAIRO_APP_PASSWORD") discoveredPass = val;
+                if (key == "POSTGRES_HOST_PORT") discoveredPort = val;
+            }
+
+            if (!string.IsNullOrWhiteSpace(discoveredPass))
+            {
+                if (!string.IsNullOrWhiteSpace(discoveredUser)) user = discoveredUser;
+                if (int.TryParse(discoveredPort, out var p)) port = p;
+                return (host, port, user, discoveredPass);
+            }
+        }
+
+        return null;
     }
 
     private static string BuildConnectionString((string Host, int Port, string Username, string Password) creds, string database)

@@ -401,9 +401,10 @@ public class HybridRetrievalService
             });
         }
 
-        // Top candidates by fused score for relevance evaluation
+        // Top candidates by fused score for relevance evaluation (deterministic tie-breaking by MemoryId)
         var topCandidates = candidates
             .OrderByDescending(c => c.FusedScore)
+            .ThenBy(c => c.MemoryId)
             .Take(candidateLimit)
             .ToList();
 
@@ -445,9 +446,10 @@ public class HybridRetrievalService
         if (relevant == null || relevant.Count == 0)
             return new HybridRetrievalResult();
 
-        // Preserve fused score ordering and take topK
+        // Preserve fused score ordering and take topK (deterministic tie-breaking by MemoryId)
         var finalMemories = relevant
             .OrderByDescending(r => r.Similarity)
+            .ThenBy(r => r.MemoryId)
             .Take(topK)
             .ToList();
 

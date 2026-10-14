@@ -525,17 +525,18 @@ public class Phase5BatchHydrationUnitTests
     public async Task PostgreSql_GetMemorySnapshotsAsync_ReturnsBatchCorrectly()
     {
         var creds = DiscoverPostgresCredentials();
-        if (creds == null) return; // gracefully skip if postgres unreachable
+        Assert.True(creds != null, "PostgreSQL test credentials could not be discovered from environment or infrastructure/docker/.env.");
 
         var executedCommands = new List<string>();
-        var connString = BuildConnectionString(creds.Value, "kairo_vector_test");
+        var connString = BuildConnectionString(creds!.Value, "kairo_vector_test");
         var options = new DbContextOptionsBuilder<KairoDbContext>()
             .UseNpgsql(connString, o => o.UseVector())
             .LogTo(msg => executedCommands.Add(msg), LogLevel.Information)
             .Options;
 
         await using var context = new KairoDbContext(options);
-        if (!await context.Database.CanConnectAsync()) return;
+        var canConnect = await context.Database.CanConnectAsync();
+        Assert.True(canConnect, "PostgreSQL test container is unreachable or rejected connection to kairo_vector_test.");
 
         // Isolated user
         var email = $"batch53_{Guid.NewGuid():N}@kairo-test.internal";
