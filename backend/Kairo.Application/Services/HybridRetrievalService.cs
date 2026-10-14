@@ -33,6 +33,7 @@ public class HybridRetrievalService
     private readonly IEntityRepository _entityRepository;
     private readonly IEntityExtractionService _entityExtractionService;
     private readonly ILogger<HybridRetrievalService> _logger;
+    private readonly IRerankerService? _rerankerService;
 
     public HybridRetrievalService(
         IMemoryRepository memoryRepository,
@@ -42,7 +43,8 @@ public class HybridRetrievalService
         IKeywordSearchRepository keywordSearch,
         IEntityRepository entityRepository,
         IEntityExtractionService entityExtractionService,
-        ILogger<HybridRetrievalService> logger)
+        ILogger<HybridRetrievalService> logger,
+        IRerankerService? rerankerService = null)
     {
         _memoryRepository        = memoryRepository;
         _embeddingGenerator      = embeddingGenerator;
@@ -52,6 +54,7 @@ public class HybridRetrievalService
         _entityRepository        = entityRepository;
         _entityExtractionService = entityExtractionService;
         _logger                  = logger;
+        _rerankerService         = rerankerService;
     }
 
     /// <summary>
@@ -446,9 +449,31 @@ public class HybridRetrievalService
         if (relevant == null || relevant.Count == 0)
             return new HybridRetrievalResult();
 
-        // Preserve fused score ordering and take topK (deterministic tie-breaking by MemoryId)
-        var finalMemories = relevant
-            .OrderByDescending(r => r.Similarity)
+        // ── Phase 5.6 Task 5.6.2: Dedicated continuous-scoring reranking stage ───
+        var rerankedCandidates = relevant;
+        if (_rerankerService != null && relevant.Count > 0)
+        {
+            try
+            {
+                rerankedCandidates = await _rerankerService.RerankAsync(query, relevant, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[HybridRetrieval] Reranking failed. Preserving pre-rerank relevance-evaluated candidate ordering.");
+                rerankedCandidates = relevant;
+            }
+        }
+
+        // Final ordering:
+        // When RerankScore is populated, order by RerankScore DESC, then MemoryId ASC.
+        // When RerankScore is null (reranker disabled, unavailable, or failed), preserve fused score ordering (Similarity DESC, MemoryId ASC).
+        var finalMemories = rerankedCandidates
+            .OrderByDescending(r => r.RerankScore ?? r.Similarity)
             .ThenBy(r => r.MemoryId)
             .Take(topK)
             .ToList();

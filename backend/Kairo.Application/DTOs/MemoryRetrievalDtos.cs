@@ -34,4 +34,7 @@ public class RetrievedMemory
 
     /// <summary>Phase 3: Extensible categories assigned to this memory.</summary>
     public List<string> Categories { get; set; } = new();
+
+    /// <summary>Phase 5.6: Continuous relevance score emitted by the reranker stage (optional). NULL = unranked.</summary>
+    public double? RerankScore { get; set; }
 }

@@ -209,10 +209,13 @@ public class McpSecurityUnitTests
     [Fact]
     public async Task ProjectIsolation_ToolNeverAcceptsProjectId_EnforcedByContext()
     {
-        // When client A invokes tools, the context guarantees ProjectId = TestProjectId (101).
-        // It is impossible for caller to pass a different ProjectId to the tools methods.
+        // When client invokes tools, the context guarantees ProjectId = TestProjectId and UserId = TestUserId.
+        // It is strictly forbidden for any MCP tool to accept caller-supplied projectId or userId parameters.
         var methods = typeof(KairoMemoryTools).GetMethods()
-            .Where(m => new[] { "Remember", "Recall", "Update", "Forget" }.Contains(m.Name));
+            .Where(m => m.GetCustomAttributes(false).Any(a => a.GetType().Name == "McpServerToolAttribute"))
+            .ToList();
+
+        Assert.NotEmpty(methods);
 
         foreach (var method in methods)
         {

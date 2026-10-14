@@ -50,6 +50,12 @@ public partial class KairoDbContext : DbContext
 
     public virtual DbSet<Users> Users { get; set; }
 
+    /// <summary>Phase 5.8: Append-only usage ledger.</summary>
+    public virtual DbSet<UsageLedgerEntry> UsageLedger { get; set; }
+
+    /// <summary>Phase 5.8: Per-project quota configuration.</summary>
+    public virtual DbSet<ProjectQuota> ProjectQuotas { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApiKeys>(entity =>
@@ -512,6 +518,56 @@ public partial class KairoDbContext : DbContext
                 .HasForeignKey(d => d.ScopeId)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("FK_MemoryIngestionJobs_MemoryScopes");
+        });
+
+        // ── Phase 5.8: UsageLedgerEntry ──────────────────────────────────────
+
+        modelBuilder.Entity<UsageLedgerEntry>(entity =>
+        {
+            entity.ToTable("UsageLedger");
+            entity.HasKey(e => e.EntryId);
+
+            // Identity column — DB-generated on every INSERT, never assigned by EF.
+            entity.Property(e => e.EntryId).ValueGeneratedOnAdd();
+
+            // Narrow indexes for time-windowed per-project aggregation.
+            entity.HasIndex(e => new { e.ProjectId, e.OccurredAt }, "IX_UsageLedger_Project_OccurredAt");
+            entity.HasIndex(e => new { e.UserId, e.OccurredAt }, "IX_UsageLedger_User_OccurredAt");
+            entity.HasIndex(e => new { e.ProjectId, e.OperationType, e.OccurredAt }, "IX_UsageLedger_Project_Op_OccurredAt");
+
+            entity.Property(e => e.OperationType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Outcome).HasMaxLength(20).IsRequired()
+                .HasDefaultValue("Success");
+            entity.Property(e => e.OccurredAt).HasPrecision(3);
+            entity.Property(e => e.UnitCount).HasDefaultValue(1);
+
+            entity.HasOne(d => d.User).WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_UsageLedger_Users");
+
+            entity.HasOne(d => d.Project).WithMany()
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_UsageLedger_Projects");
+        });
+
+        // ── Phase 5.8: ProjectQuota ──────────────────────────────────────────
+
+        modelBuilder.Entity<ProjectQuota>(entity =>
+        {
+            entity.ToTable("ProjectQuotas");
+            entity.HasKey(e => e.ProjectId);
+
+            // ProjectId is not auto-generated — it is always the FK from Projects.
+            entity.Property(e => e.ProjectId).ValueGeneratedNever();
+
+            entity.Property(e => e.UpdatedAt).HasPrecision(3);
+
+            entity.HasOne(d => d.Project).WithMany()
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ProjectQuotas_Projects");
         });
 
         if (Database.IsNpgsql())

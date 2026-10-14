@@ -50,6 +50,7 @@ public sealed class KairoMemoryTools
     private readonly IApiKeyContext _apiKeyContext;
     private readonly IMemoryService _memoryService;
     private readonly IScopeResolutionService _scopeResolutionService;
+    private readonly IMemoryIngestionService? _ingestionService;
 
     // Shared serialization options used for all MCP result payloads.
     // camelCase keeps output idiomatic for MCP clients.
@@ -62,11 +63,13 @@ public sealed class KairoMemoryTools
     public KairoMemoryTools(
         IApiKeyContext apiKeyContext,
         IMemoryService memoryService,
-        IScopeResolutionService scopeResolutionService)
+        IScopeResolutionService scopeResolutionService,
+        IMemoryIngestionService? ingestionService = null)
     {
         _apiKeyContext = apiKeyContext;
         _memoryService = memoryService;
         _scopeResolutionService = scopeResolutionService;
+        _ingestionService = ingestionService;
     }
 
     // ── kairo_ping ───────────────────────────────────────────────────────────
@@ -117,7 +120,23 @@ public sealed class KairoMemoryTools
         [Description(
             "The actor identifier for this memory partition within the authenticated project. " +
             "Must not be empty.")]
-        string actorId)
+        string actorId,
+
+        [Description(
+            "Optional list of category tags assigned to this memory (e.g. ['work', 'preferences']).")]
+        List<string>? categories = null,
+
+        [Description(
+            "Optional arbitrary key-value metadata object associated with this memory.")]
+        Dictionary<string, object>? metadata = null,
+
+        [Description(
+            "Optional expiration timestamp in UTC (ISO 8601 string) after which this memory expires.")]
+        DateTime? expiresAt = null,
+
+        [Description(
+            "Optional event or fact occurrence timestamp in UTC (ISO 8601 string).")]
+        DateTime? occurredAt = null)
     {
         // Identity comes from the authenticated context — never from tool args.
         var userId = _apiKeyContext.UserId;
@@ -135,7 +154,11 @@ public sealed class KairoMemoryTools
         {
             Content = content,
             MemoryType = memoryType,
-            ActorId = actorId
+            ActorId = actorId,
+            Categories = categories,
+            Metadata = metadata,
+            ExpiresAt = expiresAt,
+            OccurredAt = occurredAt
         };
 
         // Delegate entirely to the existing Application memory pipeline.
@@ -167,7 +190,11 @@ public sealed class KairoMemoryTools
             memoryType = memory.MemoryType,
             isActive = memory.IsActive,
             createdAt = memory.CreatedAt,
-            updatedAt = memory.UpdatedAt
+            updatedAt = memory.UpdatedAt,
+            occurredAt = memory.OccurredAt,
+            metadata = memory.Metadata,
+            expiresAt = memory.ExpiresAt,
+            categories = memory.Categories
         }, JsonOptions);
     }
 
@@ -186,8 +213,8 @@ public sealed class KairoMemoryTools
     [McpServerTool(Name = "recall")]
     [Description(
         "Semantically searches the authenticated user's memories in Kairo within the specified actor scope. " +
-        "Uses embedding similarity and relevance evaluation to return the most " +
-        "relevant memories. Returns up to topK results (default 5, max 100).")]
+        "Uses hybrid embedding similarity, metadata/temporal filtering, and continuous relevance reranking. " +
+        "Returns up to topK results (default 5, max 100) with matching graph relations.")]
     public async Task<string> Recall(
         [Description(
             "The search query. The system embeds this query and finds semantically " +
@@ -202,11 +229,54 @@ public sealed class KairoMemoryTools
         [Description(
             "The maximum number of memories to return. Must be between 1 and 100. " +
             "Defaults to 5 if not specified.")]
-        int topK = 5)
+        int topK = 5,
+
+        [Description(
+            "Optional list of categories to filter memories by (inclusion match).")]
+        List<string>? categories = null,
+
+        [Description(
+            "Optional key-value metadata filter dictionary (e.g. {'env': 'prod'}).")]
+        Dictionary<string, object>? metadataFilters = null,
+
+        [Description(
+            "Optional lower bound for memory creation timestamp in UTC (ISO 8601 string).")]
+        DateTime? createdFrom = null,
+
+        [Description(
+            "Optional upper bound for memory creation timestamp in UTC (ISO 8601 string).")]
+        DateTime? createdTo = null,
+
+        [Description(
+            "Optional lower bound for memory occurrence timestamp in UTC (ISO 8601 string).")]
+        DateTime? occurredFrom = null,
+
+        [Description(
+            "Optional upper bound for memory occurrence timestamp in UTC (ISO 8601 string).")]
+        DateTime? occurredTo = null,
+
+        [Description(
+            "Optional relative time constraint: return memories created within the last N days.")]
+        int? lastDays = null,
+
+        [Description(
+            "Optional graph traversal depth for retrieving connected entity relationships (0 to 2, default 0).")]
+        int? graphDepth = null,
+
+        [Description(
+            "Optional boolean flag to apply recency boosting to relevance ranking.")]
+        bool? recencyBoost = null)
     {
         // Identity comes from the authenticated context — never from tool args.
         var userId = _apiKeyContext.UserId;
         var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new ArgumentException(
+                "Query cannot be empty.",
+                nameof(query));
+        }
 
         if (string.IsNullOrWhiteSpace(actorId))
         {
@@ -215,12 +285,71 @@ public sealed class KairoMemoryTools
                 nameof(actorId));
         }
 
+        if (topK <= 0 || topK > 100)
+        {
+            throw new ArgumentException(
+                "TopK must be between 1 and 100.",
+                nameof(topK));
+        }
+
+        if (createdFrom.HasValue && createdTo.HasValue && createdFrom.Value > createdTo.Value)
+        {
+            throw new ArgumentException(
+                "createdFrom cannot be after createdTo.",
+                nameof(createdFrom));
+        }
+
+        if (occurredFrom.HasValue && occurredTo.HasValue && occurredFrom.Value > occurredTo.Value)
+        {
+            throw new ArgumentException(
+                "occurredFrom cannot be after occurredTo.",
+                nameof(occurredFrom));
+        }
+
+        if (lastDays.HasValue && lastDays.Value < 0)
+        {
+            throw new ArgumentException(
+                "lastDays cannot be negative.",
+                nameof(lastDays));
+        }
+
+        if (graphDepth.HasValue && (graphDepth.Value < 0 || graphDepth.Value > 2))
+        {
+            throw new ArgumentException(
+                "graphDepth must be between 0 and 2.",
+                nameof(graphDepth));
+        }
+
+        if (categories != null && categories.Count > 0)
+        {
+            // Validates category syntax and format consistent with CategoryValidator
+            CategoryValidator.ValidateAndNormalize(categories);
+        }
+
+        MemoryTemporalFilter? temporal = null;
+        if (createdFrom.HasValue || createdTo.HasValue || occurredFrom.HasValue || occurredTo.HasValue || lastDays.HasValue)
+        {
+            temporal = new MemoryTemporalFilter
+            {
+                CreatedAtFrom = createdFrom,
+                CreatedAtTo = createdTo,
+                OccurredAtFrom = occurredFrom,
+                OccurredAtTo = occurredTo,
+                LastDays = lastDays
+            };
+        }
+
         // Build the existing Application DTO — no new DTOs introduced.
         var request = new MemorySearchRequest
         {
             Query = query,
             TopK = topK,
-            ActorId = actorId
+            ActorId = actorId,
+            Categories = categories,
+            MetadataFilters = metadataFilters,
+            Temporal = temporal,
+            GraphDepth = graphDepth,
+            RecencyBoost = recencyBoost
         };
 
         // Delegate entirely to the existing Application retrieval pipeline.
@@ -238,7 +367,20 @@ public sealed class KairoMemoryTools
                 memoryId = m.MemoryId,
                 content = m.Content,
                 memoryType = m.MemoryType,
-                similarity = m.Similarity
+                similarity = m.Similarity,
+                rerankScore = m.RerankScore,
+                categories = m.Categories,
+                metadata = m.Metadata,
+                occurredAt = m.OccurredAt,
+                createdAt = m.CreatedAt,
+                expiresAt = m.ExpiresAt
+            }),
+            relations = result.Relations?.Select(r => new
+            {
+                source = r.Source,
+                relationship = r.Relationship,
+                target = r.Target,
+                confidence = r.Confidence
             })
         }, JsonOptions);
     }
@@ -282,7 +424,23 @@ public sealed class KairoMemoryTools
         [Description(
             "The actor identifier for the memory scope within the authenticated project. " +
             "Must not be empty.")]
-        string actorId)
+        string actorId,
+
+        [Description(
+            "Optional updated list of category tags. When omitted, existing categories are preserved.")]
+        List<string>? categories = null,
+
+        [Description(
+            "Optional updated arbitrary key-value metadata object. When omitted, existing metadata is preserved.")]
+        Dictionary<string, object>? metadata = null,
+
+        [Description(
+            "Optional updated expiration timestamp in UTC (ISO 8601 string). When omitted, existing expiration is preserved.")]
+        DateTime? expiresAt = null,
+
+        [Description(
+            "Optional updated occurrence timestamp in UTC (ISO 8601 string). When omitted, existing occurrence timestamp is preserved.")]
+        DateTime? occurredAt = null)
     {
         // Identity comes from the authenticated context — never from tool args.
         var userId = _apiKeyContext.UserId;
@@ -303,7 +461,11 @@ public sealed class KairoMemoryTools
         var request = new UpdateMemoryRequest
         {
             Content = content,
-            MemoryType = memoryType
+            MemoryType = memoryType,
+            Categories = categories,
+            Metadata = metadata,
+            ExpiresAt = expiresAt,
+            OccurredAt = occurredAt
         };
 
         // Delegate entirely to the existing Application memory pipeline with scope validation.
@@ -323,7 +485,11 @@ public sealed class KairoMemoryTools
             memoryType = updated.MemoryType,
             isActive = updated.IsActive,
             createdAt = updated.CreatedAt,
-            updatedAt = updated.UpdatedAt
+            updatedAt = updated.UpdatedAt,
+            occurredAt = updated.OccurredAt,
+            metadata = updated.Metadata,
+            expiresAt = updated.ExpiresAt,
+            categories = updated.Categories
         }, JsonOptions);
     }
 
@@ -381,6 +547,295 @@ public sealed class KairoMemoryTools
             forgotten = true,
             memoryId = memoryId,
             message = "Memory deactivated. The record is preserved in the database."
+        }, JsonOptions);
+    }
+
+    // ── get_memory ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// MCP get_memory → IMemoryService.GetMemoryAsync
+    ///
+    /// Retrieves a single memory by ID for the authenticated project and actor scope.
+    /// Enforces ownership and tenant boundary: memory must belong to the resolved scope and user.
+    /// </summary>
+    [McpServerTool(Name = "get_memory")]
+    [Description(
+        "Retrieves a single durable memory by its unique ID for the authenticated project and actor scope. " +
+        "Validates ownership and project boundary at the database level.")]
+    public async Task<string> GetMemory(
+        [Description(
+            "The unique ID of the memory to retrieve. Must belong to the authenticated project and actor scope.")]
+        long memoryId,
+
+        [Description(
+            "The actor identifier for the memory scope within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId)
+    {
+        var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
+
+        var scopeId = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
+        var memory = await _memoryService.GetMemoryAsync(memoryId, userId, projectId, scopeId);
+
+        return JsonSerializer.Serialize(new
+        {
+            found = true,
+            memoryId = memory.MemoryId,
+            userId = memory.UserId,
+            content = memory.Content,
+            memoryType = memory.MemoryType,
+            isActive = memory.IsActive,
+            createdAt = memory.CreatedAt,
+            updatedAt = memory.UpdatedAt,
+            occurredAt = memory.OccurredAt,
+            metadata = memory.Metadata,
+            expiresAt = memory.ExpiresAt,
+            categories = memory.Categories
+        }, JsonOptions);
+    }
+
+    // ── remember_batch ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// MCP remember_batch → IMemoryService.BatchCreateMemoriesAsync
+    ///
+    /// Stores a batch of memories (up to 100) for the authenticated project and actor scope.
+    /// Reuses the existing batch memory creation pipeline with per-item validation and deduplication.
+    /// </summary>
+    [McpServerTool(Name = "remember_batch")]
+    [Description(
+        "Stores multiple durable memories in bulk (up to 100) for the authenticated project and actor scope. " +
+        "Validates and deduplicates each item, returning batch creation status and per-item outcomes.")]
+    public async Task<string> RememberBatch(
+        [Description(
+            "List of memory items to create. Must contain between 1 and 100 items.")]
+        List<BatchCreateMemoryItem> memories,
+
+        [Description(
+            "The default actor identifier for this batch of memories within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId)
+    {
+        var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
+
+        if (memories == null || memories.Count == 0)
+        {
+            throw new ArgumentException(
+                "Memories batch cannot be empty.",
+                nameof(memories));
+        }
+
+        if (memories.Count > BatchCreateMemoryRequest.MaxBatchSize)
+        {
+            throw new ArgumentException(
+                $"Batch size ({memories.Count}) exceeds maximum allowed ({BatchCreateMemoryRequest.MaxBatchSize}) items.",
+                nameof(memories));
+        }
+
+        // Apply default actorId to items that omit it
+        foreach (var item in memories)
+        {
+            if (string.IsNullOrWhiteSpace(item.ActorId) && item.Scope == null)
+            {
+                item.ActorId = actorId;
+            }
+        }
+
+        var request = new BatchCreateMemoryRequest
+        {
+            Memories = memories
+        };
+
+        var response = await _memoryService.BatchCreateMemoriesAsync(request, userId, projectId);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = response.Success,
+            createdCount = response.CreatedCount,
+            memories = response.Memories.Select(m => new
+            {
+                memoryId = m.MemoryId,
+                content = m.Content,
+                memoryType = m.MemoryType,
+                categories = m.Categories,
+                createdAt = m.CreatedAt
+            }),
+            errors = response.Errors.Select(e => new
+            {
+                index = e.Index,
+                memoryId = e.MemoryId,
+                message = e.Message
+            })
+        }, JsonOptions);
+    }
+
+    // ── forget_batch ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// MCP forget_batch → IMemoryService.BatchDeleteMemoriesAsync
+    ///
+    /// Soft-deletes a batch of memories (up to 100) for the authenticated project.
+    /// Validates ownership and IDOR defense for every item before applying deactivations.
+    /// </summary>
+    [McpServerTool(Name = "forget_batch")]
+    [Description(
+        "Deactivates (soft-deletes) multiple memories in bulk (up to 100) for the authenticated project. " +
+        "Validates ownership for every item, archives historical versions, and marks records inactive.")]
+    public async Task<string> ForgetBatch(
+        [Description(
+            "List of memory IDs to deactivate. Must contain between 1 and 100 IDs.")]
+        List<long> memoryIds,
+
+        [Description(
+            "The actor identifier for the memory scope within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId)
+    {
+        var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
+
+        if (memoryIds == null || memoryIds.Count == 0)
+        {
+            throw new ArgumentException(
+                "MemoryIds list cannot be empty.",
+                nameof(memoryIds));
+        }
+
+        if (memoryIds.Count > BatchDeleteMemoryRequest.MaxBatchSize)
+        {
+            throw new ArgumentException(
+                $"Batch size ({memoryIds.Count}) exceeds maximum allowed ({BatchDeleteMemoryRequest.MaxBatchSize}) items.",
+                nameof(memoryIds));
+        }
+
+        // Verify scope exists for this actor
+        _ = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
+
+        var request = new BatchDeleteMemoryRequest
+        {
+            MemoryIds = memoryIds
+        };
+
+        var response = await _memoryService.BatchDeleteMemoriesAsync(request, userId, projectId);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = response.Success,
+            deletedCount = response.DeletedCount,
+            deletedIds = response.DeletedIds,
+            errors = response.Errors.Select(e => new
+            {
+                index = e.Index,
+                memoryId = e.MemoryId,
+                message = e.Message
+            })
+        }, JsonOptions);
+    }
+
+    // ── ingest_dialogue ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// MCP ingest_dialogue → IMemoryIngestionService.IngestAsync
+    ///
+    /// Analyzes a conversational dialogue, extracts salient facts/preferences using LLM NER,
+    /// performs consolidation evaluation (Add, Merge, NoAction), and persists durable memories.
+    /// </summary>
+    [McpServerTool(Name = "ingest_dialogue")]
+    [Description(
+        "Ingests a conversational dialogue, extracts durable memories (facts, preferences), " +
+        "evaluates consolidation against existing memories, and updates memory partition.")]
+    public async Task<string> IngestDialogue(
+        [Description(
+            "The conversation messages to analyze. Each message must have 'role' (user/assistant/system) and 'content'.")]
+        List<IngestMessageItem> messages,
+
+        [Description(
+            "The actor identifier for this ingestion within the authenticated project. " +
+            "Must not be empty.")]
+        string actorId)
+    {
+        var userId = _apiKeyContext.UserId;
+        var projectId = _apiKeyContext.ProjectId;
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException(
+                "ActorId cannot be empty.",
+                nameof(actorId));
+        }
+
+        if (messages == null || messages.Count == 0)
+        {
+            throw new ArgumentException(
+                "Messages cannot be empty.",
+                nameof(messages));
+        }
+
+        if (messages.Count > 100)
+        {
+            throw new ArgumentException(
+                "Conversation exceeds maximum allowed 100 messages.",
+                nameof(messages));
+        }
+
+        foreach (var msg in messages)
+        {
+            if (string.IsNullOrWhiteSpace(msg.Role) || string.IsNullOrWhiteSpace(msg.Content))
+            {
+                throw new ArgumentException(
+                    "Each message must have a non-empty role and content.",
+                    nameof(messages));
+            }
+        }
+
+        if (_ingestionService == null)
+        {
+            throw new InvalidOperationException(
+                "Dialogue ingestion service is not configured.");
+        }
+
+        var request = new IngestConversationRequest
+        {
+            ActorId = actorId,
+            Messages = messages
+        };
+
+        var response = await _ingestionService.IngestAsync(request, userId, projectId);
+
+        return JsonSerializer.Serialize(new
+        {
+            processed = response.Processed,
+            extractedCount = response.ExtractedCount,
+            memories = response.Memories.Select(m => new
+            {
+                action = m.Action.ToString(),
+                memoryId = m.MemoryId,
+                content = m.Content,
+                reason = m.Reason
+            })
         }, JsonOptions);
     }
 }

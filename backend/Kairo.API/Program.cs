@@ -24,6 +24,8 @@ using Kairo.MCP.Extensions; // Phase 9: MCP adapter layer
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Kairo.API.Configuration;
+using Kairo.API.Middleware; // Phase 5.8
+using System.Diagnostics.Metrics; // Phase 5.8.4
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -150,6 +152,12 @@ builder.Services.AddScoped<IEntityExtractionService, MistralEntityExtractionServ
 builder.Services.AddScoped<SemanticSimilarityService>();
 builder.Services.AddScoped<MemoryRetrievalService>();
 
+// ── Phase 5.6: Dedicated Reranker Layer ───────────────────────────────────────
+builder.Services.Configure<RerankerOptions>(
+    builder.Configuration.GetSection(RerankerOptions.SectionName));
+builder.Services.AddScoped<IRerankProvider, MistralLlmRerankProvider>();
+builder.Services.AddScoped<IRerankerService, RerankerService>();
+
 // ── V1 Public Memory API ────────────────────────────────────────────────────
 builder.Services.AddScoped<IMemoryService, MemoryService>();
 
@@ -179,6 +187,19 @@ builder.Services.AddHostedService<Kairo.API.Services.MemoryIngestionWorker>();
 // KairoApiKeyAuthenticationHandler registrations above are reused as-is.
 // No duplicate memory logic, repositories, or auth is introduced here.
 builder.Services.AddKairoMcp();
+
+// ── Phase 5.8: Usage Metering, Quota, and Reporting ───────────────────────
+builder.Services.AddScoped<IUsageMeterService, UsageMeterService>();
+builder.Services.AddScoped<IQuotaEnforcementService, QuotaEnforcementService>();
+builder.Services.AddScoped<IUsageReportingService, UsageReportingService>();
+
+// Phase 5.8.4: Kairo.Platform meter (System.Diagnostics.Metrics)
+// A singleton Meter is the correct lifetime — meters are static/process-scoped.
+builder.Services.AddSingleton(sp =>
+{
+    var meter = new Meter("Kairo.Platform", "1.0.0");
+    return meter;
+});
 
 
 // Add services to the container
@@ -311,6 +332,11 @@ if (!app.Environment.IsDevelopment())
 app.UseCors("KairoCors");
 
 app.UseRateLimiter();
+
+// ── Phase 5.8.3: Quota enforcement ────────────────────────────────────────
+// Runs after authentication so ApiKeyContext is populated, but before
+// controllers and MCP tools so memory operations are gated on quota.
+app.UseMiddleware<QuotaMeterMiddleware>();
 
 
 // Authentication must run before Authorization
