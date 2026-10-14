@@ -136,37 +136,72 @@ public class HybridRetrievalService
         var hasCategoryFilter = categoryFilters != null && categoryFilters.Count > 0;
         var hasMemFilters = temporalFilter != null || (metadataFilters != null && metadataFilters.Count > 0);
 
-        List<MemoryEmbeddingData> scopeMemories;
-        if (hasCategoryFilter)
+        var activeModel = _embeddingGenerator.GetModelName();
+
+        if (queryEmbedding.Length > 0)
         {
-            scopeMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
-                userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
-        }
-        else if (hasMemFilters)
-        {
-            scopeMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
-                userId, scopeId, temporalFilter, metadataFilters);
+            var semanticResults = await _memoryRepository.SearchSimilarEmbeddingsAsync(
+                userId,
+                queryEmbedding,
+                activeModel,
+                candidateLimit,
+                scopeId,
+                temporalFilter,
+                metadataFilters,
+                categoryFilters);
+
+            if (semanticResults != null)
+            {
+                foreach (var item in semanticResults)
+                {
+                    semanticScores[item.MemoryId] = item.Similarity;
+                    memoryDetailsMap[item.MemoryId] = (
+                        item.Content,
+                        item.MemoryType,
+                        item.CreatedAt,
+                        item.UpdatedAt,
+                        item.OccurredAt,
+                        item.Metadata,
+                        item.ExpiresAt,
+                        item.Categories
+                    );
+                }
+            }
         }
         else
         {
-            scopeMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
-        }
-
-        scopeMemories ??= new List<MemoryEmbeddingData>();
-        var activeModel = _embeddingGenerator.GetModelName();
-
-        if (scopeMemories != null)
-        {
-            foreach (var mem in scopeMemories)
+            // Keyword-only fallback when query embedding is empty/unavailable
+            List<MemoryEmbeddingData> activeEmbeddings;
+            if (hasCategoryFilter)
             {
-                memoryDetailsMap[mem.MemoryId] = (mem.Content, mem.MemoryType, mem.CreatedAt, mem.UpdatedAt, mem.OccurredAt, mem.Metadata, mem.ExpiresAt, mem.Categories);
+                activeEmbeddings = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                    userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+            }
+            else if (hasMemFilters)
+            {
+                activeEmbeddings = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                    userId, scopeId, temporalFilter, metadataFilters);
+            }
+            else
+            {
+                activeEmbeddings = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(
+                    userId, scopeId);
+            }
 
-                if (queryEmbedding.Length > 0 &&
-                    mem.Dimensions == queryEmbedding.Length &&
-                    EmbeddingGeneratorExtensions.IsModelCompatible(mem.Model, activeModel))
+            if (activeEmbeddings != null)
+            {
+                foreach (var e in activeEmbeddings)
                 {
-                    var sim = _similarityService.CalculateCosineSimilarity(queryEmbedding, mem.Embedding);
-                    semanticScores[mem.MemoryId] = sim;
+                    memoryDetailsMap[e.MemoryId] = (
+                        e.Content,
+                        e.MemoryType,
+                        e.CreatedAt,
+                        e.UpdatedAt,
+                        e.OccurredAt,
+                        e.Metadata,
+                        e.ExpiresAt,
+                        e.Categories
+                    );
                 }
             }
         }
@@ -250,6 +285,36 @@ public class HybridRetrievalService
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[HybridRetrieval] Entity signal computation failed. Skipping entity channel.");
+                }
+            }
+        }
+
+        // ── Hydrate missing metadata for keyword-only candidates ──────────────
+        var missingKeywordIds = allMemoryIds.Where(id => !memoryDetailsMap.ContainsKey(id)).ToList();
+        if (missingKeywordIds.Count > 0)
+        {
+            foreach (var memId in missingKeywordIds)
+            {
+                try
+                {
+                    var snapshot = await _memoryRepository.GetMemorySnapshotAsync(memId);
+                    if (snapshot != null && snapshot.IsActive)
+                    {
+                        memoryDetailsMap[memId] = (
+                            snapshot.Content,
+                            snapshot.MemoryType ?? "Fact",
+                            snapshot.CreatedAt,
+                            snapshot.UpdatedAt,
+                            snapshot.OccurredAt,
+                            snapshot.Metadata,
+                            snapshot.ExpiresAt,
+                            snapshot.Categories ?? new List<string>()
+                        );
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[HybridRetrieval] Failed to load metadata snapshot for keyword candidate {MemoryId}.", memId);
                 }
             }
         }

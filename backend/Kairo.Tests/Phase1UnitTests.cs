@@ -43,6 +43,50 @@ public class Phase1UnitTests
         memRepo.SetReturnsDefault<Task<IReadOnlyList<MemoryEmbeddingData>>>(
             Task.FromResult<IReadOnlyList<MemoryEmbeddingData>>(Array.Empty<MemoryEmbeddingData>()));
 
+        memRepo.Setup(m => m.SearchSimilarEmbeddingsAsync(
+                It.IsAny<long>(),
+                It.IsAny<float[]>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<long?>(),
+                It.IsAny<MemoryTemporalFilter?>(),
+                It.IsAny<List<MetadataFilterCondition>?>(),
+                It.IsAny<List<string>?>()))
+            .Returns(async (long uid, float[] qVec, string model, int topK, long? scope, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf) =>
+            {
+                var embeddings = await memRepo.Object.GetFilteredActiveMemoryEmbeddingsAsync(uid, scope, tf, mf, cf);
+                if (embeddings == null || embeddings.Count == 0)
+                {
+                    embeddings = await memRepo.Object.GetActiveMemoryEmbeddingsAsync(uid, scope);
+                }
+
+                if (embeddings == null || embeddings.Count == 0)
+                    return new List<RankedEmbeddingResult>();
+
+                var simService = new SemanticSimilarityService();
+                var results = new List<RankedEmbeddingResult>();
+                foreach (var e in embeddings)
+                {
+                    var sim = simService.CalculateCosineSimilarity(qVec, e.Embedding);
+                    results.Add(new RankedEmbeddingResult
+                    {
+                        MemoryId = e.MemoryId,
+                        Content = e.Content,
+                        MemoryType = e.MemoryType,
+                        Model = e.Model ?? model,
+                        Dimensions = e.Dimensions,
+                        Similarity = sim,
+                        CreatedAt = e.CreatedAt == default ? DateTime.UtcNow : e.CreatedAt,
+                        UpdatedAt = e.UpdatedAt == default ? DateTime.UtcNow : e.UpdatedAt,
+                        OccurredAt = e.OccurredAt,
+                        Metadata = e.Metadata,
+                        ExpiresAt = e.ExpiresAt,
+                        Categories = e.Categories ?? new List<string>()
+                    });
+                }
+                return results.OrderByDescending(r => r.Similarity).Take(topK).ToList();
+            });
+
         return new HybridRetrievalService(
             memRepo.Object,
             (embeddingGen ?? new Mock<IEmbeddingGenerator>()).Object,

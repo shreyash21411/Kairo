@@ -39,6 +39,50 @@ public class Phase3UnitTests
         memRepo.SetReturnsDefault<Task<List<MemoryEmbeddingData>>>(
             Task.FromResult(new List<MemoryEmbeddingData>()));
 
+        memRepo.Setup(m => m.SearchSimilarEmbeddingsAsync(
+                It.IsAny<long>(),
+                It.IsAny<float[]>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<long?>(),
+                It.IsAny<MemoryTemporalFilter?>(),
+                It.IsAny<List<MetadataFilterCondition>?>(),
+                It.IsAny<List<string>?>()))
+            .Returns(async (long uid, float[] qVec, string model, int topK, long? scope, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf) =>
+            {
+                var embeddings = await memRepo.Object.GetFilteredActiveMemoryEmbeddingsAsync(uid, scope, tf, mf, cf);
+                if (embeddings == null || embeddings.Count == 0)
+                {
+                    embeddings = await memRepo.Object.GetActiveMemoryEmbeddingsAsync(uid, scope);
+                }
+
+                if (embeddings == null || embeddings.Count == 0)
+                    return new List<RankedEmbeddingResult>();
+
+                var simService = new SemanticSimilarityService();
+                var results = new List<RankedEmbeddingResult>();
+                foreach (var e in embeddings)
+                {
+                    var sim = simService.CalculateCosineSimilarity(qVec, e.Embedding);
+                    results.Add(new RankedEmbeddingResult
+                    {
+                        MemoryId = e.MemoryId,
+                        Content = e.Content,
+                        MemoryType = e.MemoryType,
+                        Model = e.Model ?? model,
+                        Dimensions = e.Dimensions,
+                        Similarity = sim,
+                        CreatedAt = e.CreatedAt == default ? DateTime.UtcNow : e.CreatedAt,
+                        UpdatedAt = e.UpdatedAt == default ? DateTime.UtcNow : e.UpdatedAt,
+                        OccurredAt = e.OccurredAt,
+                        Metadata = e.Metadata,
+                        ExpiresAt = e.ExpiresAt,
+                        Categories = e.Categories ?? new List<string>()
+                    });
+                }
+                return results.OrderByDescending(r => r.Similarity).Take(topK).ToList();
+            });
+
         var relEval = relevanceEval ?? new Mock<IMemoryRelevanceEvaluator>();
         if (relevanceEval == null)
         {
@@ -293,7 +337,7 @@ public class Phase3UnitTests
             graphDepth: 1,
             categoryFilters: categories);
 
-        memoryRepoMock.Verify(m => m.GetFilteredActiveMemoryEmbeddingsAsync(1, 10, null, metaFilters, categories), Times.Once);
+        memoryRepoMock.Verify(m => m.SearchSimilarEmbeddingsAsync(1, It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), 10, null, metaFilters, categories), Times.Once);
         keywordSearchMock.Verify(k => k.SearchAsync(1, "query", 10, It.IsAny<int>(), null, metaFilters, categories, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -335,7 +379,7 @@ public class Phase3UnitTests
             graphDepth: 1,
             categoryFilters: categories);
 
-        memoryRepoMock.Verify(m => m.GetFilteredActiveMemoryEmbeddingsAsync(1, 10, temporalFilter, null, categories), Times.Once);
+        memoryRepoMock.Verify(m => m.SearchSimilarEmbeddingsAsync(1, It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), 10, temporalFilter, null, categories), Times.Once);
     }
 
     [Fact]
