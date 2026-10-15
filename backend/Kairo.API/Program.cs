@@ -126,6 +126,9 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IMemoryScopeRepository, MemoryScopeRepository>();
 builder.Services.AddScoped<IScopeResolutionService, ScopeResolutionService>();
 
+// Health check service registration
+builder.Services.AddHealthChecks();
+
 // ── Phase 4B: Provider Abstraction Layer ──────────────────────────────────────
 builder.Services.Configure<ProviderOptions>(
     builder.Configuration.GetSection(ProviderOptions.SectionName));
@@ -142,12 +145,14 @@ builder.Services.AddHttpClient<MistralEmbeddingProvider>();
 builder.Services.AddScoped<ILlmProvider>(sp => sp.GetRequiredService<MistralLlmProvider>());
 builder.Services.AddScoped<IEmbeddingProvider>(sp => sp.GetRequiredService<MistralEmbeddingProvider>());
 
-// High-level service adapters delegating to providers
-builder.Services.AddScoped<IEmbeddingGenerator, MistralEmbeddingGenerator>();
-builder.Services.AddScoped<IMemoryExtractor, MistralMemoryExtractor>();
-builder.Services.AddScoped<IMemoryRelevanceEvaluator, MistralMemoryRelevanceEvaluator>();
-builder.Services.AddScoped<IMemoryConsolidationEvaluator, MistralMemoryConsolidationEvaluator>();
-builder.Services.AddScoped<IEntityExtractionService, MistralEntityExtractionService>();
+// High-level service adapters delegating to providers (explicit factories prevent DI constructor ambiguity)
+builder.Services.AddScoped<IEmbeddingGenerator>(sp => new MistralEmbeddingGenerator(sp.GetRequiredService<IEmbeddingProvider>()));
+builder.Services.AddScoped<IMemoryExtractor>(sp => new MistralMemoryExtractor(sp.GetRequiredService<ILlmProvider>()));
+builder.Services.AddScoped<IMemoryRelevanceEvaluator>(sp => new MistralMemoryRelevanceEvaluator(sp.GetRequiredService<ILlmProvider>()));
+builder.Services.AddScoped<IMemoryConsolidationEvaluator>(sp => new MistralMemoryConsolidationEvaluator(sp.GetRequiredService<ILlmProvider>()));
+builder.Services.AddScoped<IEntityExtractionService>(sp => new MistralEntityExtractionService(
+    sp.GetRequiredService<ILlmProvider>(),
+    sp.GetRequiredService<ILogger<MistralEntityExtractionService>>()));
 
 builder.Services.AddScoped<SemanticSimilarityService>();
 builder.Services.AddScoped<MemoryRetrievalService>();
@@ -191,7 +196,10 @@ builder.Services.AddKairoMcp();
 // ── Phase 5.8: Usage Metering, Quota, and Reporting ───────────────────────
 builder.Services.Configure<Kairo.Application.Configuration.QuotaOptions>(
     builder.Configuration.GetSection(Kairo.Application.Configuration.QuotaOptions.SectionName));
-builder.Services.AddScoped<IUsageMeterService, UsageMeterService>();
+builder.Services.AddScoped<IUsageMeterService>(sp => new UsageMeterService(
+    sp.GetRequiredService<IServiceScopeFactory>(),
+    sp.GetRequiredService<ILogger<UsageMeterService>>(),
+    sp.GetService<IQuotaEnforcementService>()));
 builder.Services.AddScoped<IQuotaEnforcementService, QuotaEnforcementService>();
 builder.Services.AddScoped<IUsageReportingService, UsageReportingService>();
 
@@ -359,6 +367,9 @@ if (app.Environment.IsDevelopment())
 
 
 app.MapControllers();
+
+// Health check endpoint for hosting orchestrator (Render, Docker, Kubernetes)
+app.MapHealthChecks("/health").AllowAnonymous();
 
 
 // ── Phase 9: MCP endpoint ─────────────────────────────────────────────────

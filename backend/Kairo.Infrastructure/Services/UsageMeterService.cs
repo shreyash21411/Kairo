@@ -30,6 +30,7 @@ public sealed class UsageMeterService : IUsageMeterService
     /// <summary>
     /// Production DI constructor: uses <see cref="IServiceScopeFactory"/> to isolate scope per operation.
     /// </summary>
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public UsageMeterService(
         IServiceScopeFactory scopeFactory,
         ILogger<UsageMeterService> logger,
