@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 from .exceptions import KairoValidationError
 from .models import (
+    ActorPurgeResponse,
     BatchCreateResponse,
     BatchDeleteResponse,
     BatchUpdateResponse,
@@ -21,6 +22,7 @@ from .models import (
     IngestMessage,
     IngestionMemoryResult,
     Memory,
+    MemoryHistoryResponse,
     MemoryIngestionResponse,
     MemoryScope,
     MemorySearchResponse,
@@ -394,5 +396,41 @@ class MemoryResource:
             json={"memoryIds": memory_ids},
         )
         return BatchDeleteResponse._from_dict(data or {})
+
+    # ── Phase 6.3: History & Purge ────────────────────────────────────────────
+
+    def history(self, memory_id: int) -> MemoryHistoryResponse:
+        """Retrieve version history for a memory.
+
+        :param memory_id: Unique memory identifier.
+        :return: :class:`~kairo.models.MemoryHistoryResponse` with list of versions.
+        """
+        if not isinstance(memory_id, int) or memory_id <= 0:
+            raise KairoValidationError("memory_id must be a positive integer.", status_code=400)
+
+        data = self._client._request(
+            "GET",
+            f"/api/v1/memories/{memory_id}/history",
+        )
+        return MemoryHistoryResponse._from_dict(data or {})
+
+    def purge_actor(self, actor_id: str) -> ActorPurgeResponse:
+        """Purge (soft-delete) all memories belonging to an actor in the project.
+
+        :param actor_id: Actor identifier to purge.
+        :return: :class:`~kairo.models.ActorPurgeResponse` with deleted count and IDs.
+        """
+        if not isinstance(actor_id, str) or not actor_id.strip():
+            raise KairoValidationError("actor_id must not be empty.", status_code=400)
+        if len(actor_id.strip()) > 128:
+            raise KairoValidationError("actor_id must not exceed 128 characters.", status_code=400)
+
+        data = self._client._request(
+            "DELETE",
+            "/api/v1/memories",
+            params={"actorId": actor_id.strip()},
+        )
+        return ActorPurgeResponse._from_dict(data or {})
+
 
 

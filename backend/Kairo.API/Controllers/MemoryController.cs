@@ -197,7 +197,67 @@ public class MemoryController : ControllerBase
         }
     }
 
+    // ── GET /api/v1/memories/{memoryId}/history ──────────────────────────────
+
+    /// <summary>
+    /// Phase 6.3 (GAP-01): Retrieves version history for a memory belonging to the authenticated user and project.
+    /// </summary>
+    [HttpGet("{memoryId:long}/history")]
+    [ProducesResponseType(
+        typeof(MemoryHistoryResponse),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetMemoryHistory(
+        [FromRoute] long memoryId)
+    {
+        try
+        {
+            var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
+
+            var history = await _memoryService.GetMemoryHistoryAsync(
+                memoryId,
+                userId,
+                projectId,
+                cancellationToken: HttpContext.RequestAborted);
+
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryGet, UsageOutcome.Success, 1);
+            }
+
+            return Ok(history);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new
+            {
+                message = ex.Message
+            });
+        }
+        catch (Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "An unexpected error occurred while retrieving memory history."
+                });
+        }
+    }
+
     // ── GET /api/v1/memories ─────────────────────────────────────────────────
+
 
     /// <summary>
     /// Lists all active memories belonging to the authenticated user.
@@ -370,7 +430,68 @@ public class MemoryController : ControllerBase
         }
     }
 
+    // ── DELETE /api/v1/memories?actorId={actorId} ─────────────────────────────
+
+    /// <summary>
+    /// Phase 6.3 (GAP-02): Purges all memories belonging to a specified actor within the authenticated project.
+    /// </summary>
+    [HttpDelete]
+    [ProducesResponseType(
+        typeof(ActorPurgeResponse),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> PurgeActorMemories(
+        [FromQuery] string? actorId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(actorId))
+            {
+                return BadRequest(new
+                {
+                    message = "actorId query parameter is required."
+                });
+            }
+
+            var userId = _apiKeyContext.UserId;
+            var projectId = _apiKeyContext.ProjectId;
+
+            var result = await _memoryService.PurgeActorMemoriesAsync(
+                actorId,
+                userId,
+                projectId,
+                HttpContext.RequestAborted);
+
+            if (_usageMeterService != null && result.DeletedCount > 0)
+            {
+                await _usageMeterService.RecordAsync(
+                    userId, projectId, UsageOperationType.MemoryDelete, UsageOutcome.Success, result.DeletedCount);
+            }
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+        catch (Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "An unexpected error occurred during actor memory purge."
+                });
+        }
+    }
+
     // ── POST /api/v1/memories/search ─────────────────────────────────────────
+
 
     /// <summary>
     /// Performs semantic memory search for the authenticated user and resolved MemoryScope.

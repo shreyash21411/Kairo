@@ -204,6 +204,26 @@ public interface IMemoryRepository
         MemoryTemporalFilter? temporalFilter = null,
         List<MetadataFilterCondition>? metadataFilters = null,
         List<string>? categoryFilters = null);
+
+    // ── Phase 6.3: History & Purge Repository Methods ─────────────────────────
+
+    /// <summary>
+    /// Phase 6.3 (GAP-01): Returns the historical versions for a memory,
+    /// ordered by CreatedAt descending, then MemoryVersionId descending.
+    /// Returns empty list if no versions exist.
+    /// </summary>
+    Task<List<MemoryVersionResponse>> GetMemoryHistoryAsync(
+        long memoryId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 6.3 (GAP-02): Returns all active memories belonging to the specified user and scope.
+    /// Used for actor-level memory purge.
+    /// </summary>
+    Task<List<MemorySnapshot>> GetActiveMemoriesForScopeAsync(
+        long userId,
+        long scopeId,
+        CancellationToken cancellationToken = default);
 }
 
 // ── Data classes returned by IMemoryRepository ───────────────────────────────

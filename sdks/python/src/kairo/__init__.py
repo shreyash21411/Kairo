@@ -53,7 +53,14 @@ from .models import (
     MemoryTemporalFilter,
     MetadataFilterCondition,
     RetrievedMemory,
+    # Phase 6.3
+    MemoryVersion,
+    MemoryHistoryResponse,
+    ActorPurgeResponse,
+    UsageBreakdownEntry,
+    ProjectUsageReport,
 )
+from .usage import UsageResource
 
 __all__ = [
     # Client
@@ -91,6 +98,13 @@ __all__ = [
     "IngestMessage",
     "IngestionMemoryResult",
     "MemoryIngestionResponse",
+    # Phase 6.3: History, Purge & Usage
+    "UsageResource",
+    "MemoryVersion",
+    "MemoryHistoryResponse",
+    "ActorPurgeResponse",
+    "UsageBreakdownEntry",
+    "ProjectUsageReport",
 ]
 
 __version__ = "0.1.0"

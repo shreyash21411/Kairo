@@ -1,0 +1,513 @@
+{
+  "datasetVersion": "1.0.0",
+  "name": "Kairo V1 Retrieval & Ranking Golden Evaluation Dataset",
+  "createdUtc": "2026-10-15T06:50:00Z",
+  "relevanceScale": {
+    "0": "Irrelevant (no contextual or factual match)",
+    "1": "Partially Relevant (related background or related context)",
+    "2": "Highly Relevant (direct, exact, or intended answer)"
+  },
+  "corpus": [
+    {
+      "memoryId": 101,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User prefers writing backend services in C# and .NET 10.",
+      "memoryType": "Preference",
+      "categories": ["tech", "work"],
+      "metadata": "{\"environment\":\"production\",\"experience\":\"senior\"}",
+      "occurredAt": "2026-08-01T10:00:00Z",
+      "createdAt": "2026-08-01T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 102,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User dislikes writing JavaScript frontend code without TypeScript.",
+      "memoryType": "Preference",
+      "categories": ["tech", "frontend"],
+      "metadata": "{\"environment\":\"production\"}",
+      "occurredAt": "2026-08-02T10:00:00Z",
+      "createdAt": "2026-08-02T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 103,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User drinks dark roast black coffee with no milk or sugar.",
+      "memoryType": "Habit",
+      "categories": ["personal", "beverage"],
+      "metadata": "{\"frequency\":\"daily\"}",
+      "occurredAt": "2026-08-05T08:00:00Z",
+      "createdAt": "2026-08-05T08:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 104,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Production database is PostgreSQL 17 with pgvector extension enabled on port 5433.",
+      "memoryType": "Fact",
+      "categories": ["tech", "database"],
+      "metadata": "{\"environment\":\"production\",\"cluster\":\"primary\"}",
+      "occurredAt": "2026-08-10T14:00:00Z",
+      "createdAt": "2026-08-10T14:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 105,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Staging database is SQL Server 2022 LocalDB for Windows development.",
+      "memoryType": "Fact",
+      "categories": ["tech", "database"],
+      "metadata": "{\"environment\":\"staging\"}",
+      "occurredAt": "2026-08-11T14:00:00Z",
+      "createdAt": "2026-08-11T14:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 106,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User loves Python for machine learning and numerical analysis.",
+      "memoryType": "Preference",
+      "categories": ["tech", "ml"],
+      "metadata": "{\"proficiency\":\"expert\"}",
+      "occurredAt": "2026-08-15T09:00:00Z",
+      "createdAt": "2026-08-15T09:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 107,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User strongly dislikes Python for large-scale enterprise microservices due to GIL.",
+      "memoryType": "Preference",
+      "categories": ["tech", "architecture"],
+      "metadata": "{\"environment\":\"production\"}",
+      "occurredAt": "2026-08-16T09:00:00Z",
+      "createdAt": "2026-08-16T09:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 108,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User spent a two-week vacation in Kyoto, Japan visiting historical temples.",
+      "memoryType": "Event",
+      "categories": ["personal", "travel"],
+      "metadata": "{\"location\":\"Kyoto\",\"country\":\"Japan\"}",
+      "occurredAt": "2026-09-01T12:00:00Z",
+      "createdAt": "2026-09-02T12:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 109,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User attended a weekend finance and personal investing webinar.",
+      "memoryType": "Event",
+      "categories": ["personal", "finance"],
+      "metadata": "{\"type\":\"webinar\"}",
+      "occurredAt": "2026-09-10T15:00:00Z",
+      "createdAt": "2026-09-10T15:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 110,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Alice strictly adheres to a vegetarian diet with dairy, no meat or poultry.",
+      "memoryType": "Fact",
+      "categories": ["personal", "diet"],
+      "metadata": "{\"dietType\":\"lacto-vegetarian\"}",
+      "occurredAt": "2026-07-01T00:00:00Z",
+      "createdAt": "2026-07-01T00:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 111,
+      "projectId": 1,
+      "actorId": "bob",
+      "content": "Bob prefers high-protein keto diet with chicken breast and steaks.",
+      "memoryType": "Fact",
+      "categories": ["personal", "diet"],
+      "metadata": "{\"dietType\":\"keto\"}",
+      "occurredAt": "2026-07-01T00:00:00Z",
+      "createdAt": "2026-07-01T00:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 112,
+      "projectId": 2,
+      "actorId": "charlie",
+      "content": "Project 2 Secret Vault Master Encryption Key is sk-proj2-vault-alpha-9988.",
+      "memoryType": "Secret",
+      "categories": ["security", "confidential"],
+      "metadata": "{\"classification\":\"top-secret\"}",
+      "occurredAt": "2026-09-20T10:00:00Z",
+      "createdAt": "2026-09-20T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 113,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Flight AI-804 departs Pune Airport at gate 4 on 2026-09-15 08:30 UTC.",
+      "memoryType": "Event",
+      "categories": ["travel", "flight"],
+      "metadata": "{\"flightNo\":\"AI-804\"}",
+      "occurredAt": "2026-09-15T08:30:00Z",
+      "createdAt": "2026-09-14T10:00:00Z",
+      "expiresAt": "2026-09-15T12:00:00Z",
+      "isActive": true
+    },
+    {
+      "memoryId": 114,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Previous residential address was 120 Main Street, Springfield.",
+      "memoryType": "Fact",
+      "categories": ["personal", "address"],
+      "metadata": "{\"status\":\"deprecated\"}",
+      "occurredAt": "2024-01-01T00:00:00Z",
+      "createdAt": "2024-01-01T00:00:00Z",
+      "expiresAt": null,
+      "isActive": false
+    },
+    {
+      "memoryId": 115,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Current residential address is 450 Hinjewadi Phase 1, Pune, Maharashtra 411057.",
+      "memoryType": "Fact",
+      "categories": ["personal", "address"],
+      "metadata": "{\"status\":\"current\"}",
+      "occurredAt": "2026-01-01T00:00:00Z",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 116,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Project Kairo uses Microsoft SQL Server for enterprise relational durability.",
+      "memoryType": "Fact",
+      "categories": ["tech", "kairo"],
+      "metadata": "{\"project\":\"Kairo\"}",
+      "occurredAt": "2026-09-01T10:00:00Z",
+      "createdAt": "2026-09-01T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 117,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "Project Kairo integrates Mistral AI for LLM embeddings and entity evaluation.",
+      "memoryType": "Fact",
+      "categories": ["tech", "kairo"],
+      "metadata": "{\"project\":\"Kairo\"}",
+      "occurredAt": "2026-09-05T10:00:00Z",
+      "createdAt": "2026-09-05T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 118,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User primary hobbies are road cycling and competitive blitz chess.",
+      "memoryType": "Habit",
+      "categories": ["personal", "hobbies"],
+      "metadata": "{\"weeklyHours\":6}",
+      "occurredAt": "2026-09-10T10:00:00Z",
+      "createdAt": "2026-09-10T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 119,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User enjoys sketching pencil portraits on rainy afternoons.",
+      "memoryType": "Habit",
+      "categories": ["personal", "hobbies"],
+      "metadata": "{\"weeklyHours\":1}",
+      "occurredAt": "2026-09-12T10:00:00Z",
+      "createdAt": "2026-09-12T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    },
+    {
+      "memoryId": 120,
+      "projectId": 1,
+      "actorId": "alice",
+      "content": "User dog is a Golden Retriever named Bruno who loves tennis balls.",
+      "memoryType": "Fact",
+      "categories": ["personal", "pets"],
+      "metadata": "{\"pet\":\"dog\",\"name\":\"Bruno\"}",
+      "occurredAt": "2026-08-01T10:00:00Z",
+      "createdAt": "2026-08-01T10:00:00Z",
+      "expiresAt": null,
+      "isActive": true
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "Q01_KEYWORD_EXACT",
+      "queryText": "PostgreSQL 17 with pgvector extension enabled",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "KeywordRetrieval",
+      "description": "Tests exact keyword match capability of keyword channel.",
+      "expectedRelevantMemoryIds": [104],
+      "gradedRelevance": {
+        "104": 2,
+        "105": 1
+      },
+      "filters": null,
+      "notes": "Memory 104 is exact match (grade 2). Memory 105 is partial database match (grade 1)."
+    },
+    {
+      "queryId": "Q02_SEMANTIC_PARAPHRASE",
+      "queryText": "How does the developer prefer to drink their morning coffee brew?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "SemanticRetrieval",
+      "description": "Tests natural language semantic match without verbatim keyword overlap.",
+      "expectedRelevantMemoryIds": [103],
+      "gradedRelevance": {
+        "103": 2
+      },
+      "filters": null,
+      "notes": "Matches 'dark roast black coffee with no milk or sugar'."
+    },
+    {
+      "queryId": "Q03_HARD_NEGATIVE",
+      "queryText": "What is the user opinion on Python for machine learning and numerical work?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "RankingPrecision",
+      "description": "Distinguishes true positive (loves Python for ML) from hard negative (dislikes Python for microservices).",
+      "expectedRelevantMemoryIds": [106],
+      "gradedRelevance": {
+        "106": 2,
+        "107": 0
+      },
+      "filters": null,
+      "notes": "106 is highly relevant (grade 2). 107 mentions Python but has opposite/negative context for different domain (grade 0)."
+    },
+    {
+      "queryId": "Q04_TEMPORAL_RECENCY",
+      "queryText": "Where did the user travel for vacation?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "TemporalRetrieval",
+      "description": "Tests recall of temporal events with recency boosting enabled.",
+      "expectedRelevantMemoryIds": [108],
+      "gradedRelevance": {
+        "108": 2
+      },
+      "filters": {
+        "recencyBoost": true
+      },
+      "notes": "Kyoto Japan vacation should be retrieved with high fused recency score."
+    },
+    {
+      "queryId": "Q05_ACTOR_ISOLATION",
+      "queryText": "What are my dietary restrictions and preferences?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "ActorScoping",
+      "description": "Ensures Alice scope returns Alice vegetarian diet and never leaks Bob keto diet.",
+      "expectedRelevantMemoryIds": [110],
+      "gradedRelevance": {
+        "110": 2,
+        "111": 0
+      },
+      "filters": null,
+      "notes": "110 (Alice) must be returned; 111 (Bob) must have 0 leakage."
+    },
+    {
+      "queryId": "Q06_PROJECT_ISOLATION_LEAKAGE",
+      "queryText": "Secret vault master encryption key",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "SecurityIsolation",
+      "description": "Critical cross-project isolation test. Project 2 secret must NEVER leak to Project 1 query.",
+      "expectedRelevantMemoryIds": [],
+      "gradedRelevance": {
+        "112": 0
+      },
+      "filters": null,
+      "notes": "Expected matches: 0. Leakage count must equal 0."
+    },
+    {
+      "queryId": "Q07_CATEGORY_FILTER",
+      "queryText": "Tell me about programming and software development preferences",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "CategoryFiltering",
+      "description": "Tests inclusion filter for category 'tech'.",
+      "expectedRelevantMemoryIds": [101, 102],
+      "gradedRelevance": {
+        "101": 2,
+        "102": 2
+      },
+      "filters": {
+        "categories": ["tech"]
+      },
+      "notes": "Only memories with 'tech' category may be returned."
+    },
+    {
+      "queryId": "Q08_METADATA_FILTER",
+      "queryText": "What database configurations exist for production environment?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "MetadataFiltering",
+      "description": "Tests structured metadata filtering on environment=production.",
+      "expectedRelevantMemoryIds": [104],
+      "gradedRelevance": {
+        "104": 2,
+        "105": 0
+      },
+      "filters": {
+        "metadataConditions": [
+          { "field": "environment", "operator": "eq", "value": "production" }
+        ]
+      },
+      "notes": "Memory 104 is production (matched). Memory 105 is staging (filtered out)."
+    },
+    {
+      "queryId": "Q09_EXPIRED_MEMORY_FILTER",
+      "queryText": "What is the status of my flight departure at Pune Airport?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "ExpirationFiltering",
+      "description": "Tests automated exclusion of expired memories (ExpiresAt <= UtcNow).",
+      "expectedRelevantMemoryIds": [],
+      "gradedRelevance": {
+        "113": 0
+      },
+      "filters": null,
+      "notes": "Memory 113 expired on 2026-09-15. Today is October 2026. Must NOT be retrieved."
+    },
+    {
+      "queryId": "Q10_INACTIVE_MEMORY_FILTER",
+      "queryText": "What is my current or previous residential address?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "ActiveStatusFiltering",
+      "description": "Tests exclusion of soft-deleted memories (IsActive = false).",
+      "expectedRelevantMemoryIds": [115],
+      "gradedRelevance": {
+        "115": 2,
+        "114": 0
+      },
+      "filters": null,
+      "notes": "Memory 114 is inactive (grade 0, excluded). Memory 115 is active (grade 2, returned)."
+    },
+    {
+      "queryId": "Q11_ENTITY_GRAPH",
+      "queryText": "Which technologies are used in project Kairo?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "EntityGraphRetrieval",
+      "description": "Tests entity extraction and relational graph connectivity.",
+      "expectedRelevantMemoryIds": [116, 117],
+      "gradedRelevance": {
+        "116": 2,
+        "117": 2
+      },
+      "filters": {
+        "graphDepth": 1
+      },
+      "notes": "Entities 'Kairo', 'SQL Server', 'Mistral AI' connect memories 116 and 117."
+    },
+    {
+      "queryId": "Q12_RERANK_BENEFIT",
+      "queryText": "What programming languages does the user build backend services with?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "RerankingQuality",
+      "description": "Tests reranking promotion of exact backend service memory (101) over partial matches.",
+      "expectedRelevantMemoryIds": [101],
+      "gradedRelevance": {
+        "101": 2,
+        "106": 1,
+        "107": 1,
+        "102": 0
+      },
+      "filters": null,
+      "notes": "Reranker should score 101 highest because it explicitly mentions backend services in C#."
+    },
+    {
+      "queryId": "Q13_RERANK_NEGATIVE_CONTROL",
+      "queryText": "What are my main leisure activities and weekend hobbies?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "RerankingNegativeControl",
+      "description": "Tests that reranker does not promote coincidental keyword matches (webinar) over true hobbies.",
+      "expectedRelevantMemoryIds": [118, 119],
+      "gradedRelevance": {
+        "118": 2,
+        "119": 1,
+        "109": 0
+      },
+      "filters": null,
+      "notes": "118 (cycling/chess) and 119 (sketching) are true hobbies. 109 (finance webinar) must stay low or excluded."
+    },
+    {
+      "queryId": "Q14_CONTRADICTORY_FACT",
+      "queryText": "Where do I currently reside?",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "ConsolidationFactEvolution",
+      "description": "Tests resolution of evolving facts where new fact supersedes old.",
+      "expectedRelevantMemoryIds": [115],
+      "gradedRelevance": {
+        "115": 2
+      },
+      "filters": null,
+      "notes": "Pune residence is current. Springfield is deactivated."
+    },
+    {
+      "queryId": "Q15_COMPLEX_MULTI_FILTER",
+      "queryText": "List production databases and infrastructure tools",
+      "targetProjectId": 1,
+      "targetActorId": "alice",
+      "category": "MultiFilterComposite",
+      "description": "Tests composite filter: category 'tech' AND metadata environment=production.",
+      "expectedRelevantMemoryIds": [104],
+      "gradedRelevance": {
+        "104": 2,
+        "101": 1,
+        "105": 0
+      },
+      "filters": {
+        "categories": ["tech"],
+        "metadataConditions": [
+          { "field": "environment", "operator": "eq", "value": "production" }
+        ]
+      },
+      "notes": "104 is tech + production database. 105 is excluded (staging)."
+    }
+  ]
+}

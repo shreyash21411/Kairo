@@ -498,3 +498,67 @@ export interface _DuplicateResult {
     isDuplicate: true;
     reason: string;
 }
+
+// ── Phase 6.3: History, Purge, and Usage Models ───────────────────────────────
+
+/**
+ * A historical version of a memory.
+ */
+export interface MemoryVersion {
+    memoryVersionId: number;
+    memoryId: number;
+    content: string;
+    operation: string;
+    createdAt: string;
+}
+
+/**
+ * Response from GET /api/v1/memories/{memoryId}/history.
+ */
+export interface MemoryHistoryResponse {
+    memoryId: number;
+    count: number;
+    versions: MemoryVersion[];
+}
+
+/**
+ * Response from DELETE /api/v1/memories?actorId={actorId}.
+ */
+export interface ActorPurgeResponse {
+    actorId: string;
+    deletedCount: number;
+    deletedMemoryIds: number[];
+    message: string;
+}
+
+/**
+ * A single row in an aggregated usage breakdown.
+ */
+export interface UsageBreakdownEntry {
+    label: string;
+    operationCount: number;
+    unitCount: number;
+}
+
+/**
+ * Aggregated usage report for a project.
+ */
+export interface ProjectUsageReport {
+    projectId: number;
+    fromUtc: string;
+    toUtc: string;
+    totalOperations: number;
+    totalUnits: number;
+    totalTokensUsed: number | null;
+    byOperation: UsageBreakdownEntry[];
+    byOutcome: UsageBreakdownEntry[];
+}
+
+/**
+ * Query options for fetching project usage report.
+ */
+export interface GetUsageOptions {
+    from?: string | Date;
+    to?: string | Date;
+}
+

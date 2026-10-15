@@ -70,4 +70,16 @@ export type {
     IngestionAction,
     IngestionMemoryResult,
     IngestResponse,
+    // Phase 6.3: History, Purge & Usage
+    MemoryVersion,
+    MemoryHistoryResponse,
+    ActorPurgeResponse,
+    UsageBreakdownEntry,
+    ProjectUsageReport,
+    GetUsageOptions,
 } from "./models";
+
+// ── Resources ─────────────────────────────────────────────────────────────────
+export { MemoryResource } from "./memories";
+export { UsageResource } from "./usage";
+

@@ -481,3 +481,107 @@ class BatchDeleteResponse:
         )
 
 
+# ── Phase 6.3: History, Purge, and Usage Models ───────────────────────────────
+
+@dataclass
+class MemoryVersion:
+    """A historical version of a memory."""
+
+    memory_version_id: int
+    memory_id: int
+    content: str
+    operation: str
+    created_at: datetime
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> MemoryVersion:
+        return cls(
+            memory_version_id=data["memoryVersionId"],
+            memory_id=data["memoryId"],
+            content=data["content"],
+            operation=data["operation"],
+            created_at=_parse_dt(data["createdAt"]),
+        )
+
+
+@dataclass
+class MemoryHistoryResponse:
+    """Response from GET /api/v1/memories/{id}/history."""
+
+    memory_id: int
+    count: int
+    versions: list[MemoryVersion] = field(default_factory=list)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> MemoryHistoryResponse:
+        return cls(
+            memory_id=data["memoryId"],
+            count=data.get("count", 0),
+            versions=[MemoryVersion._from_dict(v) for v in data.get("versions", [])],
+        )
+
+
+@dataclass
+class ActorPurgeResponse:
+    """Response from DELETE /api/v1/memories?actorId={actorId}."""
+
+    actor_id: str
+    deleted_count: int
+    deleted_memory_ids: list[int] = field(default_factory=list)
+    message: str = ""
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> ActorPurgeResponse:
+        return cls(
+            actor_id=data.get("actorId", ""),
+            deleted_count=data.get("deletedCount", 0),
+            deleted_memory_ids=list(data.get("deletedMemoryIds", [])),
+            message=data.get("message", ""),
+        )
+
+
+@dataclass
+class UsageBreakdownEntry:
+    """A single row in an aggregated usage breakdown."""
+
+    label: str
+    operation_count: int
+    unit_count: int
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> UsageBreakdownEntry:
+        return cls(
+            label=data.get("label", ""),
+            operation_count=data.get("operationCount", 0),
+            unit_count=data.get("unitCount", 0),
+        )
+
+
+@dataclass
+class ProjectUsageReport:
+    """Aggregated usage report for a project."""
+
+    project_id: int
+    from_utc: datetime
+    to_utc: datetime
+    total_operations: int
+    total_units: int
+    total_tokens_used: Optional[int]
+    by_operation: list[UsageBreakdownEntry] = field(default_factory=list)
+    by_outcome: list[UsageBreakdownEntry] = field(default_factory=list)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> ProjectUsageReport:
+        return cls(
+            project_id=data["projectId"],
+            from_utc=_parse_dt(data["fromUtc"]),
+            to_utc=_parse_dt(data["toUtc"]),
+            total_operations=data.get("totalOperations", 0),
+            total_units=data.get("totalUnits", 0),
+            total_tokens_used=data.get("totalTokensUsed"),
+            by_operation=[UsageBreakdownEntry._from_dict(x) for x in data.get("byOperation", [])],
+            by_outcome=[UsageBreakdownEntry._from_dict(x) for x in data.get("byOutcome", [])],
+        )
+
+
+

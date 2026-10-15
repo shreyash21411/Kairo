@@ -321,3 +321,48 @@ public class MemoryIngestionResponse
     /// <summary>Per-candidate results. Empty when extraction found nothing worth remembering.</summary>
     public List<IngestionMemoryResult> Memories { get; set; } = new();
 }
+
+// ── Phase 6.3: History & Purge DTOs ──────────────────────────────────────────
+
+/// <summary>
+/// Phase 6.3 (GAP-01): Represents a single historical version of a memory.
+/// </summary>
+public class MemoryVersionResponse
+{
+    public long MemoryVersionId { get; set; }
+
+    public long MemoryId { get; set; }
+
+    public string Content { get; set; } = null!;
+
+    public string Operation { get; set; } = null!;
+
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Phase 6.3 (GAP-01): Response envelope for GET /api/v1/memories/{memoryId}/history.
+/// </summary>
+public class MemoryHistoryResponse
+{
+    public long MemoryId { get; set; }
+
+    public int Count { get; set; }
+
+    public List<MemoryVersionResponse> Versions { get; set; } = new();
+}
+
+/// <summary>
+/// Phase 6.3 (GAP-02): Response for DELETE /api/v1/memories?actorId={actorId}.
+/// </summary>
+public class ActorPurgeResponse
+{
+    public string ActorId { get; set; } = null!;
+
+    public int DeletedCount { get; set; }
+
+    public List<long> DeletedMemoryIds { get; set; } = new();
+
+    public string Message { get; set; } = null!;
+}
+

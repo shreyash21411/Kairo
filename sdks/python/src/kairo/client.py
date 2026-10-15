@@ -21,6 +21,7 @@ from .exceptions import (
     KairoValidationError,
 )
 from .memories import MemoryResource
+from .usage import UsageResource
 
 _DEFAULT_BASE_URL = "http://localhost:5171"
 _DEFAULT_TIMEOUT = 30.0
@@ -104,6 +105,9 @@ class Kairo:
 
         #: Memory operations resource. See :class:`~kairo.memories.MemoryResource`.
         self.memories = MemoryResource(self)
+
+        #: Usage operations resource. See :class:`~kairo.usage.UsageResource`.
+        self.usage = UsageResource(self)
 
     # ── Internal HTTP transport ────────────────────────────────────────────────
 

@@ -95,4 +95,26 @@ public interface IMemoryService
         long userId,
         long projectId,
         CancellationToken cancellationToken = default);
+
+    // ── Phase 6.3: History & Purge Service Methods ────────────────────────────
+
+    /// <summary>
+    /// Phase 6.3 (GAP-01): Retrieves version history for a memory belonging to the specified user and project.
+    /// Throws KeyNotFoundException if the memory does not exist or does not belong to the user/project.
+    /// </summary>
+    Task<MemoryHistoryResponse> GetMemoryHistoryAsync(
+        long memoryId,
+        long userId,
+        long? projectId = null,
+        long? scopeId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 6.3 (GAP-02): Purges (soft-deletes) all active memories belonging to the specified actor in the authorized project.
+    /// </summary>
+    Task<ActorPurgeResponse> PurgeActorMemoriesAsync(
+        string actorId,
+        long userId,
+        long projectId,
+        CancellationToken cancellationToken = default);
 }

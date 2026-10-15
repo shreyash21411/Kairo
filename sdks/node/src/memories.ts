@@ -22,6 +22,8 @@ import {
     MetadataFilterCondition,
     MemoryTemporalFilter,
     UpdateMemoryRequest,
+    MemoryHistoryResponse,
+    ActorPurgeResponse,
 } from "./models";
 
 /**
@@ -586,6 +588,41 @@ export class MemoryResource {
             "DELETE",
             "/api/v1/memories/batch",
             request
+        );
+    }
+
+    // ── Phase 6.3: History & Purge ────────────────────────────────────────────
+
+    /**
+     * Retrieve version history for a memory.
+     * Calls `GET /api/v1/memories/{memoryId}/history`.
+     */
+    async history(memoryId: number): Promise<MemoryHistoryResponse> {
+        if (typeof memoryId !== "number" || memoryId <= 0 || !Number.isInteger(memoryId)) {
+            throw new KairoValidationError("memoryId must be a positive integer.", 400);
+        }
+
+        return this._client.request<MemoryHistoryResponse>(
+            "GET",
+            `api/v1/memories/${memoryId}/history`
+        );
+    }
+
+    /**
+     * Purge (soft-delete) all memories belonging to an actor in the project.
+     * Calls `DELETE /api/v1/memories?actorId={actorId}`.
+     */
+    async purge(actorId: string): Promise<ActorPurgeResponse> {
+        if (!actorId || typeof actorId !== "string" || !actorId.trim()) {
+            throw new KairoValidationError("actorId must not be empty.", 400);
+        }
+        if (actorId.trim().length > 128) {
+            throw new KairoValidationError("actorId must not exceed 128 characters.", 400);
+        }
+
+        return this._client.request<ActorPurgeResponse>(
+            "DELETE",
+            `api/v1/memories?actorId=${encodeURIComponent(actorId.trim())}`
         );
     }
 }

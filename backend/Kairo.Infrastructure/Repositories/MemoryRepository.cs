@@ -843,4 +843,56 @@ public class MemoryRepository : IMemoryRepository
 
         return results.OrderByDescending(r => r.Similarity).ThenBy(r => r.MemoryId).Take(topK).ToList();
     }
+
+    // ── Phase 6.3: History & Purge Repository Methods ─────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<List<MemoryVersionResponse>> GetMemoryHistoryAsync(
+        long memoryId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.MemoryVersions
+            .AsNoTracking()
+            .Where(v => v.MemoryId == memoryId)
+            .OrderByDescending(v => v.CreatedAt)
+            .ThenByDescending(v => v.MemoryVersionId)
+            .Select(v => new MemoryVersionResponse
+            {
+                MemoryVersionId = v.MemoryVersionId,
+                MemoryId        = v.MemoryId,
+                Content         = v.Content,
+                Operation       = v.Operation,
+                CreatedAt       = v.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<MemorySnapshot>> GetActiveMemoriesForScopeAsync(
+        long userId,
+        long scopeId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Memories
+            .AsNoTracking()
+            .Where(m =>
+                m.UserId  == userId &&
+                m.ScopeId == scopeId &&
+                m.IsActive)
+            .Select(m => new MemorySnapshot
+            {
+                MemoryId   = m.MemoryId,
+                UserId     = m.UserId,
+                Content    = m.Content,
+                MemoryType = m.MemoryType,
+                IsActive   = m.IsActive,
+                CreatedAt  = m.CreatedAt,
+                UpdatedAt  = m.UpdatedAt,
+                OccurredAt = m.OccurredAt,
+                Metadata   = m.Metadata,
+                ExpiresAt  = m.ExpiresAt,
+                Categories = m.MemoryCategories.Select(c => c.Category).ToList()
+            })
+            .ToListAsync(cancellationToken);
+    }
 }

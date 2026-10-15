@@ -945,4 +945,118 @@ public class MemoryService : IMemoryService
             DeletedIds = deletedIds
         };
     }
+
+    // ── Phase 6.3: History & Purge Service Methods ────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<MemoryHistoryResponse> GetMemoryHistoryAsync(
+        long memoryId,
+        long userId,
+        long? projectId = null,
+        long? scopeId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateMemoryId(memoryId);
+        ValidateUserId(userId);
+
+        // 1. Verify existence and ownership for the current user and project.
+        var snapshot = await _memoryRepository.GetMemorySnapshotForUserAsync(
+            memoryId,
+            userId,
+            projectId,
+            scopeId);
+
+        if (snapshot == null)
+        {
+            throw new KeyNotFoundException(
+                $"Memory {memoryId} was not found or does not belong to the current project.");
+        }
+
+        // 2. Retrieve history versions ordered by CreatedAt DESC, MemoryVersionId DESC.
+        var versions = await _memoryRepository.GetMemoryHistoryAsync(
+            memoryId,
+            cancellationToken);
+
+        return new MemoryHistoryResponse
+        {
+            MemoryId = memoryId,
+            Count = versions.Count,
+            Versions = versions
+        };
+    }
+
+    /// <inheritdoc/>
+    public async Task<ActorPurgeResponse> PurgeActorMemoriesAsync(
+        string actorId,
+        long userId,
+        long projectId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(userId);
+
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException("actorId is required and must not be empty.", nameof(actorId));
+        }
+
+        var trimmedActorId = actorId.Trim();
+        if (trimmedActorId.Length > 128)
+        {
+            throw new ArgumentException("actorId must not exceed 128 characters.", nameof(actorId));
+        }
+
+        // 1. Resolve target scope for (projectId, actorId).
+        long scopeId;
+        try
+        {
+            scopeId = await _scopeResolutionService.ResolveScopeAsync(
+                projectId,
+                trimmedActorId,
+                cancellationToken);
+        }
+        catch (MemoryScopeNotFoundException)
+        {
+            return new ActorPurgeResponse
+            {
+                ActorId = trimmedActorId,
+                DeletedCount = 0,
+                DeletedMemoryIds = new List<long>(),
+                Message = $"No memories found for actor '{trimmedActorId}'."
+            };
+        }
+
+        // 2. Fetch all active memories for this scope and user.
+        var memories = await _memoryRepository.GetActiveMemoriesForScopeAsync(
+            userId,
+            scopeId,
+            cancellationToken);
+
+        if (memories.Count == 0)
+        {
+            return new ActorPurgeResponse
+            {
+                ActorId = trimmedActorId,
+                DeletedCount = 0,
+                DeletedMemoryIds = new List<long>(),
+                Message = $"No active memories found for actor '{trimmedActorId}'."
+            };
+        }
+
+        // 3. Archive versions and soft-delete each memory
+        var deletedIds = new List<long>();
+        foreach (var m in memories)
+        {
+            await _memoryRepository.CreateMemoryVersionAsync(m.MemoryId, m.Content, "ApiActorPurge");
+            await _memoryRepository.DeactivateMemoryAsync(m.MemoryId);
+            deletedIds.Add(m.MemoryId);
+        }
+
+        return new ActorPurgeResponse
+        {
+            ActorId = trimmedActorId,
+            DeletedCount = deletedIds.Count,
+            DeletedMemoryIds = deletedIds,
+            Message = $"Successfully purged {deletedIds.Count} memories for actor '{trimmedActorId}'."
+        };
+    }
 }

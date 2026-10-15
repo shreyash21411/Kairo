@@ -10,6 +10,7 @@ import {
     KairoValidationError,
 } from "./exceptions";
 import { MemoryResource } from "./memories";
+import { UsageResource } from "./usage";
 
 // Safe declaration for Node environment when @types/node is not installed
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,6 +94,12 @@ export class Kairo {
      */
     public readonly memories: MemoryResource;
 
+    /**
+     * Usage reporting resource.
+     * Access aggregated project usage reporting here.
+     */
+    public readonly usage: UsageResource;
+
     constructor(config?: KairoConfig) {
         const resolvedKey =
             config?.apiKey ||
@@ -119,6 +126,7 @@ export class Kairo {
         this._timeout = config?.timeout ?? DEFAULT_TIMEOUT_MS;
 
         this.memories = new MemoryResource(this);
+        this.usage = new UsageResource(this);
     }
 
     // ── Internal HTTP transport ────────────────────────────────────────────────
