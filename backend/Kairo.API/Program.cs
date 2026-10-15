@@ -189,6 +189,8 @@ builder.Services.AddHostedService<Kairo.API.Services.MemoryIngestionWorker>();
 builder.Services.AddKairoMcp();
 
 // ── Phase 5.8: Usage Metering, Quota, and Reporting ───────────────────────
+builder.Services.Configure<Kairo.Application.Configuration.QuotaOptions>(
+    builder.Configuration.GetSection(Kairo.Application.Configuration.QuotaOptions.SectionName));
 builder.Services.AddScoped<IUsageMeterService, UsageMeterService>();
 builder.Services.AddScoped<IQuotaEnforcementService, QuotaEnforcementService>();
 builder.Services.AddScoped<IUsageReportingService, UsageReportingService>();
@@ -333,16 +335,16 @@ app.UseCors("KairoCors");
 
 app.UseRateLimiter();
 
-// ── Phase 5.8.3: Quota enforcement ────────────────────────────────────────
-// Runs after authentication so ApiKeyContext is populated, but before
-// controllers and MCP tools so memory operations are gated on quota.
-app.UseMiddleware<QuotaMeterMiddleware>();
-
-
 // Authentication must run before Authorization
 app.UseAuthentication();
 
 app.UseAuthorization();
+
+// ── Phase 5.8.3: Quota enforcement ────────────────────────────────────────
+// Runs after authentication and authorization so ApiKeyContext is populated,
+// and unauthorized requests are already rejected, but before
+// controllers and MCP tools so memory operations are gated on quota.
+app.UseMiddleware<QuotaMeterMiddleware>();
 
 
 // Configure the HTTP request pipeline

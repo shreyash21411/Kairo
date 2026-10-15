@@ -1,10 +1,12 @@
+using System;
 using System.Net;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Kairo.Application.Abstractions.Security;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Kairo.API.Middleware;
@@ -12,12 +14,14 @@ namespace Kairo.API.Middleware;
 /// <summary>
 /// Phase 5.8.3: Quota enforcement middleware.
 ///
-/// Checks project quotas before any memory operation route is processed.
+/// Checks project quotas before memory operation routes are processed.
 /// On quota exceeded, writes HTTP 429 with a structured JSON body and
 /// sets the Retry-After header. Quota failures are metered (Throttled).
 ///
-/// Scope: applied only to routes under /api/v1/memories and /mcp.
-/// Health-check, auth, and usage-reporting routes bypass this middleware.
+/// Scope: applied to routes under /api/v1/memories (excluding job-polling).
+/// Runs AFTER Authentication and Authorization so that IApiKeyContext is
+/// established and unauthenticated requests are stopped before quota evaluation.
+/// MCP tools manage their own tool-level quota enforcement with exact attribution.
 /// </summary>
 public sealed class QuotaMeterMiddleware
 {
@@ -36,26 +40,26 @@ public sealed class QuotaMeterMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Only apply to /api/v1/memories and /mcp routes.
         var path = context.Request.Path.Value ?? string.Empty;
-        var isTargetRoute = path.StartsWith("/api/v1/memories", StringComparison.OrdinalIgnoreCase)
-                         || path.StartsWith("/mcp", StringComparison.OrdinalIgnoreCase);
 
-        if (!isTargetRoute)
+        // Apply only to /api/v1/memories routes. Exclude non-billable job status polling.
+        var isMemoryRoute = path.StartsWith("/api/v1/memories", StringComparison.OrdinalIgnoreCase);
+        if (!isMemoryRoute || path.Contains("/jobs", StringComparison.OrdinalIgnoreCase))
         {
             await _next(context);
             return;
         }
 
-        // Resolve authenticated context (may be null for unauthenticated requests).
+        // Resolve authenticated context.
         var apiKeyContext = context.RequestServices.GetService<IApiKeyContext>();
         if (apiKeyContext is null || apiKeyContext.ProjectId == 0)
         {
+            // Allow downstream authorization handler to reject unauthenticated requests.
             await _next(context);
             return;
         }
 
-        // Derive the operation type from the HTTP method + path.
+        // Derive operation type from HTTP method and path
         var operationType = DeriveOperationType(context.Request);
         var unitCount = DeriveUnitCount(context.Request, operationType);
 
@@ -68,16 +72,18 @@ public sealed class QuotaMeterMiddleware
 
         if (!result.IsAllowed)
         {
-            // Meter the throttled attempt (fire-and-forget).
+            // Await metering the throttled attempt to guarantee completion within the request lifecycle.
             var meterService = context.RequestServices.GetService<IUsageMeterService>();
             if (meterService is not null)
             {
-                _ = meterService.RecordAsync(
+                await meterService.RecordAsync(
                     apiKeyContext.UserId,
                     apiKeyContext.ProjectId,
                     operationType,
                     UsageOutcome.Throttled,
-                    unitCount);
+                    unitCount,
+                    tokensUsed: null,
+                    cancellationToken: CancellationToken.None);
             }
 
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
@@ -134,9 +140,6 @@ public sealed class QuotaMeterMiddleware
 
     private static int DeriveUnitCount(HttpRequest request, string operationType)
     {
-        // For batch routes we count the path segment if available.
-        // Without reading the body we can only return 1 here; the per-minute
-        // quota is coarse and batch metering happens in the service layer.
         return 1;
     }
 }

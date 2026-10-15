@@ -25,19 +25,22 @@ public class MemoryController : ControllerBase
     private readonly IApiKeyContext _apiKeyContext;
     private readonly HybridRetrievalService _hybridRetrieval;
     private readonly IMemoryJobService? _memoryJobService;
+    private readonly IUsageMeterService? _usageMeterService;
 
     public MemoryController(
         IMemoryService memoryService,
         IMemoryIngestionService ingestionService,
         IApiKeyContext apiKeyContext,
         HybridRetrievalService hybridRetrieval,
-        IMemoryJobService? memoryJobService = null)
+        IMemoryJobService? memoryJobService = null,
+        IUsageMeterService? usageMeterService = null)
     {
-        _memoryService    = memoryService;
-        _ingestionService = ingestionService;
-        _apiKeyContext    = apiKeyContext;
-        _hybridRetrieval  = hybridRetrieval;
-        _memoryJobService = memoryJobService;
+        _memoryService     = memoryService;
+        _ingestionService  = ingestionService;
+        _apiKeyContext     = apiKeyContext;
+        _hybridRetrieval   = hybridRetrieval;
+        _memoryJobService  = memoryJobService;
+        _usageMeterService = usageMeterService;
     }
 
     // ── POST /api/v1/memories ────────────────────────────────────────────────
@@ -95,6 +98,11 @@ public class MemoryController : ControllerBase
             if (duplicate != null)
             {
                 return Ok(duplicate);
+            }
+
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryCreate, UsageOutcome.Success, 1);
             }
 
             return CreatedAtAction(
@@ -157,6 +165,11 @@ public class MemoryController : ControllerBase
                     userId,
                     projectId);
 
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryGet, UsageOutcome.Success, 1);
+            }
+
             return Ok(memory);
         }
         catch (ArgumentException ex)
@@ -204,6 +217,11 @@ public class MemoryController : ControllerBase
 
             var memories =
                 await _memoryService.ListMemoriesAsync(userId, projectId);
+
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryGet, UsageOutcome.Success, 1);
+            }
 
             return Ok(new
             {
@@ -259,6 +277,11 @@ public class MemoryController : ControllerBase
                     userId,
                     projectId);
 
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryUpdate, UsageOutcome.Success, 1);
+            }
+
             return Ok(updated);
         }
         catch (ArgumentException ex)
@@ -309,6 +332,11 @@ public class MemoryController : ControllerBase
                 memoryId,
                 userId,
                 projectId);
+
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryDelete, UsageOutcome.Success, 1);
+            }
 
             return Ok(new
             {
@@ -424,6 +452,11 @@ public class MemoryController : ControllerBase
                     categoryFilters: effectiveCategories.Count > 0 ? effectiveCategories : null,
                     cancellationToken: HttpContext.RequestAborted);
 
+                if (_usageMeterService != null)
+                {
+                    await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryRecall, UsageOutcome.Success, 1);
+                }
+
                 return Ok(new MemorySearchResponse
                 {
                     Query     = request.Query,
@@ -436,6 +469,11 @@ public class MemoryController : ControllerBase
             // V1 semantic-only path (unchanged)
             var result = await _memoryService.SearchMemoriesAsync(
                 request, userId, projectId);
+
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.MemoryRecall, UsageOutcome.Success, 1);
+            }
 
             return Ok(result);
         }
@@ -558,6 +596,11 @@ public class MemoryController : ControllerBase
                 userId,
                 projectId);
 
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(userId, projectId, UsageOperationType.DialogueIngest, UsageOutcome.Success, 1);
+            }
+
             return Ok(result);
         }
         catch (ArgumentException ex)
@@ -647,7 +690,13 @@ public class MemoryController : ControllerBase
                 request,
                 userId,
                 projectId,
-                HttpContext.RequestAborted);
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(
+                    userId, projectId, UsageOperationType.BatchCreate, UsageOutcome.Success, result.CreatedCount > 0 ? result.CreatedCount : 1);
+            }
 
             return StatusCode(StatusCodes.Status201Created, result);
         }
@@ -683,7 +732,7 @@ public class MemoryController : ControllerBase
                 request,
                 userId,
                 projectId,
-                HttpContext.RequestAborted);
+                HttpContext?.RequestAborted ?? CancellationToken.None);
 
             return Ok(result);
         }
@@ -723,7 +772,13 @@ public class MemoryController : ControllerBase
                 request,
                 userId,
                 projectId,
-                HttpContext.RequestAborted);
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            if (_usageMeterService != null)
+            {
+                await _usageMeterService.RecordAsync(
+                    userId, projectId, UsageOperationType.BatchDelete, UsageOutcome.Success, result.DeletedCount > 0 ? result.DeletedCount : 1);
+            }
 
             return Ok(result);
         }

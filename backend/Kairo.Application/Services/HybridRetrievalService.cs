@@ -34,6 +34,7 @@ public class HybridRetrievalService
     private readonly IEntityExtractionService _entityExtractionService;
     private readonly ILogger<HybridRetrievalService> _logger;
     private readonly IRerankerService? _rerankerService;
+    private readonly IUsageMeterService? _usageMeterService;
 
     public HybridRetrievalService(
         IMemoryRepository memoryRepository,
@@ -44,7 +45,8 @@ public class HybridRetrievalService
         IEntityRepository entityRepository,
         IEntityExtractionService entityExtractionService,
         ILogger<HybridRetrievalService> logger,
-        IRerankerService? rerankerService = null)
+        IRerankerService? rerankerService = null,
+        IUsageMeterService? usageMeterService = null)
     {
         _memoryRepository        = memoryRepository;
         _embeddingGenerator      = embeddingGenerator;
@@ -55,6 +57,7 @@ public class HybridRetrievalService
         _entityExtractionService = entityExtractionService;
         _logger                  = logger;
         _rerankerService         = rerankerService;
+        _usageMeterService       = usageMeterService;
     }
 
     /// <summary>
@@ -456,6 +459,17 @@ public class HybridRetrievalService
             try
             {
                 rerankedCandidates = await _rerankerService.RerankAsync(query, relevant, cancellationToken);
+                if (_usageMeterService != null)
+                {
+                    await _usageMeterService.RecordAsync(
+                        userId,
+                        projectId,
+                        UsageOperationType.LlmRerank,
+                        UsageOutcome.Success,
+                        unitCount: relevant.Count,
+                        tokensUsed: null,
+                        cancellationToken: CancellationToken.None);
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -465,6 +479,17 @@ public class HybridRetrievalService
             {
                 _logger.LogWarning(ex,
                     "[HybridRetrieval] Reranking failed. Preserving pre-rerank relevance-evaluated candidate ordering.");
+                if (_usageMeterService != null)
+                {
+                    await _usageMeterService.RecordAsync(
+                        userId,
+                        projectId,
+                        UsageOperationType.LlmRerank,
+                        UsageOutcome.Failure,
+                        unitCount: relevant.Count,
+                        tokensUsed: null,
+                        cancellationToken: CancellationToken.None);
+                }
                 rerankedCandidates = relevant;
             }
         }

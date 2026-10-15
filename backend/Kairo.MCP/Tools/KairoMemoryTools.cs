@@ -51,6 +51,8 @@ public sealed class KairoMemoryTools
     private readonly IMemoryService _memoryService;
     private readonly IScopeResolutionService _scopeResolutionService;
     private readonly IMemoryIngestionService? _ingestionService;
+    private readonly IQuotaEnforcementService? _quotaService;
+    private readonly IUsageMeterService? _usageMeter;
 
     // Shared serialization options used for all MCP result payloads.
     // camelCase keeps output idiomatic for MCP clients.
@@ -64,12 +66,42 @@ public sealed class KairoMemoryTools
         IApiKeyContext apiKeyContext,
         IMemoryService memoryService,
         IScopeResolutionService scopeResolutionService,
-        IMemoryIngestionService? ingestionService = null)
+        IMemoryIngestionService? ingestionService = null,
+        IQuotaEnforcementService? quotaService = null,
+        IUsageMeterService? usageMeter = null)
     {
         _apiKeyContext = apiKeyContext;
         _memoryService = memoryService;
         _scopeResolutionService = scopeResolutionService;
         _ingestionService = ingestionService;
+        _quotaService = quotaService;
+        _usageMeter = usageMeter;
+    }
+
+    private async Task<string?> CheckQuotaAsync(string operationType, int unitCount)
+    {
+        if (_quotaService == null) return null;
+        var projectId = _apiKeyContext.ProjectId;
+        var check = await _quotaService.CheckAsync(projectId, operationType, unitCount);
+        if (!check.IsAllowed)
+        {
+            if (_usageMeter != null)
+            {
+                await _usageMeter.RecordAsync(
+                    _apiKeyContext.UserId,
+                    projectId,
+                    operationType,
+                    UsageOutcome.Throttled,
+                    unitCount);
+            }
+            return JsonSerializer.Serialize(new
+            {
+                error = "quota_exceeded",
+                message = check.Reason ?? "Rate limit exceeded.",
+                retryAfterSeconds = check.RetryAfterSeconds
+            }, JsonOptions);
+        }
+        return null;
     }
 
     // ── kairo_ping ───────────────────────────────────────────────────────────
@@ -149,6 +181,9 @@ public sealed class KairoMemoryTools
                 nameof(actorId));
         }
 
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.MemoryCreate, 1);
+        if (quotaErr != null) return quotaErr;
+
         // Build the existing Application DTO — no new DTOs introduced.
         var request = new CreateMemoryRequest
         {
@@ -178,6 +213,11 @@ public sealed class KairoMemoryTools
                 isDuplicate = duplicate.IsDuplicate,
                 reason = duplicate.Reason
             }, JsonOptions);
+        }
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.MemoryCreate, UsageOutcome.Success, 1);
         }
 
         // Memory was created successfully.
@@ -285,6 +325,9 @@ public sealed class KairoMemoryTools
                 nameof(actorId));
         }
 
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.MemoryRecall, 1);
+        if (quotaErr != null) return quotaErr;
+
         if (topK <= 0 || topK > 100)
         {
             throw new ArgumentException(
@@ -357,6 +400,11 @@ public sealed class KairoMemoryTools
         // evaluation are scoped to the resolved MemoryScope. No global search.
         var result =
             await _memoryService.SearchMemoriesAsync(request, userId, projectId);
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.MemoryRecall, UsageOutcome.Success, 1);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -453,6 +501,9 @@ public sealed class KairoMemoryTools
                 nameof(actorId));
         }
 
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.MemoryUpdate, 1);
+        if (quotaErr != null) return quotaErr;
+
         // Resolve the scope for this project and actor.
         // If the scope does not exist, throws MemoryScopeNotFoundException.
         var scopeId = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
@@ -475,6 +526,11 @@ public sealed class KairoMemoryTools
             userId,
             projectId,
             scopeId);
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.MemoryUpdate, UsageOutcome.Success, 1);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -531,6 +587,9 @@ public sealed class KairoMemoryTools
                 nameof(actorId));
         }
 
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.MemoryDelete, 1);
+        if (quotaErr != null) return quotaErr;
+
         // Resolve the scope for this project and actor.
         // If the scope does not exist, throws MemoryScopeNotFoundException.
         var scopeId = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
@@ -541,6 +600,11 @@ public sealed class KairoMemoryTools
             userId,
             projectId,
             scopeId);
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.MemoryDelete, UsageOutcome.Success, 1);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -582,8 +646,16 @@ public sealed class KairoMemoryTools
                 nameof(actorId));
         }
 
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.MemoryGet, 1);
+        if (quotaErr != null) return quotaErr;
+
         var scopeId = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
         var memory = await _memoryService.GetMemoryAsync(memoryId, userId, projectId, scopeId);
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.MemoryGet, UsageOutcome.Success, 1);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -648,6 +720,9 @@ public sealed class KairoMemoryTools
                 nameof(memories));
         }
 
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.BatchCreate, memories.Count);
+        if (quotaErr != null) return quotaErr;
+
         // Apply default actorId to items that omit it
         foreach (var item in memories)
         {
@@ -663,6 +738,11 @@ public sealed class KairoMemoryTools
         };
 
         var response = await _memoryService.BatchCreateMemoriesAsync(request, userId, projectId);
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.BatchCreate, UsageOutcome.Success, memories.Count);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -731,6 +811,9 @@ public sealed class KairoMemoryTools
                 nameof(memoryIds));
         }
 
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.BatchDelete, memoryIds.Count);
+        if (quotaErr != null) return quotaErr;
+
         // Verify scope exists for this actor
         _ = await _scopeResolutionService.ResolveScopeAsync(projectId, actorId);
 
@@ -740,6 +823,11 @@ public sealed class KairoMemoryTools
         };
 
         var response = await _memoryService.BatchDeleteMemoriesAsync(request, userId, projectId);
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.BatchDelete, UsageOutcome.Success, memoryIds.Count);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -777,6 +865,7 @@ public sealed class KairoMemoryTools
             "Must not be empty.")]
         string actorId)
     {
+        // Identity comes from authenticated API key
         var userId = _apiKeyContext.UserId;
         var projectId = _apiKeyContext.ProjectId;
 
@@ -786,6 +875,9 @@ public sealed class KairoMemoryTools
                 "ActorId cannot be empty.",
                 nameof(actorId));
         }
+
+        var quotaErr = await CheckQuotaAsync(UsageOperationType.DialogueIngest, 1);
+        if (quotaErr != null) return quotaErr;
 
         if (messages == null || messages.Count == 0)
         {
@@ -824,6 +916,11 @@ public sealed class KairoMemoryTools
         };
 
         var response = await _ingestionService.IngestAsync(request, userId, projectId);
+
+        if (_usageMeter != null)
+        {
+            await _usageMeter.RecordAsync(userId, projectId, UsageOperationType.DialogueIngest, UsageOutcome.Success, 1);
+        }
 
         return JsonSerializer.Serialize(new
         {

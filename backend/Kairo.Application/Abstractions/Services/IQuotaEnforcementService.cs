@@ -16,12 +16,16 @@ public interface IQuotaEnforcementService
     /// Returns true if the project is allowed to proceed with the requested operation count.
     /// Returns false (quota exceeded) if the project has hit a per-minute or per-day limit.
     /// Must never throw — on internal error, allows the request (fail-open).
-    /// </summary>
     Task<QuotaCheckResult> CheckAsync(
         long projectId,
         string operationType,
         int unitCount = 1,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Releases an in-flight quota reservation when the operation completes or is recorded.
+    /// </summary>
+    void ReleaseReservation(long projectId, int unitCount);
 }
 
 /// <summary>
