@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS "UsageLedger" (
     "ProjectId"     BIGINT        NOT NULL,
     "OperationType" VARCHAR(50)   NOT NULL,
     "Outcome"       VARCHAR(20)   NOT NULL DEFAULT 'Success',
-    "OccurredAt"    TIMESTAMP(3)  NOT NULL,
+    "OccurredAt"    TIMESTAMPTZ(3) NOT NULL,
     "UnitCount"     INT           NOT NULL DEFAULT 1,
     "TokensUsed"    INT           NULL,
 
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS "ProjectQuotas" (
     "MaxOperationsPerDay"    INT           NULL,
     "MaxTotalMemories"       INT           NULL,
     "MaxBatchSize"           INT           NULL,
-    "UpdatedAt"              TIMESTAMP(3)  NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+    "UpdatedAt"              TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "PK_ProjectQuotas" PRIMARY KEY ("ProjectId"),
 
