@@ -164,6 +164,38 @@ public class Phase4CConfigurationValidationUnitTests
     }
 
     [Fact]
+    public void Validate_PostgreSqlThrowsWhenKairoDatabaseContainsSqlServerConnectionString()
+    {
+        var values = CreateValidSqlServerConfig();
+        values["Providers:DatabaseProvider"] = "PostgreSQL";
+        values["ConnectionStrings:KairoDatabase"] = "Server=10.30.73.176;Database=SonaliDB;TrustServerCertificate=True;";
+        values.Remove("ConnectionStrings:KairoPostgres");
+
+        var config = BuildConfig(values);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ProviderConfigurationValidator.Validate(config));
+
+        Assert.Contains("contains a SQL Server connection string", ex.Message);
+    }
+
+    [Fact]
+    public void Validate_PostgreSqlPrefersKairoPostgresOverKairoDatabase()
+    {
+        var values = CreateValidSqlServerConfig();
+        values["Providers:DatabaseProvider"] = "PostgreSQL";
+        values["ConnectionStrings:KairoPostgres"] = "Host=127.0.0.1;Port=5433;Database=kairo_dev;Username=kairo_dev;Password=secret";
+        values["ConnectionStrings:KairoDatabase"] = "Server=10.30.73.176;Database=SonaliDB;TrustServerCertificate=True;";
+
+        var config = BuildConfig(values);
+
+        var result = ProviderConfigurationValidator.Validate(config);
+
+        Assert.Equal(ProviderOptions.DatabaseProviders.PostgreSql, result.DatabaseProvider);
+        Assert.Equal("Host=127.0.0.1;Port=5433;Database=kairo_dev;Username=kairo_dev;Password=secret", result.DatabaseConnectionString);
+    }
+
+    [Fact]
     public void Validate_UnsupportedLlmProvider_ThrowsInvalidOperationException()
     {
         var values = CreateValidSqlServerConfig();

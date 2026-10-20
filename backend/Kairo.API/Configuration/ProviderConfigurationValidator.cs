@@ -51,7 +51,7 @@ public static class ProviderConfigurationValidator
         }
 
         // ── 2. Database Connection String Validation ────────────────────────────
-        string? connectionString;
+        string? connectionString = null;
         if (canonicalDbProvider == ProviderOptions.DatabaseProviders.SqlServer)
         {
             connectionString = configuration.GetConnectionString("KairoDatabase")
@@ -66,9 +66,34 @@ public static class ProviderConfigurationValidator
         }
         else // PostgreSQL
         {
-            connectionString = configuration.GetConnectionString("KairoPostgres")
-                ?? configuration.GetConnectionString("KairoDatabase")
-                ?? configuration.GetConnectionString("PostgreSQL");
+            var postgresConn = configuration.GetConnectionString("KairoPostgres");
+            if (!string.IsNullOrWhiteSpace(postgresConn))
+            {
+                connectionString = postgresConn;
+            }
+            else
+            {
+                var fallbackConn = configuration.GetConnectionString("KairoDatabase")
+                    ?? configuration.GetConnectionString("PostgreSQL");
+
+                if (!string.IsNullOrWhiteSpace(fallbackConn))
+                {
+                    // Guard against accidental SQL Server fallback:
+                    // If the fallback connection string contains SQL Server markers, reject it immediately
+                    // rather than attempting to connect to SQL Server or an office database with Npgsql.
+                    if (fallbackConn.Contains("TrustServerCertificate=", StringComparison.OrdinalIgnoreCase) ||
+                        fallbackConn.Contains("Trusted_Connection=", StringComparison.OrdinalIgnoreCase) ||
+                        fallbackConn.Contains("MultipleActiveResultSets=", StringComparison.OrdinalIgnoreCase) ||
+                        fallbackConn.Contains("Data Source=", StringComparison.OrdinalIgnoreCase) ||
+                        (fallbackConn.Contains("Server=", StringComparison.OrdinalIgnoreCase) && !fallbackConn.Contains("Host=", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        throw new InvalidOperationException(
+                            "PostgreSQL provider is selected, but 'ConnectionStrings:KairoPostgres' is not configured and 'ConnectionStrings:KairoDatabase' contains a SQL Server connection string. Please configure 'ConnectionStrings:KairoPostgres'.");
+                    }
+
+                    connectionString = fallbackConn;
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(connectionString))
             {

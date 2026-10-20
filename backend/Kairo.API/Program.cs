@@ -289,20 +289,29 @@ var app = builder.Build();
 
 
 // ── Security headers ──────────────────────────────────────────────────────────
+
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["X-XSS-Protection"] = "0";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Permissions-Policy"] =
+        "geolocation=(), camera=(), microphone=()";
 
-    context.Response.Headers["Content-Security-Policy"] =
-    "default-src 'none'; frame-ancestors 'none'";
+    var isDevelopmentSwagger =
+        app.Environment.IsDevelopment() &&
+        context.Request.Path.StartsWithSegments("/swagger");
 
-context.Response.Headers["Permissions-Policy"] =
-    "geolocation=(), camera=(), microphone=()";
+    if (!isDevelopmentSwagger)
+    {
+        context.Response.Headers["Content-Security-Policy"] =
+            "default-src 'none'; frame-ancestors 'none'";
+    }
+
     await next();
 });
+
 
 
 // ── Global exception handler (AUTH-9L) ────────────────────────────────────────

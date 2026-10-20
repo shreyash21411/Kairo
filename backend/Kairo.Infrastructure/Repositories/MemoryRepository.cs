@@ -11,10 +11,25 @@ namespace Kairo.Infrastructure.Repositories;
 public class MemoryRepository : IMemoryRepository
 {
     private readonly KairoDbContext _dbContext;
+    private readonly Kairo.Application.Abstractions.Security.IApiKeyContext? _apiKeyContext;
 
-    public MemoryRepository(KairoDbContext dbContext)
+    public MemoryRepository(
+        KairoDbContext dbContext,
+        Kairo.Application.Abstractions.Security.IApiKeyContext? apiKeyContext = null)
     {
         _dbContext = dbContext;
+        _apiKeyContext = apiKeyContext;
+    }
+
+    private long? GetEffectiveProjectId(long? explicitProjectId = null)
+    {
+        if (explicitProjectId.HasValue && explicitProjectId.Value > 0)
+            return explicitProjectId.Value;
+
+        if (_apiKeyContext != null && _apiKeyContext.ProjectId > 0)
+            return _apiKeyContext.ProjectId;
+
+        return null;
     }
 
     public Task<long> CreateAsync(
@@ -121,11 +136,19 @@ public class MemoryRepository : IMemoryRepository
         await _dbContext.SaveChangesAsync();
     }
 
-    public async Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
+    public Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
         long userId,
         long? scopeId = null)
     {
-        return await GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null, null);
+        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null, null, null);
+    }
+
+    public Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        long? projectId)
+    {
+        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null, null, projectId);
     }
 
     public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
@@ -134,16 +157,37 @@ public class MemoryRepository : IMemoryRepository
         MemoryTemporalFilter? temporalFilter = null,
         List<MetadataFilterCondition>? metadataFilters = null)
     {
-        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, null);
+        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, null, null);
+    }
+
+    public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        long? projectId)
+    {
+        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, null, projectId);
     }
 
     /// <inheritdoc/>
-    public async Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+    public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
         long userId,
         long? scopeId,
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
         List<string>? categoryFilters)
+    {
+        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, categoryFilters, null);
+    }
+
+    public async Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters,
+        long? projectId)
     {
         var now = DateTime.UtcNow;
         var query = _dbContext.MemoryEmbeddings
@@ -152,6 +196,14 @@ public class MemoryRepository : IMemoryRepository
                 embedding.Memory.UserId == userId &&
                 embedding.Memory.IsActive &&
                 (embedding.Memory.ExpiresAt == null || embedding.Memory.ExpiresAt > now));
+
+        var effectiveProjectId = GetEffectiveProjectId(projectId);
+        if (effectiveProjectId.HasValue)
+        {
+            query = query.Where(embedding =>
+                embedding.Memory.ScopeId != null &&
+                embedding.Memory.Scope!.ProjectId == effectiveProjectId.Value);
+        }
 
         if (scopeId.HasValue)
         {
@@ -298,8 +350,15 @@ public class MemoryRepository : IMemoryRepository
     // ── Phase 5 Task 5.3: Batch snapshot retrieval ────────────────────────────
 
     /// <inheritdoc/>
-    public async Task<Dictionary<long, MemorySnapshot>> GetMemorySnapshotsAsync(
+    public Task<Dictionary<long, MemorySnapshot>> GetMemorySnapshotsAsync(
         IEnumerable<long> memoryIds)
+    {
+        return GetMemorySnapshotsAsync(memoryIds, null);
+    }
+
+    public async Task<Dictionary<long, MemorySnapshot>> GetMemorySnapshotsAsync(
+        IEnumerable<long> memoryIds,
+        long? projectId)
     {
         // Deduplicate and materialize so EF Core can build an IN predicate.
         var ids = memoryIds?.Distinct().ToList();
@@ -307,9 +366,17 @@ public class MemoryRepository : IMemoryRepository
         if (ids == null || ids.Count == 0)
             return new Dictionary<long, MemorySnapshot>();
 
-        return await _dbContext.Memories
+        var query = _dbContext.Memories
             .AsNoTracking()
-            .Where(m => ids.Contains(m.MemoryId))
+            .Where(m => ids.Contains(m.MemoryId));
+
+        var effectiveProjectId = GetEffectiveProjectId(projectId);
+        if (effectiveProjectId.HasValue)
+        {
+            query = query.Where(m => m.ScopeId != null && m.Scope!.ProjectId == effectiveProjectId.Value);
+        }
+
+        return await query
             .Select(m => new MemorySnapshot
             {
                 MemoryId   = m.MemoryId,
@@ -487,13 +554,14 @@ public class MemoryRepository : IMemoryRepository
                 m.IsActive &&
                 (m.ExpiresAt == null || m.ExpiresAt > now));
 
-        if (projectId.HasValue)
+        var effectiveProjectId = GetEffectiveProjectId(projectId);
+        if (effectiveProjectId.HasValue)
         {
             // Only memories with a scope that belongs to this project.
             // Memories with ScopeId == null are excluded (no scope = no project).
             query = query.Where(m =>
                 m.ScopeId != null &&
-                m.Scope!.ProjectId == projectId.Value);
+                m.Scope!.ProjectId == effectiveProjectId.Value);
         }
 
         if (scopeId.HasValue)
@@ -535,13 +603,14 @@ public class MemoryRepository : IMemoryRepository
             .AsNoTracking()
             .Where(m => m.UserId == userId && m.IsActive && (m.ExpiresAt == null || m.ExpiresAt > now));
 
-        if (projectId.HasValue)
+        var effectiveProjectIdForList = GetEffectiveProjectId(projectId);
+        if (effectiveProjectIdForList.HasValue)
         {
             // Only memories with a scope that belongs to this project.
             // Memories with ScopeId == null are excluded.
             query = query.Where(m =>
                 m.ScopeId != null &&
-                m.Scope!.ProjectId == projectId.Value);
+                m.Scope!.ProjectId == effectiveProjectIdForList.Value);
         }
 
         return await query
@@ -603,7 +672,7 @@ public class MemoryRepository : IMemoryRepository
     // ── Phase 4C Task 4C.4: Native vector retrieval ───────────────────────────
 
     /// <inheritdoc/>
-    public async Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsAsync(
+    public Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsAsync(
         long userId,
         float[] queryVector,
         string queryModel,
@@ -613,6 +682,21 @@ public class MemoryRepository : IMemoryRepository
         List<MetadataFilterCondition>? metadataFilters = null,
         List<string>? categoryFilters = null)
     {
+        return SearchSimilarEmbeddingsAsync(
+            userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters, null);
+    }
+
+    public async Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsAsync(
+        long userId,
+        float[] queryVector,
+        string queryModel,
+        int topK,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters,
+        long? projectId)
+    {
         if (queryVector.Length == 0)
             throw new ArgumentException("Query vector cannot be empty.", nameof(queryVector));
         if (queryVector.Any(v => float.IsNaN(v) || float.IsInfinity(v)))
@@ -620,15 +704,17 @@ public class MemoryRepository : IMemoryRepository
         if (topK <= 0)
             throw new ArgumentException("topK must be greater than zero.", nameof(topK));
 
+        var effectiveProjectId = GetEffectiveProjectId(projectId);
+
         if (_dbContext.Database.IsNpgsql())
         {
             return await SearchSimilarEmbeddingsNativePostgreSqlAsync(
-                userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters);
+                userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters, effectiveProjectId);
         }
 
         // SQL Server / fallback: load all matching embeddings and rank in-memory.
         return await SearchSimilarEmbeddingsSqlServerFallbackAsync(
-            userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters);
+            userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters, effectiveProjectId);
     }
 
     // ── Phase 4C Task 4C.4: PostgreSQL native vector similarity retrieval ─────
@@ -648,7 +734,8 @@ public class MemoryRepository : IMemoryRepository
         long? scopeId,
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
-        List<string>? categoryFilters)
+        List<string>? categoryFilters,
+        long? projectId = null)
     {
         var now = DateTime.UtcNow;
 
@@ -663,6 +750,14 @@ public class MemoryRepository : IMemoryRepository
                 e.Memory.IsActive &&
                 (e.Memory.ExpiresAt == null || e.Memory.ExpiresAt > now) &&
                 e.Dimensions == queryVector.Length);
+
+        var effectiveProjectId = GetEffectiveProjectId(projectId);
+        if (effectiveProjectId.HasValue)
+        {
+            query = query.Where(e =>
+                e.Memory.ScopeId != null &&
+                e.Memory.Scope!.ProjectId == effectiveProjectId.Value);
+        }
 
         // Model compatibility filter (case-insensitive and trimmed, matching IsModelCompatible)
         if (!string.IsNullOrWhiteSpace(queryModel))
@@ -767,7 +862,7 @@ public class MemoryRepository : IMemoryRepository
             .Distinct()
             .ToList();
 
-        var snapshots = await GetMemorySnapshotsAsync(survivingMemoryIds);
+        var snapshots = await GetMemorySnapshotsAsync(survivingMemoryIds, effectiveProjectId);
 
         var results = new List<RankedEmbeddingResult>();
 
@@ -806,11 +901,12 @@ public class MemoryRepository : IMemoryRepository
         long? scopeId,
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
-        List<string>? categoryFilters)
+        List<string>? categoryFilters,
+        long? projectId = null)
     {
         // Reuse existing full-load path for filter application
         var embeddings = await GetFilteredActiveMemoryEmbeddingsAsync(
-            userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+            userId, scopeId, temporalFilter, metadataFilters, categoryFilters, projectId);
 
         var similarityService = new SemanticSimilarityService();
         var now = DateTime.UtcNow;

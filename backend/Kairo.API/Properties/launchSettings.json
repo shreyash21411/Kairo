@@ -1,13 +1,24 @@
-﻿{
+{
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "http": {
+    "PostgreSQL Local": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
       "applicationUrl": "http://localhost:5171",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Providers__DatabaseProvider": "PostgreSQL"
+      }
+    },
+    "SQL Server Local": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5171",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Providers__DatabaseProvider": "SqlServer"
       }
     },
     "https": {
@@ -16,7 +27,8 @@
       "launchBrowser": false,
       "applicationUrl": "https://localhost:7135;http://localhost:5171",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Providers__DatabaseProvider": "PostgreSQL"
       }
     }
   }

@@ -24,6 +24,7 @@ namespace Kairo.Infrastructure.Repositories;
 public class KeywordSearchRepository : IKeywordSearchRepository
 {
     private readonly KairoDbContext _dbContext;
+    private readonly Kairo.Application.Abstractions.Security.IApiKeyContext? _apiKeyContext;
 
     // BM25 parameters
     private const double K1 = 1.2;
@@ -41,9 +42,23 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         "with", "from", "as", "into", "through", "during", "before", "after"
     };
 
-    public KeywordSearchRepository(KairoDbContext dbContext)
+    public KeywordSearchRepository(
+        KairoDbContext dbContext,
+        Kairo.Application.Abstractions.Security.IApiKeyContext? apiKeyContext = null)
     {
         _dbContext = dbContext;
+        _apiKeyContext = apiKeyContext;
+    }
+
+    private long? GetEffectiveProjectId(long? explicitProjectId = null)
+    {
+        if (explicitProjectId.HasValue && explicitProjectId.Value > 0)
+            return explicitProjectId.Value;
+
+        if (_apiKeyContext != null && _apiKeyContext.ProjectId > 0)
+            return _apiKeyContext.ProjectId;
+
+        return null;
     }
 
     public Task<List<KeywordSearchResult>> SearchAsync(
@@ -53,7 +68,18 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         int limit = 30,
         CancellationToken cancellationToken = default)
     {
-        return SearchAsync(userId, query, scopeId, limit, null, null, cancellationToken);
+        return SearchAsync(userId, query, scopeId, limit, null, null, null, null, cancellationToken);
+    }
+
+    public Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        long? projectId,
+        CancellationToken cancellationToken = default)
+    {
+        return SearchAsync(userId, query, scopeId, limit, null, null, null, projectId, cancellationToken);
     }
 
     public Task<List<KeywordSearchResult>> SearchAsync(
@@ -65,7 +91,20 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         List<MetadataFilterCondition>? metadataFilters,
         CancellationToken cancellationToken = default)
     {
-        return SearchAsync(userId, query, scopeId, limit, temporalFilter, metadataFilters, null, cancellationToken);
+        return SearchAsync(userId, query, scopeId, limit, temporalFilter, metadataFilters, null, null, cancellationToken);
+    }
+
+    public Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters,
+        CancellationToken cancellationToken = default)
+    {
+        return SearchAsync(userId, query, scopeId, limit, temporalFilter, metadataFilters, categoryFilters, null, cancellationToken);
     }
 
     public async Task<List<KeywordSearchResult>> SearchAsync(
@@ -76,6 +115,7 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
         List<string>? categoryFilters,
+        long? projectId,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -91,6 +131,12 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         var memoriesQuery = _dbContext.Memories
             .AsNoTracking()
             .Where(m => m.UserId == userId && m.IsActive && (m.ExpiresAt == null || m.ExpiresAt > now));
+
+        var effectiveProjectId = GetEffectiveProjectId(projectId);
+        if (effectiveProjectId.HasValue)
+        {
+            memoriesQuery = memoriesQuery.Where(m => m.ScopeId != null && m.Scope!.ProjectId == effectiveProjectId.Value);
+        }
 
         if (scopeId.HasValue)
             memoriesQuery = memoriesQuery.Where(m => m.ScopeId == scopeId.Value);
