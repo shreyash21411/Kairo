@@ -59,7 +59,8 @@ public class Phase5BatchHydrationUnitTests
         m.Setup(r => r.SearchSimilarEmbeddingsAsync(
                     It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                     It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                    It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                    It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(),
+                    It.IsAny<long?>()))
          .ReturnsAsync((results ?? Enumerable.Empty<RankedEmbeddingResult>())
                        .ToList());
 

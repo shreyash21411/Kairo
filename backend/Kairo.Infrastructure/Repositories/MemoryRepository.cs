@@ -1,4 +1,5 @@
 using Kairo.Application.Abstractions.Persistence;
+using Kairo.Application.Abstractions.Security;
 using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
 using Kairo.Application.Services;
@@ -11,11 +12,11 @@ namespace Kairo.Infrastructure.Repositories;
 public class MemoryRepository : IMemoryRepository
 {
     private readonly KairoDbContext _dbContext;
-    private readonly Kairo.Application.Abstractions.Security.IApiKeyContext? _apiKeyContext;
+    private readonly IApiKeyContext? _apiKeyContext;
 
     public MemoryRepository(
         KairoDbContext dbContext,
-        Kairo.Application.Abstractions.Security.IApiKeyContext? apiKeyContext = null)
+        IApiKeyContext? apiKeyContext = null)
     {
         _dbContext = dbContext;
         _apiKeyContext = apiKeyContext;
@@ -23,12 +24,66 @@ public class MemoryRepository : IMemoryRepository
 
     private long? GetEffectiveProjectId(long? explicitProjectId = null)
     {
+        // Case 1: Authenticated API key context is present.
+        if (_apiKeyContext != null)
+        {
+            // If the API key is not bound to a valid project (ProjectId <= 0),
+            // it must FAIL CLOSED — missing or invalid project context cannot grant global access.
+            if (_apiKeyContext.ProjectId <= 0)
+            {
+                return ProjectAuthorizationContext.MissingContextSentinel;
+            }
+
+            var authorizedProjectId = _apiKeyContext.ProjectId;
+
+            // An explicit project ID cannot override or widen the authenticated key's permissions.
+            if (explicitProjectId.HasValue && explicitProjectId.Value > 0)
+            {
+                if (explicitProjectId.Value != authorizedProjectId)
+                {
+                    // Attempted cross-project access: fail closed to zero records.
+                    return ProjectAuthorizationContext.MissingContextSentinel;
+                }
+                return authorizedProjectId;
+            }
+
+            // An authenticated project-scoped key cannot perform global retrieval.
+            if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.ExplicitGlobalRetrieval)
+            {
+                return ProjectAuthorizationContext.MissingContextSentinel;
+            }
+
+            // Explicit missing context sentinel: fail closed.
+            if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.MissingContextSentinel)
+            {
+                return ProjectAuthorizationContext.MissingContextSentinel;
+            }
+
+            // Default for authenticated project-scoped request: use authorized project ID.
+            return authorizedProjectId;
+        }
+
+        // Case 2: No ambient project-scoped context (background worker, system/maintenance, offline tests).
+
+        // Subcase 2a: Explicit project ID provided (> 0) (e.g. background worker processing an enqueued job).
         if (explicitProjectId.HasValue && explicitProjectId.Value > 0)
+        {
             return explicitProjectId.Value;
+        }
 
-        if (_apiKeyContext != null && _apiKeyContext.ProjectId > 0)
-            return _apiKeyContext.ProjectId;
+        // Subcase 2b: Explicitly authorized global retrieval sentinel (-1L) (e.g. admin maintenance, backfill).
+        if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.ExplicitGlobalRetrieval)
+        {
+            return null; // null indicates no project filter applied
+        }
 
+        // Subcase 2c: Explicit missing context sentinel (0L) in a project-scoped operation without context.
+        if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.MissingContextSentinel)
+        {
+            return ProjectAuthorizationContext.MissingContextSentinel;
+        }
+
+        // Subcase 2d: Offline legacy test / untargeted direct call without context.
         return null;
     }
 
@@ -140,7 +195,7 @@ public class MemoryRepository : IMemoryRepository
         long userId,
         long? scopeId = null)
     {
-        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null, null, null);
+        return GetFilteredActiveMemoryEmbeddingsInternalAsync(userId, scopeId, null, null, null, null);
     }
 
     public Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
@@ -148,7 +203,7 @@ public class MemoryRepository : IMemoryRepository
         long? scopeId,
         long? projectId)
     {
-        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, null, null, null, projectId);
+        return GetFilteredActiveMemoryEmbeddingsInternalAsync(userId, scopeId, null, null, null, projectId);
     }
 
     public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
@@ -157,7 +212,7 @@ public class MemoryRepository : IMemoryRepository
         MemoryTemporalFilter? temporalFilter = null,
         List<MetadataFilterCondition>? metadataFilters = null)
     {
-        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, null, null);
+        return GetFilteredActiveMemoryEmbeddingsInternalAsync(userId, scopeId, temporalFilter, metadataFilters, null, null);
     }
 
     public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
@@ -167,10 +222,9 @@ public class MemoryRepository : IMemoryRepository
         List<MetadataFilterCondition>? metadataFilters,
         long? projectId)
     {
-        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, null, projectId);
+        return GetFilteredActiveMemoryEmbeddingsInternalAsync(userId, scopeId, temporalFilter, metadataFilters, null, projectId);
     }
 
-    /// <inheritdoc/>
     public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
         long userId,
         long? scopeId,
@@ -178,10 +232,21 @@ public class MemoryRepository : IMemoryRepository
         List<MetadataFilterCondition>? metadataFilters,
         List<string>? categoryFilters)
     {
-        return GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, categoryFilters, null);
+        return GetFilteredActiveMemoryEmbeddingsInternalAsync(userId, scopeId, temporalFilter, metadataFilters, categoryFilters, null);
     }
 
-    public async Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+    public Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters,
+        long? projectId)
+    {
+        return GetFilteredActiveMemoryEmbeddingsInternalAsync(userId, scopeId, temporalFilter, metadataFilters, categoryFilters, projectId);
+    }
+
+    private async Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsInternalAsync(
         long userId,
         long? scopeId,
         MemoryTemporalFilter? temporalFilter,

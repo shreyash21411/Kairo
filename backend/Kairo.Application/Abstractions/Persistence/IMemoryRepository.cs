@@ -49,6 +49,11 @@ public interface IMemoryRepository
         long userId,
         long? scopeId = null);
 
+    Task<List<MemoryEmbeddingData>> GetActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        long? projectId);
+
     /// <summary>
     /// Phase 2: Returns active memory embeddings filtered by temporal and metadata constraints.
     /// Filtering is executed at query level before similarity scoring.
@@ -58,6 +63,13 @@ public interface IMemoryRepository
         long? scopeId = null,
         MemoryTemporalFilter? temporalFilter = null,
         List<MetadataFilterCondition>? metadataFilters = null);
+
+    Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        long? projectId);
 
     /// <summary>
     /// Phase 3: Returns active memory embeddings filtered by temporal, metadata, and category constraints.
@@ -69,6 +81,14 @@ public interface IMemoryRepository
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
         List<string>? categoryFilters);
+
+    Task<List<MemoryEmbeddingData>> GetFilteredActiveMemoryEmbeddingsAsync(
+        long userId,
+        long? scopeId,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters,
+        long? projectId);
 
     // ── New methods (Task 1: Embedding Backfill) ──────────────────────────────
 
@@ -94,8 +114,9 @@ public interface IMemoryRepository
     /// when <paramref name="memoryIds"/> is empty or null.
     /// Does NOT filter by IsActive or expiry — callers are responsible for those checks.
     /// Returns a dictionary keyed by <see cref="MemorySnapshot.MemoryId"/>.
-    /// </summary>
     Task<Dictionary<long, MemorySnapshot>> GetMemorySnapshotsAsync(IEnumerable<long> memoryIds);
+
+    Task<Dictionary<long, MemorySnapshot>> GetMemorySnapshotsAsync(IEnumerable<long> memoryIds, long? projectId);
 
     /// <summary>
     /// Sets IsActive = false and stamps UpdatedAt.
@@ -194,7 +215,6 @@ public interface IMemoryRepository
     /// <param name="scopeId">Optional scope filter.</param>
     /// <param name="temporalFilter">Optional temporal filter applied before ranking.</param>
     /// <param name="metadataFilters">Optional metadata filter conditions applied before ranking.</param>
-    /// <param name="categoryFilters">Optional category filter applied before ranking.</param>
     Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsAsync(
         long userId,
         float[] queryVector,
@@ -203,7 +223,8 @@ public interface IMemoryRepository
         long? scopeId = null,
         MemoryTemporalFilter? temporalFilter = null,
         List<MetadataFilterCondition>? metadataFilters = null,
-        List<string>? categoryFilters = null);
+        List<string>? categoryFilters = null,
+        long? projectId = null);
 
     // ── Phase 6.3: History & Purge Repository Methods ─────────────────────────
 

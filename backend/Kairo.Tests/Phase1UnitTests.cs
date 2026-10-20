@@ -51,8 +51,9 @@ public class Phase1UnitTests
                 It.IsAny<long?>(),
                 It.IsAny<MemoryTemporalFilter?>(),
                 It.IsAny<List<MetadataFilterCondition>?>(),
-                It.IsAny<List<string>?>()))
-            .Returns(async (long uid, float[] qVec, string model, int topK, long? scope, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf) =>
+                It.IsAny<List<string>?>(),
+                It.IsAny<long?>()))
+            .Returns(async (long uid, float[] qVec, string model, int topK, long? scope, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf, long? pid) =>
             {
                 var embeddings = await memRepo.Object.GetFilteredActiveMemoryEmbeddingsAsync(uid, scope, tf, mf, cf);
                 if (embeddings == null || embeddings.Count == 0)

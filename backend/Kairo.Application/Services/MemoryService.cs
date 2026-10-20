@@ -534,61 +534,65 @@ public class MemoryService : IMemoryService
                 nameof(request.TopK));
         }
 
-        long? scopeId = null;
-        if (projectId.HasValue)
+        if (!projectId.HasValue || projectId.Value <= 0)
         {
-            if (request.Scope != null && !request.Scope.IsEmpty)
+            throw new ArgumentException(
+                "ProjectId is required for project-scoped memory search.",
+                nameof(projectId));
+        }
+
+        long? scopeId = null;
+        if (request.Scope != null && !request.Scope.IsEmpty)
+        {
+            try
             {
-                try
-                {
-                    scopeId = await _scopeResolutionService.ResolveFromScopeKeyAsync(
-                        projectId.Value,
-                        request.Scope,
-                        cancellationToken);
-                }
-                catch (MemoryScopeNotFoundException)
-                {
-                    return new MemorySearchResponse
-                    {
-                        Query = request.Query,
-                        Count = 0,
-                        Memories = []
-                    };
-                }
+                scopeId = await _scopeResolutionService.ResolveFromScopeKeyAsync(
+                    projectId.Value,
+                    request.Scope,
+                    cancellationToken);
             }
-            else if (!string.IsNullOrWhiteSpace(request.ActorId))
+            catch (MemoryScopeNotFoundException)
             {
-                try
+                return new MemorySearchResponse
                 {
-                    scopeId = await _scopeResolutionService.ResolveScopeAsync(
-                        projectId.Value,
-                        request.ActorId,
-                        cancellationToken);
-                }
-                catch (MemoryScopeNotFoundException)
-                {
-                    // An actor who has never created a memory has no MemoryScope record yet.
-                    // A search for an actor with no memories is a valid read-only query that returns empty results.
-                    return new MemorySearchResponse
-                    {
-                        Query = request.Query,
-                        Count = 0,
-                        Memories = []
-                    };
-                }
+                    Query = request.Query,
+                    Count = 0,
+                    Memories = []
+                };
             }
-            else
+        }
+        else if (!string.IsNullOrWhiteSpace(request.ActorId))
+        {
+            try
             {
-                throw new ArgumentException(
-                    "ActorId or Scope must be provided.",
-                    nameof(request.ActorId));
+                scopeId = await _scopeResolutionService.ResolveScopeAsync(
+                    projectId.Value,
+                    request.ActorId,
+                    cancellationToken);
             }
+            catch (MemoryScopeNotFoundException)
+            {
+                // An actor who has never created a memory has no MemoryScope record yet.
+                // A search for an actor with no memories is a valid read-only query that returns empty results.
+                return new MemorySearchResponse
+                {
+                    Query = request.Query,
+                    Count = 0,
+                    Memories = []
+                };
+            }
+        }
+        else
+        {
+            throw new ArgumentException(
+                "ActorId or Scope must be provided.",
+                nameof(request.ActorId));
         }
 
         var metadataConditions = request.GetEffectiveMetadataFilters();
         var effectiveCategories = request.GetEffectiveCategories();
 
-        // Delegate to retrieval pipeline (with temporalFilter, metadataFilters, recencyBoost, categoryFilters):
+        // Delegate to retrieval pipeline (with temporalFilter, metadataFilters, recencyBoost, categoryFilters, projectId):
         var memories =
             await _retrievalService.RetrieveAsync(
                 userId,
@@ -598,7 +602,8 @@ public class MemoryService : IMemoryService
                 request.Temporal,
                 metadataConditions,
                 request.RecencyBoost.GetValueOrDefault(false),
-                effectiveCategories.Count > 0 ? effectiveCategories : null);
+                effectiveCategories.Count > 0 ? effectiveCategories : null,
+                projectId.Value);
 
         return new MemorySearchResponse
         {

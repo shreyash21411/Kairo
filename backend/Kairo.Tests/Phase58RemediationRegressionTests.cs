@@ -481,7 +481,7 @@ public class Phase58RemediationRegressionTests : IDisposable
     public async Task HybridRetrievalService_RerankSuccess_MetersLlmRerankWithCandidateCount()
     {
         var mockRepo = new Mock<IMemoryRepository>();
-        mockRepo.Setup(r => r.SearchSimilarEmbeddingsAsync(It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), null, null, null, null))
+        mockRepo.Setup(r => r.SearchSimilarEmbeddingsAsync(It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), null, null, null, null, null))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1, Similarity = 0.9, Content = "C1", MemoryType = "Fact" },
@@ -524,7 +524,7 @@ public class Phase58RemediationRegressionTests : IDisposable
     public async Task HybridRetrievalService_RerankFailure_MetersLlmRerankWithFailureOutcome()
     {
         var mockRepo = new Mock<IMemoryRepository>();
-        mockRepo.Setup(r => r.SearchSimilarEmbeddingsAsync(It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), null, null, null, null))
+        mockRepo.Setup(r => r.SearchSimilarEmbeddingsAsync(It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), null, null, null, null, null))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1, Similarity = 0.9, Content = "C1", MemoryType = "Fact" }

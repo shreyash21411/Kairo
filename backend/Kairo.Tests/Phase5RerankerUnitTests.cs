@@ -523,7 +523,7 @@ public class Phase5RerankerUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "Memory One", Similarity = 0.90, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -575,7 +575,7 @@ public class Phase5RerankerUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "One", Similarity = 0.90, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -625,7 +625,7 @@ public class Phase5RerankerUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "One", Similarity = 0.90, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -668,7 +668,7 @@ public class Phase5RerankerUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>());
 
         var hybrid = BuildHybridServiceWithReranker(
@@ -696,7 +696,7 @@ public class Phase5RerankerUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "One", Similarity = 0.90, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -733,7 +733,7 @@ public class Phase5RerankerUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "One", Similarity = 0.90, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }
@@ -767,7 +767,7 @@ public class Phase5RerankerUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 20L, Content = "Twenty", Similarity = 0.85, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },

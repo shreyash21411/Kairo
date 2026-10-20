@@ -306,8 +306,9 @@ public class Phase6BenchmarkEvaluationTests
             // Simulate semantic channel candidates
             mockRepo.Setup(r => r.SearchSimilarEmbeddingsAsync(
                     1, It.IsAny<float[]>(), "mistral-embed", It.IsAny<int>(), It.IsAny<long?>(),
-                    It.IsAny<MemoryTemporalFilter?>(), It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
-                .ReturnsAsync((long u, float[] vec, string mod, int topK, long? sc, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf) =>
+                    It.IsAny<MemoryTemporalFilter?>(), It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(),
+                    It.IsAny<long?>()))
+                .ReturnsAsync((long u, float[] vec, string mod, int topK, long? sc, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf, long? pid) =>
                 {
                     return allowedCorpus
                         .Where(m => m.IsActive)
@@ -337,6 +338,7 @@ public class Phase6BenchmarkEvaluationTests
                         .OrderByDescending(r => r.Similarity)
                         .ToList();
                 });
+
 
             // Simulate keyword channel candidates
             mockKeyword.Setup(k => k.SearchAsync(

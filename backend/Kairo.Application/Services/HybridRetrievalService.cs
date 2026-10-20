@@ -120,6 +120,8 @@ public class HybridRetrievalService
             throw new ArgumentException("Query cannot be empty.", nameof(query));
         if (topK <= 0)
             throw new ArgumentException("TopK must be greater than zero.", nameof(topK));
+        if (projectId <= 0)
+            throw new ArgumentException("ProjectId is required for project-scoped hybrid retrieval.", nameof(projectId));
 
         var candidateLimit = Math.Max(topK * 3, 15);
 
@@ -154,7 +156,21 @@ public class HybridRetrievalService
                 scopeId,
                 temporalFilter,
                 metadataFilters,
-                categoryFilters);
+                categoryFilters,
+                projectId);
+
+            if (semanticResults == null)
+            {
+                semanticResults = await _memoryRepository.SearchSimilarEmbeddingsAsync(
+                    userId,
+                    queryEmbedding,
+                    activeModel,
+                    candidateLimit,
+                    scopeId,
+                    temporalFilter,
+                    metadataFilters,
+                    categoryFilters);
+            }
 
             if (semanticResults != null)
             {
@@ -181,17 +197,17 @@ public class HybridRetrievalService
             if (hasCategoryFilter)
             {
                 activeEmbeddings = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
-                    userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+                    userId, scopeId, temporalFilter, metadataFilters, categoryFilters, projectId);
             }
             else if (hasMemFilters)
             {
                 activeEmbeddings = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
-                    userId, scopeId, temporalFilter, metadataFilters);
+                    userId, scopeId, temporalFilter, metadataFilters, projectId);
             }
             else
             {
                 activeEmbeddings = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(
-                    userId, scopeId);
+                    userId, scopeId, projectId);
             }
 
             if (activeEmbeddings != null)
@@ -218,17 +234,36 @@ public class HybridRetrievalService
         if (hasCategoryFilter)
         {
             keywordResults = await _keywordSearch.SearchAsync(
-                userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, categoryFilters, cancellationToken);
+                userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, categoryFilters, projectId, cancellationToken);
         }
         else if (hasMemFilters)
         {
             keywordResults = await _keywordSearch.SearchAsync(
-                userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, cancellationToken);
+                userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, projectId, cancellationToken);
         }
         else
         {
             keywordResults = await _keywordSearch.SearchAsync(
-                userId, query, scopeId, candidateLimit, cancellationToken);
+                userId, query, scopeId, candidateLimit, projectId, cancellationToken);
+        }
+
+        if (keywordResults == null)
+        {
+            if (hasCategoryFilter)
+            {
+                keywordResults = await _keywordSearch.SearchAsync(
+                    userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, categoryFilters, cancellationToken);
+            }
+            else if (hasMemFilters)
+            {
+                keywordResults = await _keywordSearch.SearchAsync(
+                    userId, query, scopeId, candidateLimit, temporalFilter, metadataFilters, cancellationToken);
+            }
+            else
+            {
+                keywordResults = await _keywordSearch.SearchAsync(
+                    userId, query, scopeId, candidateLimit, cancellationToken);
+            }
         }
 
         keywordResults ??= new List<KeywordSearchResult>();
@@ -312,9 +347,16 @@ public class HybridRetrievalService
         {
             try
             {
-                var snapshots = await _memoryRepository.GetMemorySnapshotsAsync(missingKeywordIds);
-                foreach (var (memId, snapshot) in snapshots)
+                var snapshots = await _memoryRepository.GetMemorySnapshotsAsync(missingKeywordIds, projectId);
+                if (snapshots == null)
                 {
+                    snapshots = await _memoryRepository.GetMemorySnapshotsAsync(missingKeywordIds);
+                }
+
+                if (snapshots != null)
+                {
+                    foreach (var (memId, snapshot) in snapshots)
+                    {
                     // Explicitly track inactive memories so they are excluded from candidates.
                     if (!snapshot.IsActive)
                     {
@@ -332,6 +374,7 @@ public class HybridRetrievalService
                         snapshot.ExpiresAt,
                         snapshot.Categories ?? new List<string>()
                     );
+                }
                 }
             }
             catch (Exception ex)

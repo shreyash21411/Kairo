@@ -1,4 +1,5 @@
 using Kairo.Application.Abstractions.Persistence;
+using Kairo.Application.Abstractions.Security;
 using Kairo.Application.DTOs;
 using Kairo.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,7 +25,7 @@ namespace Kairo.Infrastructure.Repositories;
 public class KeywordSearchRepository : IKeywordSearchRepository
 {
     private readonly KairoDbContext _dbContext;
-    private readonly Kairo.Application.Abstractions.Security.IApiKeyContext? _apiKeyContext;
+    private readonly IApiKeyContext? _apiKeyContext;
 
     // BM25 parameters
     private const double K1 = 1.2;
@@ -44,7 +45,7 @@ public class KeywordSearchRepository : IKeywordSearchRepository
 
     public KeywordSearchRepository(
         KairoDbContext dbContext,
-        Kairo.Application.Abstractions.Security.IApiKeyContext? apiKeyContext = null)
+        IApiKeyContext? apiKeyContext = null)
     {
         _dbContext = dbContext;
         _apiKeyContext = apiKeyContext;
@@ -52,12 +53,66 @@ public class KeywordSearchRepository : IKeywordSearchRepository
 
     private long? GetEffectiveProjectId(long? explicitProjectId = null)
     {
+        // Case 1: Authenticated API key context is present.
+        if (_apiKeyContext != null)
+        {
+            // If the API key is not bound to a valid project (ProjectId <= 0),
+            // it must FAIL CLOSED — missing or invalid project context cannot grant global access.
+            if (_apiKeyContext.ProjectId <= 0)
+            {
+                return ProjectAuthorizationContext.MissingContextSentinel;
+            }
+
+            var authorizedProjectId = _apiKeyContext.ProjectId;
+
+            // An explicit project ID cannot override or widen the authenticated key's permissions.
+            if (explicitProjectId.HasValue && explicitProjectId.Value > 0)
+            {
+                if (explicitProjectId.Value != authorizedProjectId)
+                {
+                    // Attempted cross-project access: fail closed to zero records.
+                    return ProjectAuthorizationContext.MissingContextSentinel;
+                }
+                return authorizedProjectId;
+            }
+
+            // An authenticated project-scoped key cannot perform global retrieval.
+            if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.ExplicitGlobalRetrieval)
+            {
+                return ProjectAuthorizationContext.MissingContextSentinel;
+            }
+
+            // Explicit missing context sentinel: fail closed.
+            if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.MissingContextSentinel)
+            {
+                return ProjectAuthorizationContext.MissingContextSentinel;
+            }
+
+            // Default for authenticated project-scoped request: use authorized project ID.
+            return authorizedProjectId;
+        }
+
+        // Case 2: No ambient project-scoped context (background worker, system/maintenance, offline tests).
+
+        // Subcase 2a: Explicit project ID provided (> 0) (e.g. background worker processing an enqueued job).
         if (explicitProjectId.HasValue && explicitProjectId.Value > 0)
+        {
             return explicitProjectId.Value;
+        }
 
-        if (_apiKeyContext != null && _apiKeyContext.ProjectId > 0)
-            return _apiKeyContext.ProjectId;
+        // Subcase 2b: Explicitly authorized global retrieval sentinel (-1L) (e.g. admin maintenance, backfill).
+        if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.ExplicitGlobalRetrieval)
+        {
+            return null; // null indicates no project filter applied
+        }
 
+        // Subcase 2c: Explicit missing context sentinel (0L) in a project-scoped operation without context.
+        if (explicitProjectId.HasValue && explicitProjectId.Value == ProjectAuthorizationContext.MissingContextSentinel)
+        {
+            return ProjectAuthorizationContext.MissingContextSentinel;
+        }
+
+        // Subcase 2d: Offline legacy test / untargeted direct call without context.
         return null;
     }
 
@@ -92,6 +147,19 @@ public class KeywordSearchRepository : IKeywordSearchRepository
         CancellationToken cancellationToken = default)
     {
         return SearchAsync(userId, query, scopeId, limit, temporalFilter, metadataFilters, null, null, cancellationToken);
+    }
+
+    public Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        long? projectId,
+        CancellationToken cancellationToken = default)
+    {
+        return SearchAsync(userId, query, scopeId, limit, temporalFilter, metadataFilters, null, projectId, cancellationToken);
     }
 
     public Task<List<KeywordSearchResult>> SearchAsync(

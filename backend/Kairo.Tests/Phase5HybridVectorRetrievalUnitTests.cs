@@ -102,7 +102,8 @@ public class Phase5HybridVectorRetrievalUnitTests
                 100L,
                 temporalFilter,
                 metaFilters,
-                catFilters))
+                catFilters,
+                It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new()
@@ -147,7 +148,8 @@ public class Phase5HybridVectorRetrievalUnitTests
             100L,
             temporalFilter,
             metaFilters,
-            catFilters), Times.Once);
+            catFilters,
+            It.IsAny<long?>()), Times.Once);
 
         Assert.Single(result.Memories);
         Assert.Equal(42L, result.Memories[0].MemoryId);
@@ -196,7 +198,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "Postgres memory", Similarity = 0.8, Model = "mistral-embed", Dimensions = 2, MemoryType = "Fact", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -250,7 +252,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "Vector match", Similarity = 0.7, Model = "mistral-embed", Dimensions = 2, MemoryType = "Fact", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }
@@ -286,7 +288,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 10L, Content = "Semantic match", Similarity = 0.92, Model = "mistral-embed", Dimensions = 2, MemoryType = "Fact", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }
@@ -319,7 +321,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>());
 
         kwSearchMock.Setup(k => k.SearchAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -375,7 +377,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Verify(m => m.SearchSimilarEmbeddingsAsync(
             It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
             It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-            It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()), Times.Never);
+            It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()), Times.Never);
 
         Assert.Single(result.Memories);
         Assert.Equal(99L, result.Memories[0].MemoryId);
@@ -394,7 +396,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "Candidate 1", Similarity = 0.9, Model = "mistral-embed", Dimensions = 2, MemoryType = "Fact", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }
@@ -434,7 +436,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         var cf = new List<string> { "architecture" };
 
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
-                55L, It.IsAny<float[]>(), "mistral-embed", It.IsAny<int>(), 999L, tf, mf, cf))
+                55L, It.IsAny<float[]>(), "mistral-embed", It.IsAny<int>(), 999L, tf, mf, cf, It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>());
 
         kwSearchMock.Setup(k => k.SearchAsync(55L, "q", 999L, It.IsAny<int>(), tf, mf, cf, It.IsAny<CancellationToken>()))
@@ -465,7 +467,8 @@ public class Phase5HybridVectorRetrievalUnitTests
             999L,
             tf,
             mf,
-            cf), Times.Once);
+            cf,
+            It.IsAny<long?>()), Times.Once);
     }
 
     [Fact]
@@ -481,7 +484,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "M1", Similarity = 0.95, Model = "mistral-embed", Dimensions = 2, MemoryType = "Fact", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -520,7 +523,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(m => m.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 1L, Content = "Primary memory", Similarity = 0.95, Model = "mistral-embed", Dimensions = 2, MemoryType = "Fact", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }
@@ -758,7 +761,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(new List<RankedEmbeddingResult>
             {
                 new() { MemoryId = 20L, Content = "B", Similarity = 0.85, Model = "mistral-embed", Dimensions = 2, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -819,7 +822,7 @@ public class Phase5HybridVectorRetrievalUnitTests
         memRepoMock.Setup(r => r.SearchSimilarEmbeddingsAsync(
                 It.IsAny<long>(), It.IsAny<float[]>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<long?>(), It.IsAny<MemoryTemporalFilter?>(),
-                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>()))
+                It.IsAny<List<MetadataFilterCondition>?>(), It.IsAny<List<string>?>(), It.IsAny<long?>()))
             .ReturnsAsync(semanticResults);
 
         // Generate 10 keyword-only results (IDs 101 to 110, raw scores 10 down to 1)

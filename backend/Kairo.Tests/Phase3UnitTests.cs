@@ -47,8 +47,9 @@ public class Phase3UnitTests
                 It.IsAny<long?>(),
                 It.IsAny<MemoryTemporalFilter?>(),
                 It.IsAny<List<MetadataFilterCondition>?>(),
-                It.IsAny<List<string>?>()))
-            .Returns(async (long uid, float[] qVec, string model, int topK, long? scope, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf) =>
+                It.IsAny<List<string>?>(),
+                It.IsAny<long?>()))
+            .Returns(async (long uid, float[] qVec, string model, int topK, long? scope, MemoryTemporalFilter? tf, List<MetadataFilterCondition>? mf, List<string>? cf, long? pid) =>
             {
                 var embeddings = await memRepo.Object.GetFilteredActiveMemoryEmbeddingsAsync(uid, scope, tf, mf, cf);
                 if (embeddings == null || embeddings.Count == 0)
@@ -341,7 +342,7 @@ public class Phase3UnitTests
             graphDepth: 1,
             categoryFilters: categories);
 
-        memoryRepoMock.Verify(m => m.SearchSimilarEmbeddingsAsync(1, It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), 10, null, metaFilters, categories), Times.Once);
+        memoryRepoMock.Verify(m => m.SearchSimilarEmbeddingsAsync(1, It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), 10, null, metaFilters, categories, It.IsAny<long?>()), Times.Once);
         keywordSearchMock.Verify(k => k.SearchAsync(1, "query", 10, It.IsAny<int>(), null, metaFilters, categories, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -383,7 +384,7 @@ public class Phase3UnitTests
             graphDepth: 1,
             categoryFilters: categories);
 
-        memoryRepoMock.Verify(m => m.SearchSimilarEmbeddingsAsync(1, It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), 10, temporalFilter, null, categories), Times.Once);
+        memoryRepoMock.Verify(m => m.SearchSimilarEmbeddingsAsync(1, It.IsAny<float[]>(), It.IsAny<string>(), It.IsAny<int>(), 10, temporalFilter, null, categories, It.IsAny<long?>()), Times.Once);
     }
 
     [Fact]

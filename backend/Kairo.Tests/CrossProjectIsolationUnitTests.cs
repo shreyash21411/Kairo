@@ -4,7 +4,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Kairo.Application.Abstractions.Security;
+using Kairo.Application.Abstractions.Services;
 using Kairo.Application.DTOs;
+using Kairo.Application.Services;
 using Kairo.Infrastructure.Persistence;
 using Kairo.Infrastructure.Persistence.Entities;
 using Kairo.Infrastructure.Repositories;
@@ -18,20 +20,20 @@ namespace Kairo.Tests;
 /// Regression tests for cross-project memory isolation (SEC-001).
 ///
 /// Verifies that <see cref="MemoryRepository"/> and <see cref="KeywordSearchRepository"/>
-/// enforce project-level scoping so that:
+/// enforce project-level authorization boundaries so that:
 /// 1. Memories belonging to Project A are never returned when querying for Project B.
-/// 2. The IApiKeyContext-injected project ID is used as an automatic filter when no
-///    explicit projectId argument is provided.
-/// 3. An explicit projectId argument takes precedence over the context projectId.
-/// 4. When neither a context projectId nor an explicit projectId is supplied, all projects
-///    for the given user are returned (backwards-compatible behaviour).
+/// 2. Key A cannot access Project B memories, even when the same user owns both projects.
+/// 3. Key A cannot access Project B by supplying or manipulating an explicit projectId (mismatches fail closed).
+/// 4. Missing or invalid project context (ProjectId = 0L) fails closed and never turns into an unfiltered search.
+/// 5. Global retrieval across all projects must be explicitly authorized via ExplicitGlobalRetrieval (-1L).
+/// 6. An authenticated project-scoped key cannot use the global retrieval sentinel to bypass isolation.
 ///
 /// All tests are 100% offline using the EF Core in-memory provider.
 /// </summary>
 public class CrossProjectIsolationUnitTests
 {
     // -------------------------------------------------------------------------
-    // Shared test data — two projects, one user, one memory per project
+    // Shared test data - two projects, one user, one memory per project
     // -------------------------------------------------------------------------
 
     private const long UserId     = 42L;
@@ -139,7 +141,7 @@ public class CrossProjectIsolationUnitTests
     }
 
     // -------------------------------------------------------------------------
-    // MemoryRepository — GetFilteredActiveMemoryEmbeddingsAsync
+    // MemoryRepository - GetFilteredActiveMemoryEmbeddingsAsync
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -167,10 +169,10 @@ public class CrossProjectIsolationUnitTests
     }
 
     [Fact]
-    public async Task GetFilteredEmbeddings_ExplicitProjectIdOverridesContext()
+    public async Task GetFilteredEmbeddings_ContextProjectA_ExplicitProjectB_FailsClosed()
     {
         using var db = CreateSeededDb();
-        // Context says ProjectA, explicit arg says ProjectB — explicit wins.
+        // Key A is bound to Project A. Supplying explicit Project B must fail closed to protect isolation.
         var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
 
         var results = await repo.GetFilteredActiveMemoryEmbeddingsAsync(
@@ -181,12 +183,11 @@ public class CrossProjectIsolationUnitTests
             categoryFilters: null,
             projectId: ProjectB);
 
-        Assert.Single(results);
-        Assert.Equal(MemoryIdB, results[0].MemoryId);
+        Assert.Empty(results);
     }
 
     [Fact]
-    public async Task GetFilteredEmbeddings_ZeroProjectInContext_ReturnsBothProjects()
+    public async Task GetFilteredEmbeddings_ZeroProjectInContext_FailsClosed()
     {
         using var db = CreateSeededDb();
         var noContextMock = new Mock<IApiKeyContext>();
@@ -198,22 +199,46 @@ public class CrossProjectIsolationUnitTests
 
         var results = await repo.GetFilteredActiveMemoryEmbeddingsAsync(UserId, null, null, null);
 
-        Assert.Equal(2, results.Count);
+        Assert.Empty(results);
     }
 
     [Fact]
-    public async Task GetFilteredEmbeddings_NullContext_ReturnsBothProjects()
+    public async Task GetFilteredEmbeddings_ExplicitGlobalRetrieval_ReturnsBothProjects()
     {
         using var db = CreateSeededDb();
         var repo = new MemoryRepository(db, apiKeyContext: null);
 
-        var results = await repo.GetFilteredActiveMemoryEmbeddingsAsync(UserId, null, null, null);
+        var results = await repo.GetFilteredActiveMemoryEmbeddingsAsync(
+            userId: UserId,
+            scopeId: null,
+            temporalFilter: null,
+            metadataFilters: null,
+            categoryFilters: null,
+            projectId: ProjectAuthorizationContext.ExplicitGlobalRetrieval);
 
         Assert.Equal(2, results.Count);
     }
 
+    [Fact]
+    public async Task GetFilteredEmbeddings_ContextProjectA_GlobalSentinelAttempt_FailsClosed()
+    {
+        using var db = CreateSeededDb();
+        // Project-scoped key attempting to pass global retrieval sentinel must fail closed.
+        var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
+
+        var results = await repo.GetFilteredActiveMemoryEmbeddingsAsync(
+            userId: UserId,
+            scopeId: null,
+            temporalFilter: null,
+            metadataFilters: null,
+            categoryFilters: null,
+            projectId: ProjectAuthorizationContext.ExplicitGlobalRetrieval);
+
+        Assert.Empty(results);
+    }
+
     // -------------------------------------------------------------------------
-    // MemoryRepository — GetActiveMemoryEmbeddingsAsync overloads
+    // MemoryRepository - GetActiveMemoryEmbeddingsAsync overloads
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -237,7 +262,7 @@ public class CrossProjectIsolationUnitTests
         using var db = CreateSeededDb();
         var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
 
-        // 2-arg overload has no explicit projectId — must still honour context
+        // 2-arg overload has no explicit projectId - must still honour context
         var results = await repo.GetActiveMemoryEmbeddingsAsync(UserId, null);
 
         Assert.Single(results);
@@ -245,7 +270,7 @@ public class CrossProjectIsolationUnitTests
     }
 
     // -------------------------------------------------------------------------
-    // MemoryRepository — GetMemorySnapshotsAsync
+    // MemoryRepository - GetMemorySnapshotsAsync
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -262,12 +287,29 @@ public class CrossProjectIsolationUnitTests
     }
 
     [Fact]
-    public async Task GetMemorySnapshots_NoProjectFilter_ReturnsBothProjects()
+    public async Task GetMemorySnapshots_ZeroProjectInContext_FailsClosed()
+    {
+        using var db = CreateSeededDb();
+        var zeroContextMock = new Mock<IApiKeyContext>();
+        zeroContextMock.Setup(c => c.UserId).Returns(UserId);
+        zeroContextMock.Setup(c => c.ProjectId).Returns(0L);
+
+        var repo = new MemoryRepository(db, zeroContextMock.Object);
+
+        var result = await repo.GetMemorySnapshotsAsync(new[] { MemoryIdA, MemoryIdB });
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetMemorySnapshots_ExplicitGlobalRetrieval_ReturnsBothProjects()
     {
         using var db = CreateSeededDb();
         var repo = new MemoryRepository(db, apiKeyContext: null);
 
-        var result = await repo.GetMemorySnapshotsAsync(new[] { MemoryIdA, MemoryIdB });
+        var result = await repo.GetMemorySnapshotsAsync(
+            new[] { MemoryIdA, MemoryIdB },
+            projectId: ProjectAuthorizationContext.ExplicitGlobalRetrieval);
 
         Assert.Equal(2, result.Count);
         Assert.True(result.ContainsKey(MemoryIdA));
@@ -279,17 +321,16 @@ public class CrossProjectIsolationUnitTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task Priority_ExplicitProjectIdBeatsContext()
+    public async Task Priority_ContextEnforced_MismatchingExplicitProjectIdFailsClosed()
     {
         using var db = CreateSeededDb();
-        // Context = ProjectA, explicit = ProjectB ? ProjectB wins
+        // Context = ProjectA, explicit = ProjectB -> Mismatch fails closed, Key A cannot access Project B
         var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
 
         var result = await repo.GetMemorySnapshotsAsync(
             new[] { MemoryIdA, MemoryIdB }, projectId: ProjectB);
 
-        Assert.Single(result);
-        Assert.True(result.ContainsKey(MemoryIdB));
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -307,7 +348,7 @@ public class CrossProjectIsolationUnitTests
     }
 
     // -------------------------------------------------------------------------
-    // KeywordSearchRepository — SearchAsync project isolation
+    // KeywordSearchRepository - SearchAsync project isolation
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -337,9 +378,9 @@ public class CrossProjectIsolationUnitTests
     }
 
     [Fact]
-    public async Task KeywordSearch_ExplicitProjectId_OverridesContextProject()
+    public async Task KeywordSearch_ContextProjectA_ExplicitProjectB_FailsClosed()
     {
-        // Context = ProjectA but explicit projectId = ProjectB ? only B returned
+        // Context = ProjectA but explicit projectId = ProjectB -> must fail closed (empty)
         using var db = CreateSeededDb();
         var repo = new KeywordSearchRepository(db, ContextForProject(ProjectA).Object);
 
@@ -349,17 +390,35 @@ public class CrossProjectIsolationUnitTests
             projectId: ProjectB,
             cancellationToken: CancellationToken.None);
 
-        Assert.All(results, r => Assert.Equal(MemoryIdB, r.MemoryId));
+        Assert.Empty(results);
     }
 
     [Fact]
-    public async Task KeywordSearch_NullContext_NoProjectFilter_ReturnsBothProjects()
+    public async Task KeywordSearch_ZeroProjectInContext_FailsClosed()
+    {
+        using var db = CreateSeededDb();
+        var zeroContextMock = new Mock<IApiKeyContext>();
+        zeroContextMock.Setup(c => c.UserId).Returns(UserId);
+        zeroContextMock.Setup(c => c.ProjectId).Returns(0L);
+
+        var repo = new KeywordSearchRepository(db, zeroContextMock.Object);
+
+        var results = await repo.SearchAsync(UserId, "belongs project", scopeId: null);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task KeywordSearch_ExplicitGlobalRetrieval_ReturnsBothProjects()
     {
         using var db = CreateSeededDb();
         var repo = new KeywordSearchRepository(db, apiKeyContext: null);
 
-        // "belongs" appears in both content strings
-        var results = await repo.SearchAsync(UserId, "belongs project", scopeId: null);
+        var results = await repo.SearchAsync(
+            UserId, "belongs project",
+            scopeId: null, limit: 10,
+            projectId: ProjectAuthorizationContext.ExplicitGlobalRetrieval,
+            cancellationToken: CancellationToken.None);
 
         var ids = results.Select(r => r.MemoryId).ToHashSet();
         Assert.Contains(MemoryIdA, ids);
@@ -367,7 +426,7 @@ public class CrossProjectIsolationUnitTests
     }
 
     // -------------------------------------------------------------------------
-    // Cross-contamination scenario — same query matches both projects
+    // Cross-contamination scenario - same query matches both projects
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -398,5 +457,256 @@ public class CrossProjectIsolationUnitTests
         // Must never contain an embedding whose memory belongs to ProjectB
         Assert.All(embeddingsA, e => Assert.Equal(MemoryIdA, e.MemoryId));
         Assert.DoesNotContain(embeddingsA, e => e.MemoryId == MemoryIdB);
+    }
+
+    // -------------------------------------------------------------------------
+    // SearchSimilarEmbeddingsAsync - Native / Fallback Vector Isolation
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SearchSimilarEmbeddings_ContextProjectA_ReturnsOnlyProjectAMemory()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
+
+        var queryVec = new float[] { 0.1f, 0.2f, 0.3f };
+        var results = await repo.SearchSimilarEmbeddingsAsync(
+            UserId, queryVec, "mistral-embed", topK: 5);
+
+        Assert.Single(results);
+        Assert.Equal(MemoryIdA, results[0].MemoryId);
+    }
+
+    [Fact]
+    public async Task SearchSimilarEmbeddings_ContextProjectB_ReturnsOnlyProjectBMemory()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, ContextForProject(ProjectB).Object);
+
+        var queryVec = new float[] { 0.4f, 0.5f, 0.6f };
+        var results = await repo.SearchSimilarEmbeddingsAsync(
+            UserId, queryVec, "mistral-embed", topK: 5);
+
+        Assert.Single(results);
+        Assert.Equal(MemoryIdB, results[0].MemoryId);
+    }
+
+    [Fact]
+    public async Task SearchSimilarEmbeddings_ContextProjectA_ExplicitProjectB_FailsClosed()
+    {
+        using var db = CreateSeededDb();
+        // Context is ProjectA, but explicit call requests ProjectB -> fails closed (empty)
+        var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
+
+        var queryVec = new float[] { 0.1f, 0.2f, 0.3f };
+        var results = await repo.SearchSimilarEmbeddingsAsync(
+            UserId, queryVec, "mistral-embed", topK: 5,
+            scopeId: null, temporalFilter: null, metadataFilters: null, categoryFilters: null,
+            projectId: ProjectB);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task SearchSimilarEmbeddings_ZeroProjectInContext_FailsClosed()
+    {
+        using var db = CreateSeededDb();
+        var zeroContextMock = new Mock<IApiKeyContext>();
+        zeroContextMock.Setup(c => c.UserId).Returns(UserId);
+        zeroContextMock.Setup(c => c.ProjectId).Returns(0L);
+
+        var repo = new MemoryRepository(db, zeroContextMock.Object);
+
+        var queryVec = new float[] { 0.1f, 0.2f, 0.3f };
+        var results = await repo.SearchSimilarEmbeddingsAsync(
+            UserId, queryVec, "mistral-embed", topK: 5);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task SearchSimilarEmbeddings_ExplicitGlobalRetrieval_ReturnsBothProjects()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, apiKeyContext: null);
+
+        var queryVec = new float[] { 0.1f, 0.2f, 0.3f };
+        var results = await repo.SearchSimilarEmbeddingsAsync(
+            UserId, queryVec, "mistral-embed", topK: 5,
+            scopeId: null, temporalFilter: null, metadataFilters: null, categoryFilters: null,
+            projectId: ProjectAuthorizationContext.ExplicitGlobalRetrieval);
+
+        Assert.Equal(2, results.Count);
+    }
+
+    // -------------------------------------------------------------------------
+    // MemoryRetrievalService - Service-layer Isolation & Explicit ProjectId
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task MemoryRetrievalService_ExplicitProjectId_IsolatesRetrievalEvenWithNullContext()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, apiKeyContext: null);
+
+        var embGenMock = new Mock<IEmbeddingGenerator>();
+        embGenMock.Setup(e => e.GenerateAsync(It.IsAny<string>()))
+            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        embGenMock.As<IEmbeddingMetadataProvider>()
+            .Setup(m => m.ModelName)
+            .Returns("mistral-embed");
+
+        var relevanceMock = new Mock<IMemoryRelevanceEvaluator>();
+        relevanceMock.Setup(r => r.EvaluateAsync(It.IsAny<string>(), It.IsAny<List<RetrievedMemory>>()))
+            .ReturnsAsync((string _, List<RetrievedMemory> c) => c);
+
+        var service = new MemoryRetrievalService(
+            repo, embGenMock.Object, new SemanticSimilarityService(), relevanceMock.Object);
+
+        // Query with explicit ProjectA
+        var resultsA = await service.RetrieveAsync(UserId, "patterns", topK: 5, scopeId: null, projectId: ProjectA);
+        Assert.Single(resultsA);
+        Assert.Equal(MemoryIdA, resultsA[0].MemoryId);
+
+        // Query with explicit ProjectB
+        var resultsB = await service.RetrieveAsync(UserId, "patterns", topK: 5, scopeId: null, projectId: ProjectB);
+        Assert.Single(resultsB);
+        Assert.Equal(MemoryIdB, resultsB[0].MemoryId);
+    }
+
+    [Fact]
+    public async Task MemoryRetrievalService_ContextProjectA_ExplicitProjectB_FailsClosed()
+    {
+        using var db = CreateSeededDb();
+        // Context says ProjectA
+        var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
+
+        var embGenMock = new Mock<IEmbeddingGenerator>();
+        embGenMock.Setup(e => e.GenerateAsync(It.IsAny<string>()))
+            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        embGenMock.As<IEmbeddingMetadataProvider>()
+            .Setup(m => m.ModelName)
+            .Returns("mistral-embed");
+
+        var relevanceMock = new Mock<IMemoryRelevanceEvaluator>();
+        relevanceMock.Setup(r => r.EvaluateAsync(It.IsAny<string>(), It.IsAny<List<RetrievedMemory>>()))
+            .ReturnsAsync((string _, List<RetrievedMemory> c) => c);
+
+        var service = new MemoryRetrievalService(
+            repo, embGenMock.Object, new SemanticSimilarityService(), relevanceMock.Object);
+
+        // Explicit call asks for ProjectB when authenticated as ProjectA â€” must fail closed
+        var results = await service.RetrieveAsync(UserId, "query", topK: 5, scopeId: null, projectId: ProjectB);
+        Assert.Empty(results);
+    }
+
+    // -------------------------------------------------------------------------
+    // User Isolation & Cross-Tenant Boundary Tests
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task UserIsolation_QueryForDifferentUser_ReturnsEmpty()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
+
+        const long ForeignUserId = 99999L;
+        var embeddings = await repo.GetFilteredActiveMemoryEmbeddingsAsync(ForeignUserId, null, null, null);
+        Assert.Empty(embeddings);
+
+        var similar = await repo.SearchSimilarEmbeddingsAsync(
+            ForeignUserId, new float[] { 0.1f, 0.2f, 0.3f }, "mistral-embed", topK: 5);
+        Assert.Empty(similar);
+    }
+
+    [Fact]
+    public async Task GetMemorySnapshotForUser_CrossProject_ReturnsNull()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
+
+        // MemoryIdA belongs to ProjectA. Requesting it under ProjectB must return null.
+        var snapshot = await repo.GetMemorySnapshotForUserAsync(MemoryIdA, UserId, projectId: ProjectB);
+        Assert.Null(snapshot);
+
+        // Requesting it under its own ProjectA returns the snapshot.
+        var validSnapshot = await repo.GetMemorySnapshotForUserAsync(MemoryIdA, UserId, projectId: ProjectA);
+        Assert.NotNull(validSnapshot);
+        Assert.Equal(MemoryIdA, validSnapshot!.MemoryId);
+    }
+
+    [Fact]
+    public async Task GetMemorySnapshotForUser_ForeignUser_ReturnsNull()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, ContextForProject(ProjectA).Object);
+
+        const long ForeignUserId = 88888L;
+        // MemoryIdA belongs to UserId, requesting as ForeignUserId must fail closed.
+        var snapshot = await repo.GetMemorySnapshotForUserAsync(MemoryIdA, ForeignUserId, projectId: ProjectA);
+        Assert.Null(snapshot);
+    }
+
+    // -------------------------------------------------------------------------
+    // Background Job Identity & Authorization Boundary Tests
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task BackgroundJob_ProcessesWithProjectIdCapturedAtEnqueueTime()
+    {
+        using var db = CreateSeededDb();
+        // Background worker has null ambient context
+        var repo = new MemoryRepository(db, apiKeyContext: null);
+
+        // Job was enqueued with ProjectA identity
+        var jobRecord = new MemoryIngestionJobRecord
+        {
+            JobId = 7001L,
+            UserId = UserId,
+            ProjectId = ProjectA,
+            ScopeId = ScopeA,
+            MemoryId = MemoryIdA,
+            JobType = "CreateMemory",
+            Status = "Pending"
+        };
+
+        // Worker fetches memory using captured job.ProjectId
+        var memory = await repo.GetMemorySnapshotForUserAsync(
+            jobRecord.MemoryId.Value,
+            jobRecord.UserId,
+            jobRecord.ProjectId,
+            jobRecord.ScopeId);
+
+        Assert.NotNull(memory);
+        Assert.Equal(MemoryIdA, memory!.MemoryId);
+        Assert.Equal(ContentA, memory.Content);
+    }
+
+    [Fact]
+    public async Task BackgroundJob_ManipulatedProjectId_FailsClosedAndCannotAccessForeignProjectMemory()
+    {
+        using var db = CreateSeededDb();
+        var repo = new MemoryRepository(db, apiKeyContext: null);
+
+        // Job targeting MemoryIdA (in ProjectA) has manipulated / cross-project ProjectId = ProjectB
+        var tamperedJobRecord = new MemoryIngestionJobRecord
+        {
+            JobId = 7002L,
+            UserId = UserId,
+            ProjectId = ProjectB,
+            ScopeId = ScopeA,
+            MemoryId = MemoryIdA,
+            JobType = "CreateMemory",
+            Status = "Pending"
+        };
+
+        // Worker execution with ProjectB must fail closed (return null)
+        var memory = await repo.GetMemorySnapshotForUserAsync(
+            tamperedJobRecord.MemoryId.Value,
+            tamperedJobRecord.UserId,
+            tamperedJobRecord.ProjectId,
+            tamperedJobRecord.ScopeId);
+
+        Assert.Null(memory);
     }
 }

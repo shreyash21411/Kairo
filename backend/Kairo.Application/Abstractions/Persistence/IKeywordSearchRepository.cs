@@ -21,6 +21,14 @@ public interface IKeywordSearchRepository
         int limit = 30,
         CancellationToken cancellationToken = default);
 
+    Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        long? projectId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Phase 2: Returns BM25 memory candidates with temporal and metadata filtering applied
     /// at candidate selection before corpus statistics and scoring are computed.
@@ -32,6 +40,16 @@ public interface IKeywordSearchRepository
         int limit,
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
+        CancellationToken cancellationToken = default);
+
+    Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        long? projectId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -46,6 +64,17 @@ public interface IKeywordSearchRepository
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
         List<string>? categoryFilters,
+        CancellationToken cancellationToken = default);
+
+    Task<List<KeywordSearchResult>> SearchAsync(
+        long userId,
+        string query,
+        long? scopeId,
+        int limit,
+        MemoryTemporalFilter? temporalFilter,
+        List<MetadataFilterCondition>? metadataFilters,
+        List<string>? categoryFilters,
+        long? projectId,
         CancellationToken cancellationToken = default);
 }
 

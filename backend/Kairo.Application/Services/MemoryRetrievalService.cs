@@ -27,9 +27,10 @@ public class MemoryRetrievalService
         long userId,
         string query,
         int topK = 5,
-        long? scopeId = null)
+        long? scopeId = null,
+        long? projectId = null)
     {
-        return RetrieveAsync(userId, query, topK, scopeId, null, null, false, null);
+        return RetrieveAsync(userId, query, topK, scopeId, null, null, false, null, projectId);
     }
 
     public Task<List<RetrievedMemory>> RetrieveAsync(
@@ -37,9 +38,10 @@ public class MemoryRetrievalService
         string query,
         int topK,
         long? scopeId,
-        List<string>? categoryFilters)
+        List<string>? categoryFilters,
+        long? projectId = null)
     {
-        return RetrieveAsync(userId, query, topK, scopeId, null, null, false, categoryFilters);
+        return RetrieveAsync(userId, query, topK, scopeId, null, null, false, categoryFilters, projectId);
     }
 
     public Task<List<RetrievedMemory>> RetrieveAsync(
@@ -49,9 +51,10 @@ public class MemoryRetrievalService
         long? scopeId,
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
-        bool recencyBoost = false)
+        bool recencyBoost = false,
+        long? projectId = null)
     {
-        return RetrieveAsync(userId, query, topK, scopeId, temporalFilter, metadataFilters, recencyBoost, null);
+        return RetrieveAsync(userId, query, topK, scopeId, temporalFilter, metadataFilters, recencyBoost, null, projectId);
     }
 
     public async Task<List<RetrievedMemory>> RetrieveAsync(
@@ -62,7 +65,8 @@ public class MemoryRetrievalService
         MemoryTemporalFilter? temporalFilter,
         List<MetadataFilterCondition>? metadataFilters,
         bool recencyBoost,
-        List<string>? categoryFilters)
+        List<string>? categoryFilters,
+        long? projectId = null)
     {
         if (userId <= 0)
         {
@@ -90,21 +94,60 @@ public class MemoryRetrievalService
             await _embeddingGenerator.GenerateAsync(query);
 
         // Step 2: Load active memory embeddings
-        // for this user (filtered by ScopeId, temporalFilter, metadataFilters, and categoryFilters if provided).
+        // for this user (filtered by ScopeId, temporalFilter, metadataFilters, categoryFilters, and projectId if provided).
         var hasCategoryFilter = categoryFilters != null && categoryFilters.Count > 0;
         var hasMemFilters = temporalFilter != null || (metadataFilters != null && metadataFilters.Count > 0);
         List<MemoryEmbeddingData> existingMemories;
-        if (hasCategoryFilter)
+        if (projectId.HasValue && projectId.Value > 0)
         {
-            existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
-        }
-        else if (hasMemFilters)
-        {
-            existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(userId, scopeId, temporalFilter, metadataFilters);
+            if (hasCategoryFilter)
+            {
+                existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                    userId, scopeId, temporalFilter, metadataFilters, categoryFilters, projectId.Value);
+                if (existingMemories == null)
+                {
+                    existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                        userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+                }
+            }
+            else if (hasMemFilters)
+            {
+                existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                    userId, scopeId, temporalFilter, metadataFilters, projectId.Value);
+                if (existingMemories == null)
+                {
+                    existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                        userId, scopeId, temporalFilter, metadataFilters);
+                }
+            }
+            else
+            {
+                existingMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(
+                    userId, scopeId, projectId.Value);
+                if (existingMemories == null)
+                {
+                    existingMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(
+                        userId, scopeId);
+                }
+            }
         }
         else
         {
-            existingMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(userId, scopeId);
+            if (hasCategoryFilter)
+            {
+                existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                    userId, scopeId, temporalFilter, metadataFilters, categoryFilters);
+            }
+            else if (hasMemFilters)
+            {
+                existingMemories = await _memoryRepository.GetFilteredActiveMemoryEmbeddingsAsync(
+                    userId, scopeId, temporalFilter, metadataFilters);
+            }
+            else
+            {
+                existingMemories = await _memoryRepository.GetActiveMemoryEmbeddingsAsync(
+                    userId, scopeId);
+            }
         }
 
         existingMemories ??= new List<MemoryEmbeddingData>();

@@ -320,6 +320,19 @@ public class Phase2UnitTests
         relevanceEvalMock.Setup(r => r.EvaluateAsync(query, It.IsAny<List<RetrievedMemory>>()))
             .ReturnsAsync((string _, List<RetrievedMemory> candidates) => candidates);
 
+        memoryRepoMock.Setup(m => m.GetMemorySnapshotsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<long?>()))
+            .ReturnsAsync(new Dictionary<long, MemorySnapshot>
+            {
+                [1] = new MemorySnapshot { MemoryId = 1, Content = "Recent API endpoint", MemoryType = "Fact", IsActive = true, CreatedAt = now, UpdatedAt = now },
+                [2] = new MemorySnapshot { MemoryId = 2, Content = "Old API endpoint", MemoryType = "Fact", IsActive = true, CreatedAt = now.AddDays(-60), UpdatedAt = now.AddDays(-60) }
+            });
+        memoryRepoMock.Setup(m => m.GetMemorySnapshotsAsync(It.IsAny<IEnumerable<long>>()))
+            .ReturnsAsync(new Dictionary<long, MemorySnapshot>
+            {
+                [1] = new MemorySnapshot { MemoryId = 1, Content = "Recent API endpoint", MemoryType = "Fact", IsActive = true, CreatedAt = now, UpdatedAt = now },
+                [2] = new MemorySnapshot { MemoryId = 2, Content = "Old API endpoint", MemoryType = "Fact", IsActive = true, CreatedAt = now.AddDays(-60), UpdatedAt = now.AddDays(-60) }
+            });
+
         var service = BuildHybridService(memoryRepoMock, embeddingGenMock, relevanceEvalMock, keywordSearchMock, entityRepoMock, entityExtMock);
 
         var result = await service.RetrieveWithRelationsAsync(1, 10, query, topK: 5, recencyBoost: true);
