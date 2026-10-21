@@ -777,8 +777,8 @@ public class MemoryRepository : IMemoryRepository
                 userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters, effectiveProjectId);
         }
 
-        // SQL Server / fallback: load all matching embeddings and rank in-memory.
-        return await SearchSimilarEmbeddingsSqlServerFallbackAsync(
+        // Offline / in-memory fallback: used exclusively when running offline unit tests against EF Core InMemory provider.
+        return await SearchSimilarEmbeddingsInMemoryFallbackAsync(
             userId, queryVector, queryModel, topK, scopeId, temporalFilter, metadataFilters, categoryFilters, effectiveProjectId);
     }
 
@@ -956,9 +956,9 @@ public class MemoryRepository : IMemoryRepository
         return results.OrderByDescending(r => r.Similarity).ThenBy(r => r.MemoryId).ToList();
     }
 
-    // ── Phase 4C Task 4C.4: SQL Server / fallback in-memory similarity path ───
+    // ── Offline / In-Memory Similarity Fallback (for EF Core InMemory unit tests) ───
 
-    private async Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsSqlServerFallbackAsync(
+    private async Task<List<RankedEmbeddingResult>> SearchSimilarEmbeddingsInMemoryFallbackAsync(
         long userId,
         float[] queryVector,
         string queryModel,

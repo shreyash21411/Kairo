@@ -17,12 +17,7 @@ public static class DatabaseServiceExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(providerSettings);
 
-        if (string.Equals(providerSettings.DatabaseProvider, ProviderOptions.DatabaseProviders.SqlServer, StringComparison.OrdinalIgnoreCase))
-        {
-            services.AddDbContext<KairoDbContext>(options =>
-                options.UseSqlServer(providerSettings.DatabaseConnectionString));
-        }
-        else if (string.Equals(providerSettings.DatabaseProvider, ProviderOptions.DatabaseProviders.PostgreSql, StringComparison.OrdinalIgnoreCase)
+        if (string.Equals(providerSettings.DatabaseProvider, ProviderOptions.DatabaseProviders.PostgreSql, StringComparison.OrdinalIgnoreCase)
             || string.Equals(providerSettings.DatabaseProvider, ProviderOptions.DatabaseProviders.Postgres, StringComparison.OrdinalIgnoreCase))
         {
             services.AddDbContext<KairoDbContext>(options =>
@@ -33,10 +28,16 @@ public static class DatabaseServiceExtensions
                         npgsqlOptions.UseVector();
                     }));
         }
+        else if (string.Equals(providerSettings.DatabaseProvider, "SqlServer", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(providerSettings.DatabaseProvider, "MSSQL", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "SQL Server is no longer supported. VOIDZONE requires PostgreSQL with pgvector as the runtime database provider. Please configure 'Providers:DatabaseProvider' to 'PostgreSQL'.");
+        }
         else
         {
             throw new InvalidOperationException(
-                $"Unsupported database provider '{providerSettings.DatabaseProvider}'. Supported providers are: SqlServer, PostgreSql (or Postgres).");
+                $"Unsupported database provider '{providerSettings.DatabaseProvider}'. VOIDZONE requires PostgreSQL with pgvector as the runtime database provider.");
         }
 
         return services;

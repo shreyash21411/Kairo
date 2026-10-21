@@ -11,16 +11,6 @@
         "Providers__DatabaseProvider": "PostgreSQL"
       }
     },
-    "SQL Server Local": {
-      "commandName": "Project",
-      "dotnetRunMessages": true,
-      "launchBrowser": false,
-      "applicationUrl": "http://localhost:5171",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development",
-        "Providers__DatabaseProvider": "SqlServer"
-      }
-    },
     "https": {
       "commandName": "Project",
       "dotnetRunMessages": true,

@@ -14,7 +14,6 @@ using Kairo.Infrastructure.Persistence;
 using Kairo.Infrastructure.Repositories;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Npgsql;
@@ -23,11 +22,11 @@ using Xunit;
 namespace Kairo.Tests;
 
 /// <summary>
-/// Unit tests for PostgreSQL and SQL Server unique-constraint violation handling (DB-001).
+/// Unit tests for PostgreSQL unique-constraint violation handling (DB-001).
 /// Verifies that:
 /// 1. PostgreSQL SQLSTATE 23505 (UniqueViolation) is recognized by both AuthenticationIdentityRepository and EfTransactionCoordinator.
-/// 2. SQL Server error numbers 2601 and 2627 continue to be recognized (backwards compatibility).
-/// 3. Other database errors (foreign key, syntax, etc.) are NOT treated as unique violations.
+/// 2. Other database errors (foreign key, syntax, etc.) are NOT treated as unique violations.
+/// 3. Duplicate email on registration returns HTTP 409 Conflict.
 /// 4. UniqueConstraintViolationException in AccountService is cleanly translated to DuplicateEmailException.
 /// 5. AuthController maps DuplicateEmailException to HTTP 409 Conflict rather than HTTP 500.
 /// All tests are 100% offline with zero live database dependencies.
@@ -125,44 +124,7 @@ public class PostgreSqlUniqueConstraintHandlingUnitTests
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 3. SQL Server Backwards Compatibility (Error numbers 2601 and 2627)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData(2601)] // Cannot insert duplicate key row in object with unique index
-    [InlineData(2627)] // Violation of PRIMARY KEY / UNIQUE KEY constraint
-    public void IsUniqueConstraintViolation_Recognizes_SqlServerUniqueErrors(int errorNumber)
-    {
-        var sqlEx = TryCreateSqlException(errorNumber);
-        if (sqlEx == null)
-        {
-            // If SqlClient internal constructors change across .NET platforms,
-            // log skip but do not fail; the reflection helper exercises the real SqlException.
-            return;
-        }
-
-        var dbEx = new DbUpdateException("SQL Server error", sqlEx);
-
-        Assert.True(EfTransactionCoordinator.IsUniqueConstraintViolation(dbEx),
-            $"EfTransactionCoordinator should recognize SQL Server error {errorNumber}.");
-        Assert.True(AuthenticationIdentityRepository.IsUniqueConstraintViolation(dbEx),
-            $"AuthenticationIdentityRepository should recognize SQL Server error {errorNumber}.");
-    }
-
-    [Fact]
-    public void IsUniqueConstraintViolation_Rejects_OtherSqlServerErrors()
-    {
-        var sqlEx = TryCreateSqlException(547); // Foreign key constraint violation in SQL Server
-        if (sqlEx == null) return;
-
-        var dbEx = new DbUpdateException("SQL Server error", sqlEx);
-
-        Assert.False(EfTransactionCoordinator.IsUniqueConstraintViolation(dbEx));
-        Assert.False(AuthenticationIdentityRepository.IsUniqueConstraintViolation(dbEx));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 4. End-to-End Exception Mapping: AccountService -> DuplicateEmailException
+    // 3. End-to-End Exception Mapping: AccountService -> DuplicateEmailException
     // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -233,56 +195,5 @@ public class PostgreSqlUniqueConstraintHandlingUnitTests
         Assert.Equal(StatusCodes.Status409Conflict, conflictResult.StatusCode);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Reflection helper to instantiate SqlException for offline testing
-    // ─────────────────────────────────────────────────────────────────────────
 
-    private static SqlException? TryCreateSqlException(int errorNumber)
-    {
-        try
-        {
-            var errorCollectionCtor = typeof(SqlErrorCollection).GetConstructor(
-                BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
-            if (errorCollectionCtor == null) return null;
-
-            var errorCollection = (SqlErrorCollection)errorCollectionCtor.Invoke(null);
-            var addMethod = typeof(SqlErrorCollection).GetMethod(
-                "Add", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (addMethod == null) return null;
-
-            var errorCtors = typeof(SqlError).GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance);
-            if (errorCtors.Length == 0) return null;
-
-            var errorCtor = errorCtors[0];
-            var parameters = errorCtor.GetParameters();
-            var args = new object[parameters.Length];
-            args[0] = errorNumber;
-            for (int i = 1; i < parameters.Length; i++)
-            {
-                var pt = parameters[i].ParameterType;
-                args[i] = pt == typeof(string) ? "mock" : (pt.IsValueType ? Activator.CreateInstance(pt)! : null!);
-            }
-
-            var sqlError = errorCtor.Invoke(args);
-            addMethod.Invoke(errorCollection, new[] { sqlError });
-
-            var createExceptionMethod = typeof(SqlException).GetMethod(
-                "CreateException",
-                BindingFlags.NonPublic | BindingFlags.Static,
-                null,
-                new[] { typeof(SqlErrorCollection), typeof(string) },
-                null);
-
-            if (createExceptionMethod != null)
-            {
-                return (SqlException?)createExceptionMethod.Invoke(null, new object[] { errorCollection, "11.0.0" });
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
 }

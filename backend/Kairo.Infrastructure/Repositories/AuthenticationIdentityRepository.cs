@@ -3,7 +3,6 @@ using Kairo.Application.Abstractions.Persistence;
 using Kairo.Application.DTOs;
 using Kairo.Infrastructure.Persistence;
 using Kairo.Infrastructure.Persistence.Entities;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -11,8 +10,6 @@ namespace Kairo.Infrastructure.Repositories;
 
 public class AuthenticationIdentityRepository : IAuthenticationIdentityRepository
 {
-    private const int SqlErrorUniqueIndexViolation = 2601;
-    private const int SqlErrorUniqueConstraintViolation = 2627;
     private const string PostgresErrorUniqueViolation = PostgresErrorCodes.UniqueViolation; // "23505"
 
     private readonly KairoDbContext _dbContext;
@@ -98,12 +95,6 @@ public class AuthenticationIdentityRepository : IAuthenticationIdentityRepositor
 
     internal static bool IsUniqueConstraintViolation(DbUpdateException ex)
     {
-        if (ex.InnerException is SqlException sqlEx)
-        {
-            return sqlEx.Number == SqlErrorUniqueIndexViolation
-                || sqlEx.Number == SqlErrorUniqueConstraintViolation;
-        }
-
         if (ex.InnerException is PostgresException pgEx)
         {
             return pgEx.SqlState == PostgresErrorUniqueViolation;

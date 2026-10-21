@@ -817,7 +817,7 @@ public class Phase2UnitTests
         // UX_EntityRelationships_Scope_Source_Target_Type on (ScopeId, SourceEntityId, TargetEntityId, RelationshipType).
         // This does not fake the constraint in a mock; it inspects the relational schema model directly.
         var options = new DbContextOptionsBuilder<KairoDbContext>()
-            .UseSqlServer("Server=tcp:localhost,1433;Database=kairo_test;")
+            .UseNpgsql("Host=127.0.0.1;Port=5433;Database=kairo_test;Username=kairo;Password=dummy;")
             .Options;
 
         using var db = new KairoDbContext(options);
@@ -884,7 +884,7 @@ public class Phase2UnitTests
     {
         // Proves EF Core schema configures foreign keys and unique index on (RelationshipId, MemoryId)
         var options = new DbContextOptionsBuilder<KairoDbContext>()
-            .UseSqlServer("Server=tcp:localhost,1433;Database=kairo_test;")
+            .UseNpgsql("Host=127.0.0.1;Port=5433;Database=kairo_test;Username=kairo;Password=dummy;")
             .Options;
 
         using var db = new KairoDbContext(options);

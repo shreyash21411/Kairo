@@ -31,75 +31,59 @@ public static class ProviderConfigurationValidator
         string canonicalDbProvider;
         if (string.IsNullOrWhiteSpace(rawDbProvider))
         {
-            // Default when setting is absent
-            canonicalDbProvider = ProviderOptions.DatabaseProviders.SqlServer;
-        }
-        else if (string.Equals(rawDbProvider, ProviderOptions.DatabaseProviders.SqlServer, StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(rawDbProvider, "MSSQL", StringComparison.OrdinalIgnoreCase))
-        {
-            canonicalDbProvider = ProviderOptions.DatabaseProviders.SqlServer;
+            // Default when setting is absent: PostgreSQL is the sole supported runtime provider
+            canonicalDbProvider = ProviderOptions.DatabaseProviders.PostgreSql;
         }
         else if (string.Equals(rawDbProvider, ProviderOptions.DatabaseProviders.PostgreSql, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(rawDbProvider, "Postgres", StringComparison.OrdinalIgnoreCase))
         {
             canonicalDbProvider = ProviderOptions.DatabaseProviders.PostgreSql;
         }
+        else if (string.Equals(rawDbProvider, "SqlServer", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(rawDbProvider, "MSSQL", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "SQL Server is no longer supported. VOIDZONE requires PostgreSQL with pgvector as the runtime database provider. Please configure 'Providers:DatabaseProvider' to 'PostgreSQL'.");
+        }
         else
         {
             throw new InvalidOperationException(
-                $"Configured Database provider '{rawDbProvider}' is not supported. Supported providers: SqlServer, PostgreSQL.");
+                $"Configured Database provider '{rawDbProvider}' is not supported. Supported provider: PostgreSQL.");
         }
 
         // ── 2. Database Connection String Validation ────────────────────────────
         string? connectionString = null;
-        if (canonicalDbProvider == ProviderOptions.DatabaseProviders.SqlServer)
+        var postgresConn = configuration.GetConnectionString("KairoPostgres");
+        if (!string.IsNullOrWhiteSpace(postgresConn))
         {
-            connectionString = configuration.GetConnectionString("KairoDatabase")
-                ?? configuration.GetConnectionString("KairoSqlServer")
-                ?? configuration.GetConnectionString("SqlServer");
+            connectionString = postgresConn;
+        }
+        else
+        {
+            var fallbackConn = configuration.GetConnectionString("KairoDatabase")
+                ?? configuration.GetConnectionString("PostgreSQL");
 
-            if (string.IsNullOrWhiteSpace(connectionString))
+            if (!string.IsNullOrWhiteSpace(fallbackConn))
             {
-                throw new InvalidOperationException(
-                    "Connection string for SQL Server ('ConnectionStrings:KairoDatabase') is missing or empty.");
+                // Guard against accidental SQL Server connection string:
+                if (fallbackConn.Contains("TrustServerCertificate=", StringComparison.OrdinalIgnoreCase) ||
+                    fallbackConn.Contains("Trusted_Connection=", StringComparison.OrdinalIgnoreCase) ||
+                    fallbackConn.Contains("MultipleActiveResultSets=", StringComparison.OrdinalIgnoreCase) ||
+                    fallbackConn.Contains("Data Source=", StringComparison.OrdinalIgnoreCase) ||
+                    (fallbackConn.Contains("Server=", StringComparison.OrdinalIgnoreCase) && !fallbackConn.Contains("Host=", StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidOperationException(
+                        "PostgreSQL provider is selected, but 'ConnectionStrings:KairoPostgres' is not configured and 'ConnectionStrings:KairoDatabase' contains a legacy SQL Server connection string. Please configure 'ConnectionStrings:KairoPostgres'.");
+                }
+
+                connectionString = fallbackConn;
             }
         }
-        else // PostgreSQL
+
+        if (string.IsNullOrWhiteSpace(connectionString))
         {
-            var postgresConn = configuration.GetConnectionString("KairoPostgres");
-            if (!string.IsNullOrWhiteSpace(postgresConn))
-            {
-                connectionString = postgresConn;
-            }
-            else
-            {
-                var fallbackConn = configuration.GetConnectionString("KairoDatabase")
-                    ?? configuration.GetConnectionString("PostgreSQL");
-
-                if (!string.IsNullOrWhiteSpace(fallbackConn))
-                {
-                    // Guard against accidental SQL Server fallback:
-                    // If the fallback connection string contains SQL Server markers, reject it immediately
-                    // rather than attempting to connect to SQL Server or an office database with Npgsql.
-                    if (fallbackConn.Contains("TrustServerCertificate=", StringComparison.OrdinalIgnoreCase) ||
-                        fallbackConn.Contains("Trusted_Connection=", StringComparison.OrdinalIgnoreCase) ||
-                        fallbackConn.Contains("MultipleActiveResultSets=", StringComparison.OrdinalIgnoreCase) ||
-                        fallbackConn.Contains("Data Source=", StringComparison.OrdinalIgnoreCase) ||
-                        (fallbackConn.Contains("Server=", StringComparison.OrdinalIgnoreCase) && !fallbackConn.Contains("Host=", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        throw new InvalidOperationException(
-                            "PostgreSQL provider is selected, but 'ConnectionStrings:KairoPostgres' is not configured and 'ConnectionStrings:KairoDatabase' contains a SQL Server connection string. Please configure 'ConnectionStrings:KairoPostgres'.");
-                    }
-
-                    connectionString = fallbackConn;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException(
-                    "Connection string for PostgreSQL ('ConnectionStrings:KairoPostgres' or 'ConnectionStrings:KairoDatabase') is missing or empty.");
-            }
+            throw new InvalidOperationException(
+                "Connection string for PostgreSQL ('ConnectionStrings:KairoPostgres' or 'ConnectionStrings:KairoDatabase') is missing or empty.");
         }
 
         // ── 3. LLM Provider Discovery & Validation ──────────────────────────────

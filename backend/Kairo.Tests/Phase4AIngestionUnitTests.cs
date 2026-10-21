@@ -41,10 +41,10 @@ namespace Kairo.Tests;
 /// </summary>
 public class Phase4AIngestionUnitTests
 {
-    private static KairoDbContext CreateMockSqlServerContext()
+    private static KairoDbContext CreateMockPostgreSqlContext()
     {
         var options = new DbContextOptionsBuilder<KairoDbContext>()
-            .UseSqlServer("Server=tcp:localhost,1433;Database=kairo_test;")
+            .UseNpgsql("Host=127.0.0.1;Port=5433;Database=kairo_test;Username=kairo;Password=dummy;")
             .Options;
         return new KairoDbContext(options);
     }
@@ -56,7 +56,7 @@ public class Phase4AIngestionUnitTests
     [Fact]
     public void Phase4A_EFModel_MemoryIngestionJob_ConfiguredWithRequiredTableAndColumns()
     {
-        using var db = CreateMockSqlServerContext();
+        using var db = CreateMockPostgreSqlContext();
         var entityType = db.Model.FindEntityType(typeof(MemoryIngestionJob));
         Assert.NotNull(entityType);
 
@@ -92,7 +92,7 @@ public class Phase4AIngestionUnitTests
     [Fact]
     public void Phase4A_EFModel_MemoryIngestionJob_HasIndexesForClaimingAndLookups()
     {
-        using var db = CreateMockSqlServerContext();
+        using var db = CreateMockPostgreSqlContext();
         var entityType = db.Model.FindEntityType(typeof(MemoryIngestionJob));
         Assert.NotNull(entityType);
 

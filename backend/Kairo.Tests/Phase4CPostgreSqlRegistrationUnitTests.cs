@@ -20,27 +20,22 @@ namespace Kairo.Tests;
 public class Phase4CPostgreSqlRegistrationUnitTests
 {
     [Fact]
-    public void AddKairoDatabase_WithSqlServer_RegistersSqlServerProvider()
+    public void AddKairoDatabase_WithSqlServer_ThrowsInvalidOperationException()
     {
         // Arrange
         var services = new ServiceCollection();
+#pragma warning disable CS0618 // SqlServer is intentionally obsolete; this test proves rejection
         var validationResult = new ProviderValidationResult(
             ProviderOptions.DatabaseProviders.SqlServer,
             "Server=(localdb)\\MSSQLLocalDB;Database=kairo_dev;Trusted_Connection=True;",
             ProviderOptions.LlmProviders.Mistral,
             ProviderOptions.EmbeddingProviders.Mistral);
+#pragma warning restore CS0618
 
-        // Act
-        services.AddKairoDatabase(validationResult);
-        using var serviceProvider = services.BuildServiceProvider();
-        using var scope = serviceProvider.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<KairoDbContext>();
-
-        // Assert
-        Assert.NotNull(dbContext);
-        Assert.Equal("Microsoft.EntityFrameworkCore.SqlServer", dbContext.Database.ProviderName);
-        Assert.True(dbContext.Database.IsSqlServer());
-        Assert.False(dbContext.Database.IsNpgsql());
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            services.AddKairoDatabase(validationResult));
+        Assert.Contains("SQL Server is no longer supported", ex.Message);
     }
 
     [Fact]
@@ -64,7 +59,6 @@ public class Phase4CPostgreSqlRegistrationUnitTests
         Assert.NotNull(dbContext);
         Assert.Equal("Npgsql.EntityFrameworkCore.PostgreSQL", dbContext.Database.ProviderName);
         Assert.True(dbContext.Database.IsNpgsql());
-        Assert.False(dbContext.Database.IsSqlServer());
     }
 
     [Fact]
@@ -111,8 +105,8 @@ public class Phase4CPostgreSqlRegistrationUnitTests
     public void AddKairoDatabase_WithNullServices_ThrowsArgumentNullException()
     {
         var validationResult = new ProviderValidationResult(
-            ProviderOptions.DatabaseProviders.SqlServer,
-            "Server=localhost;Database=kairo;",
+            ProviderOptions.DatabaseProviders.PostgreSql,
+            "Host=127.0.0.1;Port=5433;Database=kairo_provider_test;Username=kairo_dev;Password=dummy;",
             ProviderOptions.LlmProviders.Mistral,
             ProviderOptions.EmbeddingProviders.Mistral);
 
@@ -156,23 +150,7 @@ public class Phase4CPostgreSqlRegistrationUnitTests
         Assert.True(hasVector, "Expected VectorDbContextOptionsExtension to be registered for PostgreSQL provider.");
     }
 
-    [Fact]
-    public void AddKairoDatabase_WithSqlServer_DoesNotConfigureVectorExtension()
-    {
-        var services = new ServiceCollection();
-        var validationResult = new ProviderValidationResult(
-            ProviderOptions.DatabaseProviders.SqlServer,
-            "Server=(localdb)\\MSSQLLocalDB;Database=kairo_dev;Trusted_Connection=True;",
-            ProviderOptions.LlmProviders.Mistral,
-            ProviderOptions.EmbeddingProviders.Mistral);
 
-        services.AddKairoDatabase(validationResult);
-        using var sp = services.BuildServiceProvider();
-        var options = sp.GetRequiredService<DbContextOptions<KairoDbContext>>();
-
-        var hasVector = System.Linq.Enumerable.Any(options.Extensions, e => e.GetType().Name == "VectorDbContextOptionsExtension");
-        Assert.False(hasVector, "Expected VectorDbContextOptionsExtension to NOT be registered for SQL Server provider.");
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Real PostgreSQL Connection Tests (against isolated test database)

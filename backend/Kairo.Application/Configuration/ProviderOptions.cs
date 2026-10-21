@@ -1,18 +1,19 @@
 namespace Kairo.Application.Configuration;
 
 /// <summary>
-/// Phase 4B/4C: Global provider configuration options.
-/// Defaults to SqlServer and Mistral for full backward compatibility with pre-Phase 4B settings.
+/// Global provider configuration options.
+/// PostgreSQL with pgvector is the sole supported runtime database provider.
 /// </summary>
 public class ProviderOptions
 {
     public const string SectionName = "Providers";
 
     /// <summary>
-    /// Supported database provider constants.
+    /// Database provider constants. PostgreSQL is the only active runtime provider.
     /// </summary>
     public static class DatabaseProviders
     {
+        [Obsolete("SQL Server is no longer supported as a runtime database provider.")]
         public const string SqlServer = "SqlServer";
         public const string PostgreSql = "PostgreSQL";
         public const string Postgres = "Postgres";
@@ -35,10 +36,10 @@ public class ProviderOptions
     }
 
     /// <summary>
-    /// Configured default Database provider ("SqlServer", "PostgreSQL").
-    /// Defaults to "SqlServer" when absent.
+    /// Configured default Database provider ("PostgreSQL", "Postgres").
+    /// Defaults to "PostgreSQL".
     /// </summary>
-    public string DatabaseProvider { get; set; } = DatabaseProviders.SqlServer;
+    public string DatabaseProvider { get; set; } = DatabaseProviders.PostgreSql;
 
     /// <summary>
     /// Configured default LLM provider (e.g. "Mistral").

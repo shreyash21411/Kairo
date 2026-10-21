@@ -21,10 +21,10 @@ public class Phase4CConfigurationValidationUnitTests
             .Build();
     }
 
-    private static Dictionary<string, string?> CreateValidSqlServerConfig() => new()
+    private static Dictionary<string, string?> CreateValidPostgreSqlConfig() => new()
     {
-        ["ConnectionStrings:KairoDatabase"] = "Server=(localdb)\\MSSQLLocalDB;Database=kairo_dev;Trusted_Connection=True;",
-        ["Providers:DatabaseProvider"] = "SqlServer",
+        ["ConnectionStrings:KairoPostgres"] = "Host=127.0.0.1;Port=5433;Database=kairo_dev;Username=kairo_dev;Password=secret",
+        ["Providers:DatabaseProvider"] = "PostgreSQL",
         ["Providers:DefaultLlmProvider"] = "Mistral",
         ["Providers:DefaultEmbeddingProvider"] = "Mistral",
         ["Mistral:ApiKey"] = "test-mistral-llm-key",
@@ -34,41 +34,38 @@ public class Phase4CConfigurationValidationUnitTests
     };
 
     [Fact]
-    public void Validate_ValidSqlServerConfiguration_SucceedsAndReturnsCanonicalSettings()
+    public void Validate_SqlServerConfiguration_ThrowsInvalidOperationException()
     {
-        var config = BuildConfig(CreateValidSqlServerConfig());
+        var values = CreateValidPostgreSqlConfig();
+        values["Providers:DatabaseProvider"] = "SqlServer";
 
-        var result = ProviderConfigurationValidator.Validate(config);
+        var config = BuildConfig(values);
 
-        Assert.NotNull(result);
-        Assert.Equal(ProviderOptions.DatabaseProviders.SqlServer, result.DatabaseProvider);
-        Assert.Equal("Server=(localdb)\\MSSQLLocalDB;Database=kairo_dev;Trusted_Connection=True;", result.DatabaseConnectionString);
-        Assert.Equal(ProviderOptions.LlmProviders.Mistral, result.LlmProvider);
-        Assert.Equal(ProviderOptions.EmbeddingProviders.Mistral, result.EmbeddingProvider);
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ProviderConfigurationValidator.Validate(config));
+
+        Assert.Contains("SQL Server is no longer supported", ex.Message);
     }
 
     [Fact]
     public void Validate_ValidPostgreSqlConfiguration_SucceedsAndReturnsCanonicalSettings()
     {
-        var values = CreateValidSqlServerConfig();
-        values["Providers:DatabaseProvider"] = "PostgreSQL";
-        values["ConnectionStrings:KairoPostgres"] = "Host=127.0.0.1;Port=5433;Database=kairo_dev;Username=kairo_dev;Password=secret";
-
-        var config = BuildConfig(values);
+        var config = BuildConfig(CreateValidPostgreSqlConfig());
 
         var result = ProviderConfigurationValidator.Validate(config);
 
         Assert.NotNull(result);
         Assert.Equal(ProviderOptions.DatabaseProviders.PostgreSql, result.DatabaseProvider);
         Assert.Equal("Host=127.0.0.1;Port=5433;Database=kairo_dev;Username=kairo_dev;Password=secret", result.DatabaseConnectionString);
+        Assert.Equal(ProviderOptions.LlmProviders.Mistral, result.LlmProvider);
+        Assert.Equal(ProviderOptions.EmbeddingProviders.Mistral, result.EmbeddingProvider);
     }
 
     [Fact]
     public void Validate_ValidPostgresAlias_NormalizesToPostgreSql()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values["Providers:DatabaseProvider"] = "postgres";
-        values["ConnectionStrings:KairoPostgres"] = "Host=localhost;Database=test;";
 
         var config = BuildConfig(values);
 
@@ -78,35 +75,35 @@ public class Phase4CConfigurationValidationUnitTests
     }
 
     [Fact]
-    public void Validate_OmittedDatabaseProvider_DefaultsToSqlServer()
+    public void Validate_OmittedDatabaseProvider_DefaultsToPostgreSql()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values.Remove("Providers:DatabaseProvider");
 
         var config = BuildConfig(values);
 
         var result = ProviderConfigurationValidator.Validate(config);
 
-        Assert.Equal(ProviderOptions.DatabaseProviders.SqlServer, result.DatabaseProvider);
+        Assert.Equal(ProviderOptions.DatabaseProviders.PostgreSql, result.DatabaseProvider);
     }
 
     [Fact]
-    public void Validate_EmptyDatabaseProvider_DefaultsToSqlServer()
+    public void Validate_EmptyDatabaseProvider_DefaultsToPostgreSql()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values["Providers:DatabaseProvider"] = "   ";
 
         var config = BuildConfig(values);
 
         var result = ProviderConfigurationValidator.Validate(config);
 
-        Assert.Equal(ProviderOptions.DatabaseProviders.SqlServer, result.DatabaseProvider);
+        Assert.Equal(ProviderOptions.DatabaseProviders.PostgreSql, result.DatabaseProvider);
     }
 
     [Fact]
     public void Validate_UnsupportedDatabaseProvider_ThrowsInvalidOperationException()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values["Providers:DatabaseProvider"] = "Oracle";
 
         var config = BuildConfig(values);
@@ -115,30 +112,15 @@ public class Phase4CConfigurationValidationUnitTests
             ProviderConfigurationValidator.Validate(config));
 
         Assert.Contains("Oracle", ex.Message);
-        Assert.Contains("Supported providers: SqlServer, PostgreSQL.", ex.Message);
-    }
-
-    [Fact]
-    public void Validate_MissingSqlServerConnectionString_ThrowsInvalidOperationException()
-    {
-        var values = CreateValidSqlServerConfig();
-        values["ConnectionStrings:KairoDatabase"] = "";
-
-        var config = BuildConfig(values);
-
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            ProviderConfigurationValidator.Validate(config));
-
-        Assert.Contains("Connection string for SQL Server ('ConnectionStrings:KairoDatabase') is missing or empty.", ex.Message);
+        Assert.Contains("Supported provider: PostgreSQL.", ex.Message);
     }
 
     [Fact]
     public void Validate_MissingPostgreSqlConnectionString_ThrowsInvalidOperationException()
     {
-        var values = CreateValidSqlServerConfig();
-        values["Providers:DatabaseProvider"] = "PostgreSQL";
+        var values = CreateValidPostgreSqlConfig();
+        values.Remove("ConnectionStrings:KairoPostgres");
         values.Remove("ConnectionStrings:KairoDatabase");
-        values["ConnectionStrings:KairoPostgres"] = "  ";
 
         var config = BuildConfig(values);
 
@@ -151,8 +133,8 @@ public class Phase4CConfigurationValidationUnitTests
     [Fact]
     public void Validate_PostgreSqlFallbackToKairoDatabase_SucceedsWhenKairoPostgresAbsent()
     {
-        var values = CreateValidSqlServerConfig();
-        values["Providers:DatabaseProvider"] = "PostgreSQL";
+        var values = CreateValidPostgreSqlConfig();
+        values.Remove("ConnectionStrings:KairoPostgres");
         values["ConnectionStrings:KairoDatabase"] = "Host=127.0.0.1;Database=fallback_pg;";
 
         var config = BuildConfig(values);
@@ -166,24 +148,22 @@ public class Phase4CConfigurationValidationUnitTests
     [Fact]
     public void Validate_PostgreSqlThrowsWhenKairoDatabaseContainsSqlServerConnectionString()
     {
-        var values = CreateValidSqlServerConfig();
-        values["Providers:DatabaseProvider"] = "PostgreSQL";
-        values["ConnectionStrings:KairoDatabase"] = "Server=10.30.73.176;Database=SonaliDB;TrustServerCertificate=True;";
+        var values = CreateValidPostgreSqlConfig();
         values.Remove("ConnectionStrings:KairoPostgres");
+        values["ConnectionStrings:KairoDatabase"] = "Server=10.30.73.176;Database=SonaliDB;TrustServerCertificate=True;";
 
         var config = BuildConfig(values);
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
             ProviderConfigurationValidator.Validate(config));
 
-        Assert.Contains("contains a SQL Server connection string", ex.Message);
+        Assert.Contains("SQL Server connection string", ex.Message);
     }
 
     [Fact]
     public void Validate_PostgreSqlPrefersKairoPostgresOverKairoDatabase()
     {
-        var values = CreateValidSqlServerConfig();
-        values["Providers:DatabaseProvider"] = "PostgreSQL";
+        var values = CreateValidPostgreSqlConfig();
         values["ConnectionStrings:KairoPostgres"] = "Host=127.0.0.1;Port=5433;Database=kairo_dev;Username=kairo_dev;Password=secret";
         values["ConnectionStrings:KairoDatabase"] = "Server=10.30.73.176;Database=SonaliDB;TrustServerCertificate=True;";
 
@@ -198,7 +178,7 @@ public class Phase4CConfigurationValidationUnitTests
     [Fact]
     public void Validate_UnsupportedLlmProvider_ThrowsInvalidOperationException()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values["Providers:DefaultLlmProvider"] = "OpenAI";
 
         var config = BuildConfig(values);
@@ -213,7 +193,7 @@ public class Phase4CConfigurationValidationUnitTests
     [Fact]
     public void Validate_MissingMistralLlmApiKey_ThrowsInvalidOperationException()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values["Mistral:ApiKey"] = "   ";
 
         var config = BuildConfig(values);
@@ -227,7 +207,7 @@ public class Phase4CConfigurationValidationUnitTests
     [Fact]
     public void Validate_UnsupportedEmbeddingProvider_ThrowsInvalidOperationException()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values["Providers:DefaultEmbeddingProvider"] = "Cohere";
 
         var config = BuildConfig(values);
@@ -242,7 +222,7 @@ public class Phase4CConfigurationValidationUnitTests
     [Fact]
     public void Validate_MissingMistralEmbeddingApiKey_ThrowsInvalidOperationException()
     {
-        var values = CreateValidSqlServerConfig();
+        var values = CreateValidPostgreSqlConfig();
         values["MistralEmbedding:ApiKey"] = "";
 
         var config = BuildConfig(values);
@@ -261,8 +241,8 @@ public class Phase4CConfigurationValidationUnitTests
 
         var values = new Dictionary<string, string?>
         {
-            ["ConnectionStrings:KairoDatabase"] = $"Server=db;Password={mockDbPassword};",
-            ["Providers:DatabaseProvider"] = "SqlServer",
+            ["ConnectionStrings:KairoPostgres"] = $"Host=127.0.0.1;Password={mockDbPassword};",
+            ["Providers:DatabaseProvider"] = "PostgreSQL",
             ["Providers:DefaultLlmProvider"] = "UnsupportedVendor",
             ["Mistral:ApiKey"] = mockSecretApiKey,
             ["MistralEmbedding:ApiKey"] = mockSecretApiKey

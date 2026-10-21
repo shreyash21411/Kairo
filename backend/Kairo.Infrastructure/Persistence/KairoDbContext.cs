@@ -68,12 +68,12 @@ public partial class KairoDbContext : DbContext
 
             entity.HasIndex(e => e.KeyHash, "UX_ApiKeys_KeyHash").IsUnique();
 
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.KeyHash).HasMaxLength(256);
             entity.Property(e => e.KeyPrefix).HasMaxLength(20);
             entity.Property(e => e.Name).HasMaxLength(100);
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Project).WithMany(p => p.ApiKeys)
                 .HasForeignKey(d => d.ProjectId)
@@ -109,16 +109,16 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Chats_CreatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.ExternalConversationId).HasMaxLength(200);
             entity.Property(e => e.Name).HasMaxLength(500);
             entity.Property(e => e.ProcessingError).HasMaxLength(2000);
-            entity.Property(e => e.ProcessingStatus).HasDefaultValue((byte)1, "DF_Chats_ProcessingStatus");
-            entity.Property(e => e.RawChatStatus).HasDefaultValue((byte)1, "DF_Chats_RawChatStatus");
+            entity.Property(e => e.ProcessingStatus).HasDefaultValue((byte)1);
+            entity.Property(e => e.RawChatStatus).HasDefaultValue((byte)1);
             entity.Property(e => e.Source).HasMaxLength(50);
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Chats_UpdatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Project).WithMany(p => p.Chats)
                 .HasForeignKey(d => d.ProjectId)
@@ -142,12 +142,12 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Memories_CreatedAt");
-            entity.Property(e => e.IsActive).HasDefaultValue(true, "DF_Memories_IsActive");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.MemoryType).HasMaxLength(50);
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Memories_UpdatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             // Phase 2: OccurredAt and Metadata
             entity.Property(e => e.OccurredAt).HasPrecision(3);
@@ -182,7 +182,7 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_MemoryEmbeddings_CreatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Model).HasMaxLength(150);
 
             entity.HasOne(d => d.Memory).WithMany(p => p.MemoryEmbeddings)
@@ -355,7 +355,7 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.Action).HasMaxLength(20);
             entity.Property(e => e.ChangedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_MemorySettingHistory_ChangedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.User).WithMany(p => p.MemorySettingHistory)
                 .HasForeignKey(d => d.UserId)
@@ -371,7 +371,7 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_MemoryVersions_CreatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Operation).HasMaxLength(30);
 
             entity.HasOne(d => d.Memory).WithMany(p => p.MemoryVersions)
@@ -390,12 +390,12 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Messages_CreatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.ExternalMessageId).HasMaxLength(200);
             entity.Property(e => e.Role).HasMaxLength(30);
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Messages_UpdatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Chat).WithMany(p => p.Messages)
                 .HasForeignKey(d => d.ChatId)
@@ -411,11 +411,11 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Projects_CreatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Name).HasMaxLength(200);
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Projects_UpdatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.User).WithMany(p => p.Projects)
                 .HasForeignKey(d => d.UserId)
@@ -448,10 +448,10 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.UserId).ValueGeneratedNever();
             entity.Property(e => e.DisabledAt).HasPrecision(3);
             entity.Property(e => e.EnabledAt).HasPrecision(3);
-            entity.Property(e => e.IsEnabled).HasDefaultValue(true, "DF_UserMemorySettings_IsEnabled");
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_UserMemorySettings_UpdatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.User).WithOne(p => p.UserMemorySettings)
                 .HasForeignKey<UserMemorySettings>(d => d.UserId)
@@ -465,16 +465,16 @@ public partial class KairoDbContext : DbContext
 
             entity.HasIndex(e => e.Email, "UQ_Users_Email").IsUnique();
 
-            entity.Property(e => e.AccountStatus).HasDefaultValue((byte)1, "DF_Users_AccountStatus");
+            entity.Property(e => e.AccountStatus).HasDefaultValue((byte)1);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Users_CreatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Email).HasMaxLength(320);
             entity.Property(e => e.LastLoginAt).HasPrecision(3);
             entity.Property(e => e.PasswordHash).HasMaxLength(500);
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())", "DF_Users_UpdatedAt");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<MemoryIngestionJob>(entity =>

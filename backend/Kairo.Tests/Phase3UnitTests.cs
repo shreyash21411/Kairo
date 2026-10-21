@@ -241,7 +241,7 @@ public class Phase3UnitTests
     public void Category_DatabaseConstraint_EnforcesUniqueMemoryCategory()
     {
         var options = new DbContextOptionsBuilder<KairoDbContext>()
-            .UseSqlServer("Server=tcp:localhost,1433;Database=kairo_test;")
+            .UseNpgsql("Host=127.0.0.1;Port=5433;Database=kairo_test;Username=kairo;Password=dummy;")
             .Options;
 
         using var db = new KairoDbContext(options);
@@ -612,7 +612,7 @@ public class Phase3UnitTests
     public void Expiration_DatabaseIndex_IX_Memories_ExpiresAt_Configured()
     {
         var options = new DbContextOptionsBuilder<KairoDbContext>()
-            .UseSqlServer("Server=tcp:localhost,1433;Database=kairo_test;")
+            .UseNpgsql("Host=127.0.0.1;Port=5433;Database=kairo_test;Username=kairo;Password=dummy;")
             .Options;
 
         using var db = new KairoDbContext(options);

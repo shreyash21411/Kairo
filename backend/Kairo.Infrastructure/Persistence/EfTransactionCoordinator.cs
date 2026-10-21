@@ -1,6 +1,5 @@
 using Kairo.Application;
 using Kairo.Application.Abstractions.Persistence;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -18,9 +17,6 @@ namespace Kairo.Infrastructure.Persistence;
 /// </summary>
 public sealed class EfTransactionCoordinator : ITransactionCoordinator
 {
-    // SQL Server error numbers for unique index / primary key violations.
-    private const int SqlErrorUniqueIndexViolation    = 2601;
-    private const int SqlErrorUniqueConstraintViolation = 2627;
     private const string PostgresErrorUniqueViolation = PostgresErrorCodes.UniqueViolation; // "23505"
 
     private readonly KairoDbContext _dbContext;
@@ -65,19 +61,12 @@ public sealed class EfTransactionCoordinator : ITransactionCoordinator
     }
 
     /// <summary>
-    /// Returns true when the <see cref="DbUpdateException"/> wraps a SQL Server
-    /// unique index (2601) or unique constraint (2627) violation, or a PostgreSQL
+    /// Returns true when the <see cref="DbUpdateException"/> wraps a PostgreSQL
     /// unique constraint violation (SQLSTATE 23505).
     /// All other database errors return false and propagate unchanged.
     /// </summary>
     internal static bool IsUniqueConstraintViolation(DbUpdateException ex)
     {
-        if (ex.InnerException is SqlException sqlEx)
-        {
-            return sqlEx.Number == SqlErrorUniqueIndexViolation
-                || sqlEx.Number == SqlErrorUniqueConstraintViolation;
-        }
-
         if (ex.InnerException is PostgresException pgEx)
         {
             return pgEx.SqlState == PostgresErrorUniqueViolation;
