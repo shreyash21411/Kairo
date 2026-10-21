@@ -46,6 +46,15 @@ public interface IIngestionJobRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Marks a job as successfully completed only if the caller still owns the active lease claim.
+    /// Returns false if the claim was lost, expired, or the job is no longer processing.
+    /// </summary>
+    Task<bool> CompleteJobAsync(
+        long jobId,
+        string? lockOwner,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks a job as failed, scheduling a retry if eligible or moving to terminal Failed state.
     /// </summary>
     Task<bool> FailJobAsync(
@@ -56,10 +65,49 @@ public interface IIngestionJobRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Marks a job as failed, scheduling a retry if eligible or moving to terminal Failed state,
+    /// only if the caller still owns the active lease claim.
+    /// Returns false if the claim was lost, expired, or the job is no longer processing.
+    /// </summary>
+    Task<bool> FailJobAsync(
+        long jobId,
+        string error,
+        bool canRetry,
+        TimeSpan? retryDelay,
+        string? lockOwner,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks a job as cancelled (e.g. parent memory deleted or expired before execution).
     /// </summary>
     Task<bool> CancelJobAsync(
         long jobId,
         string reason,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a job as cancelled, optionally validating that the caller still owns the active claim.
+    /// </summary>
+    Task<bool> CancelJobAsync(
+        long jobId,
+        string reason,
+        string? lockOwner,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Recovers expired-lease jobs that have reached their maximum attempts, atomically
+    /// transitioning them to terminal Failed state so they do not remain in Processing indefinitely.
+    /// </summary>
+    Task<int> RecoverExhaustedJobsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Extends the lease duration of an actively owned job.
+    /// Returns false if the caller no longer owns the active claim.
+    /// </summary>
+    Task<bool> RenewLeaseAsync(
+        long jobId,
+        string lockOwner,
+        TimeSpan extension,
         CancellationToken cancellationToken = default);
 }

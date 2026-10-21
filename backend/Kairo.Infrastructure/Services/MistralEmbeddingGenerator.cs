@@ -45,8 +45,8 @@ public class MistralEmbeddingGenerator : IEmbeddingGenerator, IEmbeddingMetadata
     }
 
     /// <inheritdoc />
-    public Task<float[]> GenerateAsync(string text)
+    public Task<float[]> GenerateAsync(string text, CancellationToken cancellationToken = default)
     {
-        return _provider.GenerateEmbeddingAsync(text);
+        return _provider.GenerateEmbeddingAsync(text, cancellationToken);
     }
 }

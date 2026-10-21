@@ -260,6 +260,7 @@ public class MemoryJobService : IMemoryJobService
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
     public async Task ProcessJobAsync(
         MemoryIngestionJobRecord job,
         CancellationToken cancellationToken = default)
@@ -268,44 +269,63 @@ public class MemoryJobService : IMemoryJobService
 
         try
         {
+            bool workSucceeded;
             if (job.JobType == "CreateMemory")
             {
-                await ProcessCreateMemoryJobAsync(job, cancellationToken);
+                workSucceeded = await ProcessCreateMemoryJobAsync(job, cancellationToken);
             }
             else if (job.JobType == "IngestConversation")
             {
-                await ProcessIngestConversationJobAsync(job, cancellationToken);
+                workSucceeded = await ProcessIngestConversationJobAsync(job, cancellationToken);
             }
             else
             {
-                await _jobRepository.FailJobAsync(job.JobId, $"Unknown job type: {job.JobType}", canRetry: false, cancellationToken: cancellationToken);
+                await FailJobInternalAsync(job, $"Unknown job type: {job.JobType}", canRetry: false, cancellationToken: cancellationToken);
                 return;
             }
 
-            await _jobRepository.CompleteJobAsync(job.JobId, cancellationToken);
-            _logger.LogInformation("[AsyncWorker] Successfully completed job {JobId}", job.JobId);
+            if (!workSucceeded)
+            {
+                // The job was already transitioned to Cancelled or Failed. Do not complete it.
+                return;
+            }
+
+            var completed = await CompleteJobInternalAsync(job, cancellationToken);
+            if (!completed)
+            {
+                _logger.LogWarning("[AsyncWorker] Could not complete job {JobId}: claim was lost, expired, or job status changed.", job.JobId);
+            }
+            else
+            {
+                _logger.LogInformation("[AsyncWorker] Successfully completed job {JobId}", job.JobId);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("[AsyncWorker] Processing cancelled for job {JobId}", job.JobId);
+            throw;
         }
         catch (HttpRequestException httpEx)
         {
             _logger.LogWarning(httpEx, "[AsyncWorker] Transient HTTP failure processing job {JobId}", job.JobId);
             var delay = TimeSpan.FromSeconds(Math.Min(60, Math.Pow(2, job.Attempts) * 2));
-            await _jobRepository.FailJobAsync(job.JobId, "Transient network failure contacting provider.", canRetry: true, retryDelay: delay, cancellationToken: cancellationToken);
+            await FailJobInternalAsync(job, "Transient network failure contacting provider.", canRetry: true, retryDelay: delay, cancellationToken: cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AsyncWorker] Permanent or unexpected failure processing job {JobId}", job.JobId);
-            await _jobRepository.FailJobAsync(job.JobId, ex.Message, canRetry: false, cancellationToken: cancellationToken);
+            await FailJobInternalAsync(job, ex.Message, canRetry: false, cancellationToken: cancellationToken);
         }
     }
 
-    private async Task ProcessCreateMemoryJobAsync(
+    private async Task<bool> ProcessCreateMemoryJobAsync(
         MemoryIngestionJobRecord job,
         CancellationToken cancellationToken)
     {
         if (!job.MemoryId.HasValue)
         {
-            await _jobRepository.FailJobAsync(job.JobId, "CreateMemory job missing MemoryId reference.", canRetry: false, cancellationToken: cancellationToken);
-            return;
+            await FailJobInternalAsync(job, "CreateMemory job missing MemoryId reference.", canRetry: false, cancellationToken: cancellationToken);
+            return false;
         }
 
         var memory = await _memoryRepository.GetMemorySnapshotForUserAsync(
@@ -316,18 +336,18 @@ public class MemoryJobService : IMemoryJobService
 
         if (memory == null)
         {
-            await _jobRepository.CancelJobAsync(job.JobId, "Memory was deleted or does not exist.", cancellationToken);
-            return;
+            await CancelJobInternalAsync(job, "Memory was deleted or does not exist.", cancellationToken);
+            return false;
         }
 
         if (memory.ExpiresAt.HasValue && memory.ExpiresAt.Value <= DateTime.UtcNow)
         {
-            await _jobRepository.CancelJobAsync(job.JobId, "Memory expired prior to background execution.", cancellationToken);
-            return;
+            await CancelJobInternalAsync(job, "Memory expired prior to background execution.", cancellationToken);
+            return false;
         }
 
         // Generate and persist embedding
-        var embedding = await _embeddingGenerator.GenerateAsync(memory.Content);
+        var embedding = await _embeddingGenerator.GenerateAsync(memory.Content, cancellationToken);
         await _memoryRepository.SaveEmbeddingAsync(memory.MemoryId, EmbeddingModel, embedding);
 
         // Non-fatal entity & graph extraction
@@ -351,31 +371,71 @@ public class MemoryJobService : IMemoryJobService
                 _logger.LogWarning(ex, "[AsyncWorker] Non-fatal entity extraction failure for Memory {MemoryId}", memory.MemoryId);
             }
         }
+
+        return true;
     }
 
-    private async Task ProcessIngestConversationJobAsync(
+    private async Task<bool> ProcessIngestConversationJobAsync(
         MemoryIngestionJobRecord job,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(job.Payload))
         {
-            await _jobRepository.FailJobAsync(job.JobId, "IngestConversation job missing payload.", canRetry: false, cancellationToken: cancellationToken);
-            return;
+            await FailJobInternalAsync(job, "IngestConversation job missing payload.", canRetry: false, cancellationToken: cancellationToken);
+            return false;
         }
 
         if (_ingestionService == null)
         {
-            await _jobRepository.FailJobAsync(job.JobId, "MemoryIngestionService unavailable.", canRetry: false, cancellationToken: cancellationToken);
-            return;
+            await FailJobInternalAsync(job, "MemoryIngestionService unavailable.", canRetry: false, cancellationToken: cancellationToken);
+            return false;
         }
 
         var request = JsonSerializer.Deserialize<IngestConversationRequest>(job.Payload);
         if (request == null)
         {
-            await _jobRepository.FailJobAsync(job.JobId, "Failed to deserialize IngestConversationRequest payload.", canRetry: false, cancellationToken: cancellationToken);
-            return;
+            await FailJobInternalAsync(job, "Failed to deserialize IngestConversationRequest payload.", canRetry: false, cancellationToken: cancellationToken);
+            return false;
         }
 
         await _ingestionService.IngestAsync(request, job.UserId, job.ProjectId, cancellationToken);
+        return true;
+    }
+
+    private async Task<bool> CompleteJobInternalAsync(
+        MemoryIngestionJobRecord job,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrEmpty(job.LockOwner))
+        {
+            return await _jobRepository.CompleteJobAsync(job.JobId, job.LockOwner, cancellationToken);
+        }
+        return await _jobRepository.CompleteJobAsync(job.JobId, cancellationToken);
+    }
+
+    private async Task<bool> FailJobInternalAsync(
+        MemoryIngestionJobRecord job,
+        string error,
+        bool canRetry,
+        TimeSpan? retryDelay = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrEmpty(job.LockOwner))
+        {
+            return await _jobRepository.FailJobAsync(job.JobId, error, canRetry, retryDelay, job.LockOwner, cancellationToken);
+        }
+        return await _jobRepository.FailJobAsync(job.JobId, error, canRetry, retryDelay, cancellationToken);
+    }
+
+    private async Task<bool> CancelJobInternalAsync(
+        MemoryIngestionJobRecord job,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrEmpty(job.LockOwner))
+        {
+            return await _jobRepository.CancelJobAsync(job.JobId, reason, job.LockOwner, cancellationToken);
+        }
+        return await _jobRepository.CancelJobAsync(job.JobId, reason, cancellationToken);
     }
 }

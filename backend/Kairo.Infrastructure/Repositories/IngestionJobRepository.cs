@@ -70,6 +70,7 @@ public class IngestionJobRepository : IIngestionJobRepository
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
     public async Task<List<MemoryIngestionJobRecord>> ClaimNextJobsAsync(
         int batchSize,
         string workerId,
@@ -78,9 +79,102 @@ public class IngestionJobRepository : IIngestionJobRepository
     {
         if (batchSize <= 0) batchSize = 1;
 
-        var now = DateTime.UtcNow;
+        // Proactively recover any expired jobs that have reached maximum attempts
+        await RecoverExhaustedJobsAsync(cancellationToken);
 
-        // Query eligible candidates: either Pending or Processing with expired lease.
+        var now = DateTime.UtcNow;
+        var lockedUntil = now.Add(leaseDuration);
+
+        // Generate a unique claim token per claim to distinguish separate claims even if workerId is reused
+        var safeWorkerPrefix = string.IsNullOrWhiteSpace(workerId) ? "worker" : workerId.Trim();
+        if (safeWorkerPrefix.Length > 90) safeWorkerPrefix = safeWorkerPrefix.Substring(0, 90);
+        var claimToken = $"{safeWorkerPrefix}:{Guid.NewGuid():N}";
+
+        // PostgreSQL concurrency-safe atomic job claiming via FOR UPDATE SKIP LOCKED
+        if (_dbContext.Database.IsRelational())
+        {
+            var claimedRecords = new List<MemoryIngestionJobRecord>();
+            const string sql = @"
+WITH next_jobs AS (
+    SELECT ""JobId""
+    FROM ""MemoryIngestionJobs""
+    WHERE (""Status"" = 'Pending' OR (""Status"" = 'Processing' AND ""LockedUntil"" IS NOT NULL AND ""LockedUntil"" < @now))
+      AND ""AvailableAt"" <= @now
+      AND ""Attempts"" < ""MaxAttempts""
+    ORDER BY ""CreatedAt""
+    LIMIT @batchSize
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE ""MemoryIngestionJobs"" j
+SET ""Status"" = 'Processing',
+    ""LockOwner"" = @claimToken,
+    ""LockedUntil"" = @lockedUntil,
+    ""Attempts"" = j.""Attempts"" + 1
+FROM next_jobs
+WHERE j.""JobId"" = next_jobs.""JobId""
+RETURNING j.""JobId"", j.""ProjectId"", j.""UserId"", j.""ScopeId"", j.""MemoryId"", j.""JobType"", j.""Status"", j.""Payload"", j.""Attempts"", j.""MaxAttempts"", j.""LastError"", j.""AvailableAt"", j.""LockedUntil"", j.""LockOwner"", j.""CreatedAt"", j.""CompletedAt"";";
+
+            var conn = _dbContext.Database.GetDbConnection();
+            var wasOpen = conn.State == System.Data.ConnectionState.Open;
+            if (!wasOpen) await conn.OpenAsync(cancellationToken);
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+
+                var pNow = cmd.CreateParameter();
+                pNow.ParameterName = "now";
+                pNow.Value = now;
+                cmd.Parameters.Add(pNow);
+
+                var pBatch = cmd.CreateParameter();
+                pBatch.ParameterName = "batchSize";
+                pBatch.Value = batchSize;
+                cmd.Parameters.Add(pBatch);
+
+                var pWorker = cmd.CreateParameter();
+                pWorker.ParameterName = "claimToken";
+                pWorker.Value = claimToken;
+                cmd.Parameters.Add(pWorker);
+
+                var pLockedUntil = cmd.CreateParameter();
+                pLockedUntil.ParameterName = "lockedUntil";
+                pLockedUntil.Value = lockedUntil;
+                cmd.Parameters.Add(pLockedUntil);
+
+                await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    claimedRecords.Add(new MemoryIngestionJobRecord
+                    {
+                        JobId = reader.GetInt64(0),
+                        ProjectId = reader.GetInt64(1),
+                        UserId = reader.GetInt64(2),
+                        ScopeId = reader.IsDBNull(3) ? null : reader.GetInt64(3),
+                        MemoryId = reader.IsDBNull(4) ? null : reader.GetInt64(4),
+                        JobType = reader.GetString(5),
+                        Status = reader.GetString(6),
+                        Payload = reader.IsDBNull(7) ? null : reader.GetString(7),
+                        Attempts = reader.GetInt32(8),
+                        MaxAttempts = reader.GetInt32(9),
+                        LastError = reader.IsDBNull(10) ? null : reader.GetString(10),
+                        AvailableAt = reader.GetDateTime(11),
+                        LockedUntil = reader.IsDBNull(12) ? null : reader.GetDateTime(12),
+                        LockOwner = reader.IsDBNull(13) ? null : reader.GetString(13),
+                        CreatedAt = reader.GetDateTime(14),
+                        CompletedAt = reader.IsDBNull(15) ? null : reader.GetDateTime(15)
+                    });
+                }
+            }
+            finally
+            {
+                if (!wasOpen) await conn.CloseAsync();
+            }
+
+            return claimedRecords;
+        }
+
+        // Fallback for non-relational providers (e.g. EF Core InMemory provider in unit tests)
         var candidates = await _dbContext.MemoryIngestionJobs
             .Where(j =>
                 (j.Status == "Pending" || (j.Status == "Processing" && j.LockedUntil != null && j.LockedUntil < now))
@@ -95,21 +189,159 @@ public class IngestionJobRepository : IIngestionJobRepository
             return new List<MemoryIngestionJobRecord>();
         }
 
-        var claimedRecords = new List<MemoryIngestionJobRecord>();
+        var fallbackRecords = new List<MemoryIngestionJobRecord>();
 
         foreach (var job in candidates)
         {
             job.Status = "Processing";
-            job.LockOwner = workerId;
-            job.LockedUntil = now.Add(leaseDuration);
+            job.LockOwner = claimToken;
+            job.LockedUntil = lockedUntil;
             job.Attempts += 1;
 
-            claimedRecords.Add(ToRecord(job));
+            fallbackRecords.Add(ToRecord(job));
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return claimedRecords;
+        return fallbackRecords;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RecoverExhaustedJobsAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        if (_dbContext.Database.IsRelational())
+        {
+            const string sql = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""Status"" = 'Failed',
+    ""LastError"" = 'Job lease expired after reaching maximum attempts.',
+    ""CompletedAt"" = @now,
+    ""LockedUntil"" = NULL,
+    ""LockOwner"" = NULL
+WHERE ""Status"" = 'Processing'
+  AND ""LockedUntil"" IS NOT NULL
+  AND ""LockedUntil"" < @now
+  AND ""Attempts"" >= ""MaxAttempts"";";
+
+            var conn = _dbContext.Database.GetDbConnection();
+            var wasOpen = conn.State == System.Data.ConnectionState.Open;
+            if (!wasOpen) await conn.OpenAsync(cancellationToken);
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+
+                var pNow = cmd.CreateParameter();
+                pNow.ParameterName = "now";
+                pNow.Value = now;
+                cmd.Parameters.Add(pNow);
+
+                return await cmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+            finally
+            {
+                if (!wasOpen) await conn.CloseAsync();
+            }
+        }
+
+        // Non-relational fallback
+        var exhausted = await _dbContext.MemoryIngestionJobs
+            .Where(j => j.Status == "Processing"
+                        && j.LockedUntil != null
+                        && j.LockedUntil < now
+                        && j.Attempts >= j.MaxAttempts)
+            .ToListAsync(cancellationToken);
+
+        if (exhausted.Count == 0) return 0;
+
+        foreach (var j in exhausted)
+        {
+            j.Status = "Failed";
+            j.LastError = "Job lease expired after reaching maximum attempts.";
+            j.CompletedAt = now;
+            j.LockedUntil = null;
+            j.LockOwner = null;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return exhausted.Count;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> RenewLeaseAsync(
+        long jobId,
+        string lockOwner,
+        TimeSpan extension,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(lockOwner) || extension <= TimeSpan.Zero)
+            return false;
+
+        var now = DateTime.UtcNow;
+        var newLockedUntil = now.Add(extension);
+
+        if (_dbContext.Database.IsRelational())
+        {
+            const string sql = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""LockedUntil"" = @newLockedUntil
+WHERE ""JobId"" = @jobId
+  AND ""Status"" = 'Processing'
+  AND ""LockOwner"" = @lockOwner
+  AND (""LockedUntil"" IS NULL OR ""LockedUntil"" >= @now);";
+
+            var conn = _dbContext.Database.GetDbConnection();
+            var wasOpen = conn.State == System.Data.ConnectionState.Open;
+            if (!wasOpen) await conn.OpenAsync(cancellationToken);
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+
+                var pId = cmd.CreateParameter();
+                pId.ParameterName = "jobId";
+                pId.Value = jobId;
+                cmd.Parameters.Add(pId);
+
+                var pOwner = cmd.CreateParameter();
+                pOwner.ParameterName = "lockOwner";
+                pOwner.Value = lockOwner;
+                cmd.Parameters.Add(pOwner);
+
+                var pLocked = cmd.CreateParameter();
+                pLocked.ParameterName = "newLockedUntil";
+                pLocked.Value = newLockedUntil;
+                cmd.Parameters.Add(pLocked);
+
+                var pNow = cmd.CreateParameter();
+                pNow.ParameterName = "now";
+                pNow.Value = now;
+                cmd.Parameters.Add(pNow);
+
+                var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
+                return rows > 0;
+            }
+            finally
+            {
+                if (!wasOpen) await conn.CloseAsync();
+            }
+        }
+
+        // Non-relational fallback
+        var job = await _dbContext.MemoryIngestionJobs
+            .FirstOrDefaultAsync(j => j.JobId == jobId, cancellationToken);
+
+        if (job == null || job.Status != "Processing" || job.LockOwner != lockOwner)
+            return false;
+
+        if (job.LockedUntil != null && job.LockedUntil < now)
+            return false; // Already expired
+
+        job.LockedUntil = newLockedUntil;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     /// <inheritdoc />
@@ -117,13 +349,83 @@ public class IngestionJobRepository : IIngestionJobRepository
         long jobId,
         CancellationToken cancellationToken = default)
     {
+        return await CompleteJobAsync(jobId, lockOwner: null, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CompleteJobAsync(
+        long jobId,
+        string? lockOwner,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        if (_dbContext.Database.IsRelational())
+        {
+            var conn = _dbContext.Database.GetDbConnection();
+            var wasOpen = conn.State == System.Data.ConnectionState.Open;
+            if (!wasOpen) await conn.OpenAsync(cancellationToken);
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                if (!string.IsNullOrEmpty(lockOwner))
+                {
+                    cmd.CommandText = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""Status"" = 'Completed',
+    ""CompletedAt"" = @now,
+    ""LockedUntil"" = NULL,
+    ""LockOwner"" = NULL
+WHERE ""JobId"" = @jobId
+  AND ""Status"" = 'Processing'
+  AND ""LockOwner"" = @lockOwner;";
+
+                    var pOwner = cmd.CreateParameter();
+                    pOwner.ParameterName = "lockOwner";
+                    pOwner.Value = lockOwner;
+                    cmd.Parameters.Add(pOwner);
+                }
+                else
+                {
+                    cmd.CommandText = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""Status"" = 'Completed',
+    ""CompletedAt"" = @now,
+    ""LockedUntil"" = NULL,
+    ""LockOwner"" = NULL
+WHERE ""JobId"" = @jobId
+  AND ""Status"" = 'Processing';";
+                }
+
+                var pId = cmd.CreateParameter();
+                pId.ParameterName = "jobId";
+                pId.Value = jobId;
+                cmd.Parameters.Add(pId);
+
+                var pNow = cmd.CreateParameter();
+                pNow.ParameterName = "now";
+                pNow.Value = now;
+                cmd.Parameters.Add(pNow);
+
+                var rowsAffected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+                return rowsAffected > 0;
+            }
+            finally
+            {
+                if (!wasOpen) await conn.CloseAsync();
+            }
+        }
+
+        // Fallback for non-relational providers (e.g. EF Core InMemory in unit tests)
         var job = await _dbContext.MemoryIngestionJobs
             .FirstOrDefaultAsync(j => j.JobId == jobId, cancellationToken);
 
         if (job == null) return false;
+        if (job.Status != "Processing") return false;
+        if (!string.IsNullOrEmpty(lockOwner) && job.LockOwner != lockOwner) return false;
 
         job.Status = "Completed";
-        job.CompletedAt = DateTime.UtcNow;
+        job.CompletedAt = now;
         job.LockedUntil = null;
         job.LockOwner = null;
 
@@ -139,28 +441,123 @@ public class IngestionJobRepository : IIngestionJobRepository
         TimeSpan? retryDelay = null,
         CancellationToken cancellationToken = default)
     {
+        return await FailJobAsync(jobId, error, canRetry, retryDelay, lockOwner: null, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> FailJobAsync(
+        long jobId,
+        string error,
+        bool canRetry,
+        TimeSpan? retryDelay,
+        string? lockOwner,
+        CancellationToken cancellationToken = default)
+    {
+        var sanitizedError = string.IsNullOrWhiteSpace(error)
+            ? "Unknown error occurred"
+            : (error.Length > 2000 ? error.Substring(0, 2000) : error);
+
+        var now = DateTime.UtcNow;
+
+        if (_dbContext.Database.IsRelational())
+        {
+            var conn = _dbContext.Database.GetDbConnection();
+            var wasOpen = conn.State == System.Data.ConnectionState.Open;
+            if (!wasOpen) await conn.OpenAsync(cancellationToken);
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+
+                string sql;
+                if (canRetry)
+                {
+                    sql = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""Status"" = CASE WHEN ""Attempts"" < ""MaxAttempts"" THEN 'Pending' ELSE 'Failed' END,
+    ""LastError"" = @error,
+    ""AvailableAt"" = CASE WHEN ""Attempts"" < ""MaxAttempts"" THEN @availableAt ELSE ""AvailableAt"" END,
+    ""CompletedAt"" = CASE WHEN ""Attempts"" < ""MaxAttempts"" THEN NULL ELSE @now END,
+    ""LockedUntil"" = NULL,
+    ""LockOwner"" = NULL
+WHERE ""JobId"" = @jobId
+  AND ""Status"" = 'Processing'" + (!string.IsNullOrEmpty(lockOwner) ? @" AND ""LockOwner"" = @lockOwner;" : ";");
+                }
+                else
+                {
+                    sql = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""Status"" = 'Failed',
+    ""LastError"" = @error,
+    ""CompletedAt"" = @now,
+    ""LockedUntil"" = NULL,
+    ""LockOwner"" = NULL
+WHERE ""JobId"" = @jobId
+  AND ""Status"" = 'Processing'" + (!string.IsNullOrEmpty(lockOwner) ? @" AND ""LockOwner"" = @lockOwner;" : ";");
+                }
+
+                cmd.CommandText = sql;
+
+                var pId = cmd.CreateParameter();
+                pId.ParameterName = "jobId";
+                pId.Value = jobId;
+                cmd.Parameters.Add(pId);
+
+                var pError = cmd.CreateParameter();
+                pError.ParameterName = "error";
+                pError.Value = sanitizedError;
+                cmd.Parameters.Add(pError);
+
+                var pNow = cmd.CreateParameter();
+                pNow.ParameterName = "now";
+                pNow.Value = now;
+                cmd.Parameters.Add(pNow);
+
+                if (canRetry)
+                {
+                    var pAvailable = cmd.CreateParameter();
+                    pAvailable.ParameterName = "availableAt";
+                    pAvailable.Value = now.Add(retryDelay ?? TimeSpan.FromSeconds(5));
+                    cmd.Parameters.Add(pAvailable);
+                }
+
+                if (!string.IsNullOrEmpty(lockOwner))
+                {
+                    var pOwner = cmd.CreateParameter();
+                    pOwner.ParameterName = "lockOwner";
+                    pOwner.Value = lockOwner;
+                    cmd.Parameters.Add(pOwner);
+                }
+
+                var rowsAffected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+                return rowsAffected > 0;
+            }
+            finally
+            {
+                if (!wasOpen) await conn.CloseAsync();
+            }
+        }
+
+        // Non-relational fallback
         var job = await _dbContext.MemoryIngestionJobs
             .FirstOrDefaultAsync(j => j.JobId == jobId, cancellationToken);
 
         if (job == null) return false;
-
-        var sanitizedError = string.IsNullOrWhiteSpace(error)
-            ? "Unknown error occurred"
-            : (error.Length > 2000 ? error.Substring(0, 2000) : error);
+        if (job.Status != "Processing") return false;
+        if (!string.IsNullOrEmpty(lockOwner) && job.LockOwner != lockOwner) return false;
 
         job.LastError = sanitizedError;
 
         if (canRetry && job.Attempts < job.MaxAttempts)
         {
             job.Status = "Pending";
-            job.AvailableAt = DateTime.UtcNow.Add(retryDelay ?? TimeSpan.FromSeconds(5));
+            job.AvailableAt = now.Add(retryDelay ?? TimeSpan.FromSeconds(5));
             job.LockedUntil = null;
             job.LockOwner = null;
         }
         else
         {
             job.Status = "Failed";
-            job.CompletedAt = DateTime.UtcNow;
+            job.CompletedAt = now;
             job.LockedUntil = null;
             job.LockOwner = null;
         }
@@ -175,16 +572,109 @@ public class IngestionJobRepository : IIngestionJobRepository
         string reason,
         CancellationToken cancellationToken = default)
     {
+        return await CancelJobAsync(jobId, reason, lockOwner: null, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CancelJobAsync(
+        long jobId,
+        string reason,
+        string? lockOwner,
+        CancellationToken cancellationToken = default)
+    {
+        var sanitizedReason = string.IsNullOrWhiteSpace(reason)
+            ? "Cancelled"
+            : (reason.Length > 2000 ? reason.Substring(0, 2000) : reason);
+
+        var now = DateTime.UtcNow;
+
+        if (_dbContext.Database.IsRelational())
+        {
+            var conn = _dbContext.Database.GetDbConnection();
+            var wasOpen = conn.State == System.Data.ConnectionState.Open;
+            if (!wasOpen) await conn.OpenAsync(cancellationToken);
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+
+                string sql;
+                if (!string.IsNullOrEmpty(lockOwner))
+                {
+                    sql = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""Status"" = 'Cancelled',
+    ""LastError"" = @reason,
+    ""CompletedAt"" = @now,
+    ""LockedUntil"" = NULL,
+    ""LockOwner"" = NULL
+WHERE ""JobId"" = @jobId
+  AND ""Status"" = 'Processing'
+  AND ""LockOwner"" = @lockOwner;";
+                }
+                else
+                {
+                    sql = @"
+UPDATE ""MemoryIngestionJobs""
+SET ""Status"" = 'Cancelled',
+    ""LastError"" = @reason,
+    ""CompletedAt"" = @now,
+    ""LockedUntil"" = NULL,
+    ""LockOwner"" = NULL
+WHERE ""JobId"" = @jobId
+  AND ""Status"" NOT IN ('Completed', 'Failed', 'Cancelled');";
+                }
+
+                cmd.CommandText = sql;
+
+                var pId = cmd.CreateParameter();
+                pId.ParameterName = "jobId";
+                pId.Value = jobId;
+                cmd.Parameters.Add(pId);
+
+                var pReason = cmd.CreateParameter();
+                pReason.ParameterName = "reason";
+                pReason.Value = sanitizedReason;
+                cmd.Parameters.Add(pReason);
+
+                var pNow = cmd.CreateParameter();
+                pNow.ParameterName = "now";
+                pNow.Value = now;
+                cmd.Parameters.Add(pNow);
+
+                if (!string.IsNullOrEmpty(lockOwner))
+                {
+                    var pOwner = cmd.CreateParameter();
+                    pOwner.ParameterName = "lockOwner";
+                    pOwner.Value = lockOwner;
+                    cmd.Parameters.Add(pOwner);
+                }
+
+                var rowsAffected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+                return rowsAffected > 0;
+            }
+            finally
+            {
+                if (!wasOpen) await conn.CloseAsync();
+            }
+        }
+
+        // Non-relational fallback
         var job = await _dbContext.MemoryIngestionJobs
             .FirstOrDefaultAsync(j => j.JobId == jobId, cancellationToken);
 
         if (job == null) return false;
+        if (!string.IsNullOrEmpty(lockOwner))
+        {
+            if (job.Status != "Processing" || job.LockOwner != lockOwner) return false;
+        }
+        else
+        {
+            if (job.Status == "Completed" || job.Status == "Failed" || job.Status == "Cancelled") return false;
+        }
 
         job.Status = "Cancelled";
-        job.LastError = string.IsNullOrWhiteSpace(reason)
-            ? "Cancelled"
-            : (reason.Length > 2000 ? reason.Substring(0, 2000) : reason);
-        job.CompletedAt = DateTime.UtcNow;
+        job.LastError = sanitizedReason;
+        job.CompletedAt = now;
         job.LockedUntil = null;
         job.LockOwner = null;
 
