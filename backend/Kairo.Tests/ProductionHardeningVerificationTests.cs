@@ -101,10 +101,11 @@ public class ProductionHardeningVerificationTests
 
     // ── Task 3: Database Readiness Health Check Tests ─────────────────────────
 
-    [PostgreSqlFact]
+    [DedicatedTestPostgresFact]
     public async Task DatabaseHealthCheck_WhenDatabaseIsReachable_ReturnsHealthy()
     {
-        var connStr = DiscoverTestPostgresConnectionString()!;
+        var connStr = DiscoverDedicatedTestPostgresConnectionString();
+        Assert.NotNull(connStr);
 
         var services = new ServiceCollection();
         services.AddDbContext<KairoDbContext>(opt => opt.UseNpgsql(connStr!, o => o.UseVector()));
@@ -311,10 +312,18 @@ public class ProductionHardeningVerificationTests
     // Requires KAIRO_TEST_POSTGRES_CONNECTION_STRING env var pointing to an
     // isolated test database (NOT kairo_dev or any production database).
 
-    [PostgreSqlFact]
+    [DedicatedTestPostgresFact]
     public async Task IngestionJobRepository_PostgreSql_CompetingWorkersCannotClaimSameJob()
     {
-        var connStr = DiscoverTestPostgresConnectionString()!;
+        var connStr = DiscoverDedicatedTestPostgresConnectionString();
+        Assert.NotNull(connStr);
+
+        // Safety check: ensure target database is NOT kairo_dev or production
+        using (var npgsqlConn = new Npgsql.NpgsqlConnection(connStr))
+        {
+            await npgsqlConn.OpenAsync();
+            Assert.NotEqual("kairo_dev", npgsqlConn.Database, StringComparer.OrdinalIgnoreCase);
+        }
 
         var options = new DbContextOptionsBuilder<KairoDbContext>()
             .UseNpgsql(connStr!, o => o.UseVector())
@@ -327,6 +336,10 @@ public class ProductionHardeningVerificationTests
             $"Test database is unreachable. Verify KAIRO_TEST_POSTGRES_CONNECTION_STRING targets a running PostgreSQL instance.");
 
         // Ensure we have a valid test user and project in the ISOLATED test database.
+        // Track whether this test created them so they can be cleaned up in finally.
+        Users? createdUser = null;
+        Projects? createdProject = null;
+
         var testUser = await seedContext.Users.FirstOrDefaultAsync();
         if (testUser == null)
         {
@@ -339,6 +352,7 @@ public class ProductionHardeningVerificationTests
             };
             seedContext.Users.Add(testUser);
             await seedContext.SaveChangesAsync();
+            createdUser = testUser;
         }
 
         var testProject = await seedContext.Projects.FirstOrDefaultAsync(p => p.UserId == testUser.UserId);
@@ -353,6 +367,7 @@ public class ProductionHardeningVerificationTests
             };
             seedContext.Projects.Add(testProject);
             await seedContext.SaveChangesAsync();
+            createdProject = testProject;
         }
 
         var uniqueTag = $"ConcurrencyTest_{Guid.NewGuid():N}";
@@ -443,12 +458,25 @@ public class ProductionHardeningVerificationTests
         }
         finally
         {
-            // Clean up only the records this test created — never touch pre-existing records.
+            // Clean up all records created by this test — jobs, project, and user.
             using var cleanupContext = new KairoDbContext(options);
             var toClean = await cleanupContext.MemoryIngestionJobs
                 .Where(j => j.JobId == job1Id || j.JobId == job2Id)
                 .ToListAsync();
             cleanupContext.MemoryIngestionJobs.RemoveRange(toClean);
+
+            if (createdProject != null)
+            {
+                var proj = await cleanupContext.Projects.FindAsync(createdProject.ProjectId);
+                if (proj != null) cleanupContext.Projects.Remove(proj);
+            }
+
+            if (createdUser != null)
+            {
+                var usr = await cleanupContext.Users.FindAsync(createdUser.UserId);
+                if (usr != null) cleanupContext.Users.Remove(usr);
+            }
+
             await cleanupContext.SaveChangesAsync();
         }
     }
@@ -456,82 +484,72 @@ public class ProductionHardeningVerificationTests
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Discovers a PostgreSQL connection string for integration testing.
-    /// Priority 1: KAIRO_TEST_POSTGRES_CONNECTION_STRING environment variable.
-    /// Priority 2: Local Docker PostgreSQL container from infrastructure/docker/.env.
-    /// Returns null if neither is available, allowing tests to be cleanly skipped.
-    /// Never targets remote cloud or production databases.
+    /// Discovers an isolated PostgreSQL connection string for integration testing.
+    /// STRICT REQUIREMENT: Only reads the KAIRO_TEST_POSTGRES_CONNECTION_STRING environment variable.
+    /// NEVER falls back to infrastructure/docker/.env, localhost defaults, or the development database (kairo_dev).
+    /// Strictly rejects production/cloud indicators (neon.tech, render.com, supabase) and the kairo_dev database.
+    /// Returns null if not explicitly configured, allowing tests to skip truthfully.
     /// </summary>
-    internal static string? DiscoverTestPostgresConnectionString()
+    internal static string? DiscoverDedicatedTestPostgresConnectionString()
     {
-        // 1. Explicit test database connection string.
         var explicit_ = Environment.GetEnvironmentVariable("KAIRO_TEST_POSTGRES_CONNECTION_STRING");
-        if (!string.IsNullOrWhiteSpace(explicit_))
+        if (string.IsNullOrWhiteSpace(explicit_))
         {
-            if (explicit_.Contains("neon.tech", StringComparison.OrdinalIgnoreCase) ||
-                explicit_.Contains("render.com", StringComparison.OrdinalIgnoreCase) ||
-                explicit_.Contains("supabase", StringComparison.OrdinalIgnoreCase))
+            return null;
+        }
+
+        // Security guard: reject cloud/production hosts
+        if (explicit_.Contains("neon.tech", StringComparison.OrdinalIgnoreCase) ||
+            explicit_.Contains("render.com", StringComparison.OrdinalIgnoreCase) ||
+            explicit_.Contains("supabase", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "KAIRO_TEST_POSTGRES_CONNECTION_STRING appears to point to a production or cloud database. " +
+                "This environment variable must only target a local, isolated test database.");
+        }
+
+        // Isolation guard: reject development database
+        try
+        {
+            var csb = new Npgsql.NpgsqlConnectionStringBuilder(explicit_);
+            if (string.Equals(csb.Database, "kairo_dev", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    "KAIRO_TEST_POSTGRES_CONNECTION_STRING appears to point to a production or cloud database. " +
-                    "This environment variable must only target a local, isolated test database.");
+                    "KAIRO_TEST_POSTGRES_CONNECTION_STRING targets the development database 'kairo_dev'. " +
+                    "Integration tests require an isolated test database (e.g. kairo_test or kairo_fresh_init_test) " +
+                    "and must never mutate kairo_dev.");
             }
-            return explicit_;
         }
-
-        // 2. Local Docker development PostgreSQL from infrastructure/docker/.env
-        var host = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "127.0.0.1";
-        var portStr = Environment.GetEnvironmentVariable("POSTGRES_HOST_PORT") ?? "5433";
-        if (!int.TryParse(portStr, out var port)) port = 5433;
-        var user = Environment.GetEnvironmentVariable("KAIRO_APP_USER") ?? "kairo_dev";
-        var pass = Environment.GetEnvironmentVariable("KAIRO_APP_PASSWORD");
-
-        if (string.IsNullOrWhiteSpace(pass))
+        catch (ArgumentException)
         {
-            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var dir = new DirectoryInfo(baseDir);
-            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "infrastructure", "docker", ".env")))
-                dir = dir.Parent;
-
-            if (dir != null)
+            if (explicit_.Contains("Database=kairo_dev", StringComparison.OrdinalIgnoreCase) ||
+                explicit_.Contains("Database=\"kairo_dev\"", StringComparison.OrdinalIgnoreCase))
             {
-                var envPath = Path.Combine(dir.FullName, "infrastructure", "docker", ".env");
-                foreach (var line in File.ReadAllLines(envPath))
-                {
-                    var trimmed = line.Trim();
-                    if (trimmed.StartsWith('#') || !trimmed.Contains('=')) continue;
-                    var parts = trimmed.Split('=', 2);
-                    var k = parts[0].Trim();
-                    var v = parts[1].Trim();
-                    if (k == "KAIRO_APP_USER") user = v;
-                    if (k == "KAIRO_APP_PASSWORD") pass = v;
-                    if (k == "POSTGRES_HOST_PORT" && int.TryParse(v, out var p)) port = p;
-                }
+                throw new InvalidOperationException(
+                    "KAIRO_TEST_POSTGRES_CONNECTION_STRING targets the development database 'kairo_dev'. " +
+                    "Integration tests require an isolated test database (e.g. kairo_test or kairo_fresh_init_test) " +
+                    "and must never mutate kairo_dev.");
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(pass))
-        {
-            return $"Host={host};Port={port};Database=kairo_dev;Username={user};Password={pass};Timeout=3;CommandTimeout=3;";
-        }
-
-        return null;
+        return explicit_;
     }
 }
 
 /// <summary>
-/// Custom xUnit fact attribute that conditionally skips a test when local PostgreSQL
-/// is not reachable or configured. This avoids silent false-positive passes while
-/// preventing unnecessary failures in test environments that lack PostgreSQL.
+/// Custom xUnit fact attribute that conditionally skips integration tests when an isolated
+/// test database is not explicitly configured via KAIRO_TEST_POSTGRES_CONNECTION_STRING.
+/// Never mutates or connects to kairo_dev by default.
 /// </summary>
-public sealed class PostgreSqlFactAttribute : FactAttribute
+public sealed class DedicatedTestPostgresFactAttribute : FactAttribute
 {
-    public PostgreSqlFactAttribute()
+    public DedicatedTestPostgresFactAttribute()
     {
-        var connStr = ProductionHardeningVerificationTests.DiscoverTestPostgresConnectionString();
+        var connStr = ProductionHardeningVerificationTests.DiscoverDedicatedTestPostgresConnectionString();
         if (connStr == null)
         {
-            Skip = "PostgreSQL is not configured. Set KAIRO_TEST_POSTGRES_CONNECTION_STRING or configure infrastructure/docker/.env.";
+            Skip = "Dedicated test database not configured. Set KAIRO_TEST_POSTGRES_CONNECTION_STRING " +
+                   "pointing to an isolated test database (e.g. kairo_test; never kairo_dev or production) to run this integration test.";
         }
     }
 }

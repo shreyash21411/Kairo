@@ -1,6 +1,8 @@
 {
   "summary": {
     "datasetVersion": "1.0.0",
+    "evaluationMethodology": "In-memory mock pipeline evaluation against golden dataset v1.0.0 (single-run in-process latency; not live PostgreSQL/pgvector production latency or network SLA benchmark)",
+    "latencyDisclaimer": "latencyMs values reflect in-process mock execution times for a single test run and should not be used as production latency benchmarks.",
     "evaluatedQueries": 15,
     "meanNDCGAt3": 1,
     "meanNDCGAt5": 1,
@@ -12,7 +14,7 @@
     "totalCrossProjectLeakage": 0,
     "totalExpiredReturned": 0,
     "totalInactiveReturned": 0,
-    "evaluationTimestampUtc": "2026-10-22T09:36:12.8319680Z"
+    "evaluationTimestampUtc": "2026-10-22T10:41:19.0184969Z"
   },
   "queries": [
     {
@@ -45,7 +47,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 45
+      "latencyMs": 29
     },
     {
       "queryId": "Q02_SEMANTIC_PARAPHRASE",
@@ -77,7 +79,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 8
+      "latencyMs": 11
     },
     {
       "queryId": "Q03_HARD_NEGATIVE",
@@ -109,7 +111,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 4
+      "latencyMs": 14
     },
     {
       "queryId": "Q04_TEMPORAL_RECENCY",
@@ -141,7 +143,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 4
+      "latencyMs": 6
     },
     {
       "queryId": "Q05_ACTOR_ISOLATION",
@@ -173,7 +175,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 4
+      "latencyMs": 6
     },
     {
       "queryId": "Q06_PROJECT_ISOLATION_LEAKAGE",
@@ -205,7 +207,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 4
+      "latencyMs": 7
     },
     {
       "queryId": "Q07_CATEGORY_FILTER",
@@ -237,7 +239,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 13
+      "latencyMs": 9
     },
     {
       "queryId": "Q08_METADATA_FILTER",
@@ -267,7 +269,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 4
+      "latencyMs": 9
     },
     {
       "queryId": "Q09_EXPIRED_MEMORY_FILTER",
@@ -299,7 +301,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 3
+      "latencyMs": 6
     },
     {
       "queryId": "Q10_INACTIVE_MEMORY_FILTER",
@@ -331,7 +333,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 3
+      "latencyMs": 27
     },
     {
       "queryId": "Q11_ENTITY_GRAPH",
@@ -363,7 +365,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 4
+      "latencyMs": 9
     },
     {
       "queryId": "Q12_RERANK_BENEFIT",
@@ -395,7 +397,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 3
+      "latencyMs": 6
     },
     {
       "queryId": "Q13_RERANK_NEGATIVE_CONTROL",
@@ -427,7 +429,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 3
+      "latencyMs": 6
     },
     {
       "queryId": "Q14_CONTRADICTORY_FACT",
@@ -459,7 +461,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 3
+      "latencyMs": 6
     },
     {
       "queryId": "Q15_COMPLEX_MULTI_FILTER",
@@ -489,7 +491,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 3
+      "latencyMs": 5
     }
   ]
 }

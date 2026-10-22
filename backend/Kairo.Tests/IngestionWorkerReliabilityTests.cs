@@ -42,42 +42,6 @@ public class IngestionWorkerReliabilityTests
         return new KairoDbContext(options);
     }
 
-    private static string? DiscoverPostgresConnectionString()
-    {
-        var host = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "127.0.0.1";
-        var portStr = Environment.GetEnvironmentVariable("POSTGRES_HOST_PORT") ?? "5433";
-        if (!int.TryParse(portStr, out var port)) port = 5433;
-        var user = Environment.GetEnvironmentVariable("KAIRO_APP_USER") ?? "kairo_dev";
-        var pass = Environment.GetEnvironmentVariable("KAIRO_APP_PASSWORD");
-
-        if (string.IsNullOrWhiteSpace(pass))
-        {
-            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var dir = new DirectoryInfo(baseDir);
-            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "infrastructure", "docker", ".env")))
-                dir = dir.Parent;
-
-            if (dir != null)
-            {
-                var envPath = Path.Combine(dir.FullName, "infrastructure", "docker", ".env");
-                foreach (var line in File.ReadAllLines(envPath))
-                {
-                    var trimmed = line.Trim();
-                    if (trimmed.StartsWith('#') || !trimmed.Contains('=')) continue;
-                    var parts = trimmed.Split('=', 2);
-                    var k = parts[0].Trim();
-                    var v = parts[1].Trim();
-                    if (k == "KAIRO_APP_USER") user = v;
-                    if (k == "KAIRO_APP_PASSWORD") pass = v;
-                    if (k == "POSTGRES_HOST_PORT" && int.TryParse(v, out var p)) port = p;
-                }
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(pass)) return null;
-        return $"Host={host};Port={port};Database=kairo_dev;Username={user};Password={pass};Include Error Detail=true;";
-    }
-
     // ── Test 1: Stale Worker Cannot Complete Job After Reclaim ────────────────
 
     [Fact]
@@ -260,23 +224,52 @@ public class IngestionWorkerReliabilityTests
 
     // ── Test 5: Multiple Workers Cannot Claim Same Active Job in PostgreSQL ───
 
-    [Fact]
+    [DedicatedTestPostgresFact]
     public async Task MultipleWorkers_CannotClaimSameActiveJob_Concurrently_PostgreSql()
     {
-        var connStr = DiscoverPostgresConnectionString();
-        if (connStr == null) return; // Skip if postgres is unreachable
+        var connStr = ProductionHardeningVerificationTests.DiscoverDedicatedTestPostgresConnectionString();
+        Assert.NotNull(connStr);
 
         var options = new DbContextOptionsBuilder<KairoDbContext>()
             .UseNpgsql(connStr, o => o.UseVector())
             .Options;
 
         await using var seedDb = new KairoDbContext(options);
-        if (!await seedDb.Database.CanConnectAsync()) return;
+        var canConnect = await seedDb.Database.CanConnectAsync();
+        Assert.True(canConnect, "Configured dedicated test database is unreachable.");
+
+        Users? createdUser = null;
+        Projects? createdProject = null;
 
         var user = await seedDb.Users.FirstOrDefaultAsync();
-        if (user == null) return;
+        if (user == null)
+        {
+            user = new Users
+            {
+                Email = $"worker_conc_{Guid.NewGuid():N}@voidzone.internal",
+                AccountStatus = 1,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            seedDb.Users.Add(user);
+            await seedDb.SaveChangesAsync();
+            createdUser = user;
+        }
+
         var project = await seedDb.Projects.FirstOrDefaultAsync(p => p.UserId == user.UserId);
-        if (project == null) return;
+        if (project == null)
+        {
+            project = new Projects
+            {
+                UserId = user.UserId,
+                Name = "Worker Conc Project",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            seedDb.Projects.Add(project);
+            await seedDb.SaveChangesAsync();
+            createdProject = project;
+        }
 
         var now = DateTime.UtcNow;
         var tag = $"ConcTest_{Guid.NewGuid():N}";
@@ -344,6 +337,19 @@ public class IngestionWorkerReliabilityTests
                 .Where(j => j.JobId == job1Id || j.JobId == job2Id)
                 .ToListAsync();
             cleanDb.MemoryIngestionJobs.RemoveRange(toRemove);
+
+            if (createdProject != null)
+            {
+                var proj = await cleanDb.Projects.FindAsync(createdProject.ProjectId);
+                if (proj != null) cleanDb.Projects.Remove(proj);
+            }
+
+            if (createdUser != null)
+            {
+                var usr = await cleanDb.Users.FindAsync(createdUser.UserId);
+                if (usr != null) cleanDb.Users.Remove(usr);
+            }
+
             await cleanDb.SaveChangesAsync();
         }
     }

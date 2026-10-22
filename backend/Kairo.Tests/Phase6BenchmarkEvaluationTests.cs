@@ -24,6 +24,14 @@ namespace Kairo.Tests;
 /// Phase 6.2: Benchmark and Evaluation Test Suite.
 /// Runs reproducible, deterministic retrieval quality, filtering, isolation, and reranking
 /// evaluations against the versioned golden dataset (v1.0.0).
+/// <para>
+/// NOTE: This evaluation operates against an in-memory mock pipeline (mock repositories, mock embedder,
+/// mock reranker, and in-memory scoring services) to evaluate retrieval algorithms, ranking accuracy (NDCG/MRR),
+/// tenant isolation, and filtering logic deterministically.
+/// Latency measurements (latencyMs) recorded in benchmark_results_v1.json represent single-run in-process mock
+/// execution durations and must NOT be interpreted as real PostgreSQL/pgvector production latency, network SLA,
+/// or disk I/O performance benchmarks.
+/// </para>
 /// Generates machine-readable benchmark results to docs/phase6/benchmark/benchmark_results_v1.json.
 /// </summary>
 public class Phase6BenchmarkEvaluationTests
@@ -189,6 +197,11 @@ public class Phase6BenchmarkEvaluationTests
 
     #region Test Execution & Acceptance Checks
 
+    /// <summary>
+    /// Executes the full golden dataset evaluation against the mock retrieval pipeline.
+    /// Evaluates NDCG@3, NDCG@5, MRR, Recall@3, Precision, tenant isolation, and expiry enforcement.
+    /// Note: Recorded latencyMs values reflect single-run in-memory pipeline execution times, not live DB latency.
+    /// </summary>
     [Fact]
     public async Task Benchmark_ExecuteEndToEndRetrievalEvaluation_MeetsQualityThresholds()
     {
@@ -484,6 +497,8 @@ public class Phase6BenchmarkEvaluationTests
         var summary = new
         {
             datasetVersion = dataset.DatasetVersion,
+            evaluationMethodology = "In-memory mock pipeline evaluation against golden dataset v1.0.0 (single-run in-process latency; not live PostgreSQL/pgvector production latency or network SLA benchmark)",
+            latencyDisclaimer = "latencyMs values reflect in-process mock execution times for a single test run and should not be used as production latency benchmarks.",
             evaluatedQueries = dataset.Queries.Count,
             meanNDCGAt3 = Math.Round(ndcg3Scores.Average(), 4),
             meanNDCGAt5 = Math.Round(ndcg5Scores.Average(), 4),

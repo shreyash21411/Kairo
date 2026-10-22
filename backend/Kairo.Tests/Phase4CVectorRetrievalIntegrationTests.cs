@@ -38,7 +38,8 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _pgCreds = DiscoverPostgresCredentials();
-        if (_pgCreds == null) return;
+        if (_pgCreds == null)
+            throw new InvalidOperationException("PostgreSQL credentials could not be discovered for kairo_vector_test.");
 
         var connString = BuildConnectionString(_pgCreds.Value, VectorTestDb);
 
@@ -53,7 +54,7 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         {
             _context.Dispose();
             _context = null;
-            return;
+            throw new InvalidOperationException("Could not connect to kairo_vector_test database.");
         }
 
         _repo = new MemoryRepository(_context);
@@ -150,7 +151,22 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private bool IsSkipped => _context == null || _repo == null;
+    internal static bool CanConnectToVectorTestDb()
+    {
+        var creds = DiscoverPostgresCredentials();
+        if (creds == null) return false;
+        try
+        {
+            var connStr = BuildConnectionString(creds.Value, VectorTestDb);
+            using var conn = new NpgsqlConnection(connStr);
+            conn.Open();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private async Task<long> SeedMemoryWithEmbeddingAsync(
         string content,
@@ -208,10 +224,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
 
     // ── Tests ─────────────────────────────────────────────────────────────────
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_ReturnsTopKResults()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims, 0.5f);
@@ -233,10 +250,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.True(results[0].Similarity > 0.95, $"Top result similarity too low: {results[0].Similarity:F6}");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_ExcludesExpiredEmbeddings()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -253,10 +271,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.Contains(results, r => r.Content == "Active memory");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_ExcludesInactiveMemories()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -271,10 +290,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.DoesNotContain(results, r => r.Content == "Inactive memory");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_ExcludesDimensionMismatch()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -289,10 +309,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.Contains(results, r => r.Content == "Correct dims");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_ExcludesModelMismatch()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -312,10 +333,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.Contains(caseInsensitiveResults, r => r.Content == "Matching model");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_KnownDistinguishableVectors_RanksAccurately()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         // Distinct, known vectors in 3D:
         // Query: [1.0, 0.0, 0.0]
@@ -366,18 +388,19 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.True(Math.Abs(top5[4].Similarity - (-1.0)) < 0.001, $"Expected ~-1.0, got {top5[4].Similarity}");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_UsesNativeDatabaseProvider()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
 
         Assert.True(_context!.Database.IsNpgsql(), "Test database should be PostgreSQL");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_SimilarityRankingIsDeterministic()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims, 0.3f);
@@ -395,10 +418,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
             results2.Select(r => Math.Round(r.Similarity, 6)));
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_IsolatedByUserId()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -412,10 +436,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.DoesNotContain(results, r => r.Content == "My memory");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_EmptyResultsWhenNoMatch()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -428,10 +453,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.Empty(results);
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_TopKLimitRespected()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -445,10 +471,11 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
         Assert.True(results.Count <= 3, $"Expected at most 3 results, got {results.Count}");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_PostgreSql_SimilarityIsInValidRange()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_context);
+        Assert.NotNull(_repo);
 
         const int dims = 8;
         var queryVec = MakeVector(dims);
@@ -464,28 +491,28 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
                 $"Similarity {r.Similarity:F6} out of [-1, 1] for '{r.Content}'");
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_ArgumentValidation_ThrowsOnEmptyVector()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_repo);
 
         await Assert.ThrowsAsync<ArgumentException>(async () =>
             await _repo!.SearchSimilarEmbeddingsAsync(_userId, Array.Empty<float>(), "mistral-embed", topK: 5));
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_ArgumentValidation_ThrowsOnZeroTopK()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_repo);
 
         await Assert.ThrowsAsync<ArgumentException>(async () =>
             await _repo!.SearchSimilarEmbeddingsAsync(_userId, MakeVector(8), "mistral-embed", topK: 0));
     }
 
-    [Fact]
+    [PgVectorTestDatabaseFact]
     public async Task SearchSimilarEmbeddingsAsync_ArgumentValidation_ThrowsOnNonFiniteVector()
     {
-        if (IsSkipped) return;
+        Assert.NotNull(_repo);
 
         var nanVector = new float[] { 0.1f, float.NaN, 0.3f };
         await Assert.ThrowsAsync<ArgumentException>(async () =>
@@ -548,6 +575,22 @@ public class Phase4CVectorRetrievalIntegrationTests : IAsyncLifetime
     private static string BuildConnectionString(
         (string Host, int Port, string Username, string Password) creds, string database)
         => $"Host={creds.Host};Port={creds.Port};Database={database};Username={creds.Username};Password={creds.Password};";
+}
+
+/// <summary>
+/// Custom xUnit fact attribute that conditionally skips vector retrieval integration tests
+/// when the dedicated kairo_vector_test PostgreSQL database is unreachable.
+/// Prevents false-positive test passes from silent early returns.
+/// </summary>
+public sealed class PgVectorTestDatabaseFactAttribute : FactAttribute
+{
+    public PgVectorTestDatabaseFactAttribute()
+    {
+        if (!Phase4CVectorRetrievalIntegrationTests.CanConnectToVectorTestDb())
+        {
+            Skip = "kairo_vector_test PostgreSQL database is not reachable. Ensure PostgreSQL is running on port 5433 with kairo_vector_test initialized.";
+        }
+    }
 }
 
 /// <summary>

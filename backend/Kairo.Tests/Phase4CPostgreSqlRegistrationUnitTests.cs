@@ -156,15 +156,11 @@ public class Phase4CPostgreSqlRegistrationUnitTests
     // Real PostgreSQL Connection Tests (against isolated test database)
     // ─────────────────────────────────────────────────────────────────────────
 
-    [Fact]
+    [ProviderTestPostgresFact]
     public async Task RealPostgreSqlContainer_CanConnect_AndQueryPgVector()
     {
         var credentials = DiscoverPostgresCredentials();
-        if (credentials == null)
-        {
-            // Container or credentials not accessible in this environment
-            return;
-        }
+        Assert.NotNull(credentials);
 
         var connString = $"Host={credentials.Value.Host};Port={credentials.Value.Port};Database={credentials.Value.Database};Username={credentials.Value.Username};Password={credentials.Value.Password};";
 
@@ -201,14 +197,11 @@ public class Phase4CPostgreSqlRegistrationUnitTests
         Assert.False(string.IsNullOrWhiteSpace(extVersion));
     }
 
-    [Fact]
+    [ProviderTestPostgresFact]
     public async Task RealPostgreSqlContainer_InvalidPassword_FailsFast()
     {
         var credentials = DiscoverPostgresCredentials();
-        if (credentials == null)
-        {
-            return;
-        }
+        Assert.NotNull(credentials);
 
         // Deliberately incorrect password
         var badConnString = $"Host={credentials.Value.Host};Port={credentials.Value.Port};Database={credentials.Value.Database};Username={credentials.Value.Username};Password=invalid_wrong_password;Timeout=3;";
@@ -227,6 +220,23 @@ public class Phase4CPostgreSqlRegistrationUnitTests
     // ─────────────────────────────────────────────────────────────────────────
     // Helper: Dynamic credential discovery without hardcoded secrets
     // ─────────────────────────────────────────────────────────────────────────
+
+    internal static bool CanConnectToProviderTestDb()
+    {
+        var creds = DiscoverPostgresCredentials();
+        if (creds == null) return false;
+        try
+        {
+            var connStr = $"Host={creds.Value.Host};Port={creds.Value.Port};Database={creds.Value.Database};Username={creds.Value.Username};Password={creds.Value.Password};";
+            using var conn = new NpgsqlConnection(connStr);
+            conn.Open();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private static (string Host, int Port, string Database, string Username, string Password)? DiscoverPostgresCredentials()
     {
@@ -279,5 +289,21 @@ public class Phase4CPostgreSqlRegistrationUnitTests
         }
 
         return null;
+    }
+}
+
+/// <summary>
+/// Custom xUnit fact attribute that conditionally skips provider tests
+/// when the isolated kairo_provider_test database is unreachable.
+/// Prevents false-positive test passes from silent early returns.
+/// </summary>
+public sealed class ProviderTestPostgresFactAttribute : FactAttribute
+{
+    public ProviderTestPostgresFactAttribute()
+    {
+        if (!Phase4CPostgreSqlRegistrationUnitTests.CanConnectToProviderTestDb())
+        {
+            Skip = "kairo_provider_test PostgreSQL database is not reachable. Ensure PostgreSQL is running on port 5433 with kairo_provider_test initialized.";
+        }
     }
 }
