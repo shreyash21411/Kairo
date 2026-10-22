@@ -130,14 +130,41 @@ public class Phase6BenchmarkEvaluationTests
 
     #region Dataset Loader
 
+    /// <summary>
+    /// Resolves the repository root by walking up from the test binary's base directory
+    /// until a directory containing docs/phase6/benchmark is found.
+    /// Falls back to the test output directory when not found (e.g., CI without the docs tree).
+    /// This avoids any machine-specific absolute paths.
+    /// </summary>
+    private static string? FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        while (dir != null)
+        {
+            if (Directory.Exists(Path.Combine(dir.FullName, "docs", "phase6", "benchmark")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+        return null;
+    }
+
     private static BenchmarkDataset LoadDataset()
     {
-        var searchPaths = new[]
+        var repoRoot = FindRepoRoot();
+
+        var searchPaths = new List<string>
         {
+            // Primary: embedded in test output (via Copy to Output Directory)
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Evaluation", "Datasets", "v1_retrieval_benchmark_dataset_v1.json"),
-            Path.Combine(Directory.GetCurrentDirectory(), "docs", "phase6", "benchmark", "v1_retrieval_benchmark_dataset_v1.json"),
-            Path.Combine("F:\\AI-Memory-Platform", "docs", "phase6", "benchmark", "v1_retrieval_benchmark_dataset_v1.json")
         };
+
+        if (repoRoot != null)
+        {
+            searchPaths.Add(Path.Combine(repoRoot, "docs", "phase6", "benchmark", "v1_retrieval_benchmark_dataset_v1.json"));
+        }
+
+        // Also try current working directory in case the runner sets it to the repo root.
+        searchPaths.Add(Path.Combine(Directory.GetCurrentDirectory(), "docs", "phase6", "benchmark", "v1_retrieval_benchmark_dataset_v1.json"));
 
         foreach (var p in searchPaths)
         {
@@ -152,7 +179,10 @@ public class Phase6BenchmarkEvaluationTests
             }
         }
 
-        throw new FileNotFoundException("Benchmark dataset v1_retrieval_benchmark_dataset_v1.json could not be located.");
+        throw new FileNotFoundException(
+            "Benchmark dataset v1_retrieval_benchmark_dataset_v1.json could not be located. " +
+            "Ensure the file exists under docs/phase6/benchmark/ in the repository root, " +
+            "or add it to the test project as 'Copy to Output Directory'.");
     }
 
     #endregion
@@ -474,11 +504,16 @@ public class Phase6BenchmarkEvaluationTests
             queries = queryResults
         };
 
-        // Write machine-readable output to docs/phase6/benchmark/benchmark_results_v1.json
-        var outDir = Path.Combine("F:\\AI-Memory-Platform", "docs", "phase6", "benchmark");
+        // Write machine-readable output to docs/phase6/benchmark/benchmark_results_v1.json.
+        // Path is resolved portably from the repository root; never uses a machine-specific absolute path.
+        var repoRoot = FindRepoRoot();
+        var outDir = repoRoot != null
+            ? Path.Combine(repoRoot, "docs", "phase6", "benchmark")
+            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "benchmark_output"); // CI fallback
         if (!Directory.Exists(outDir)) Directory.CreateDirectory(outDir);
         var outFile = Path.Combine(outDir, "benchmark_results_v1.json");
         File.WriteAllText(outFile, JsonSerializer.Serialize(outputPayload, new JsonSerializerOptions { WriteIndented = true }));
+        _output.WriteLine($"Benchmark results written to: {outFile}");
 
         _output.WriteLine("=================================================================");
         _output.WriteLine("PHASE 6.2 BENCHMARK EVALUATION SUMMARY (v1.0.0)");

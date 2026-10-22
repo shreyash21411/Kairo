@@ -230,10 +230,10 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.EntityType).HasMaxLength(64);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Project).WithMany(p => p.Entities)
                 .HasForeignKey(d => d.ProjectId)
@@ -252,7 +252,7 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(3)
-                .HasDefaultValueSql("(sysutcdatetime())");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Memory).WithMany(p => p.MemoryEntities)
                 .HasForeignKey(d => d.MemoryId)
@@ -282,8 +282,8 @@ public partial class KairoDbContext : DbContext
 
             entity.Property(e => e.RelationshipType).HasMaxLength(128);
             entity.Property(e => e.Confidence).HasDefaultValue(1.0);
-            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
-            entity.Property(e => e.UpdatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasPrecision(3).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Project).WithMany()
                 .HasForeignKey(d => d.ProjectId)
@@ -316,7 +316,7 @@ public partial class KairoDbContext : DbContext
             entity.HasIndex(e => new { e.RelationshipId, e.MemoryId },
                 "UX_RelationshipEvidence_Relationship_Memory").IsUnique();
 
-            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Relationship).WithMany(p => p.Evidence)
                 .HasForeignKey(d => d.RelationshipId)
@@ -340,7 +340,7 @@ public partial class KairoDbContext : DbContext
             entity.HasIndex(e => new { e.MemoryId, e.Category }, "UX_MemoryCategories_Memory_Category").IsUnique();
 
             entity.Property(e => e.Category).HasMaxLength(64);
-            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(d => d.Memory).WithMany(p => p.MemoryCategories)
                 .HasForeignKey(d => d.MemoryId)
@@ -496,7 +496,7 @@ public partial class KairoDbContext : DbContext
             entity.Property(e => e.LastError).HasMaxLength(2048);
             entity.Property(e => e.AvailableAt).HasPrecision(3);
             entity.Property(e => e.LockedUntil).HasPrecision(3);
-            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.CreatedAt).HasPrecision(3).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.CompletedAt).HasPrecision(3);
 
             entity.HasOne(d => d.Project).WithMany()

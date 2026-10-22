@@ -26,6 +26,10 @@ using System.Threading.RateLimiting;
 using Kairo.API.Configuration;
 using Kairo.API.Middleware; // Phase 5.8
 using System.Diagnostics.Metrics; // Phase 5.8.4
+using Kairo.API.Health;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.Net;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -126,8 +130,62 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IMemoryScopeRepository, MemoryScopeRepository>();
 builder.Services.AddScoped<IScopeResolutionService, ScopeResolutionService>();
 
-// Health check service registration
-builder.Services.AddHealthChecks();
+// Health check service registration (Liveness + PostgreSQL readiness)
+builder.Services.AddHealthChecks()
+    .AddCheck<KairoDatabaseHealthCheck>("postgresql", tags: new[] { "ready" });
+
+// ── Forwarded Headers ─────────────────────────────────────────────────────
+// SECURITY NOTE: ForwardedHeaders:TrustAllNetworks must never be enabled in
+// production. It clears all known-proxy lists, allowing any client to spoof
+// X-Forwarded-For/Proto. Use KnownProxies or KnownNetworks with exact IPs.
+// Deployment operators must configure their actual load-balancer addresses.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    var forwardedConfig = builder.Configuration.GetSection("ForwardedHeaders");
+
+    // Validate ForwardLimit before applying it — reject ≤0 values at startup.
+    var forwardLimit = forwardedConfig.GetValue<int?>("ForwardLimit");
+    if (forwardLimit.HasValue)
+    {
+        if (forwardLimit.Value <= 0)
+        {
+            throw new InvalidOperationException(
+                $"ForwardedHeaders:ForwardLimit must be a positive integer. Got: {forwardLimit.Value}. " +
+                "Set it to 1 (single proxy) or higher. The default is 1.");
+        }
+        options.ForwardLimit = forwardLimit.Value;
+    }
+
+    var trustAll = forwardedConfig.GetValue<bool>("TrustAllNetworks", false);
+    if (trustAll)
+    {
+        // WARNING: TrustAllNetworks disables all IP filtering. For local development only.
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+    else
+    {
+        var knownProxies = forwardedConfig.GetSection("KnownProxies").Get<string[]>() ?? Array.Empty<string>();
+        foreach (var proxy in knownProxies)
+        {
+            if (IPAddress.TryParse(proxy, out var ip))
+            {
+                options.KnownProxies.Add(ip);
+            }
+        }
+
+        var knownNetworks = forwardedConfig.GetSection("KnownNetworks").Get<string[]>() ?? Array.Empty<string>();
+        foreach (var network in knownNetworks)
+        {
+            if (System.Net.IPNetwork.TryParse(network, out var ipNet))
+            {
+                options.KnownIPNetworks.Add(ipNet);
+            }
+        }
+    }
+});
 
 // ── Phase 4B: Provider Abstraction Layer ──────────────────────────────────────
 builder.Services.Configure<ProviderOptions>(
@@ -339,6 +397,10 @@ app.UseExceptionHandler(errApp =>
 });
 
 
+// ── Forwarded Headers (AUTH-PROXY) ──────────────────────────────────────────
+// Must execute at the very top of the pipeline before HTTPS redirection, CORS, and rate limiting
+app.UseForwardedHeaders();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
@@ -377,8 +439,21 @@ if (app.Environment.IsDevelopment())
 
 app.MapControllers();
 
-// Health check endpoint for hosting orchestrator (Render, Docker, Kubernetes)
-app.MapHealthChecks("/health").AllowAnonymous();
+// Health check endpoints for hosting orchestrator (Render, Docker, Kubernetes)
+// 1. Process liveness probe: returns 200 if process is up and serving requests
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+}).AllowAnonymous();
+
+// 2. Database readiness probe: returns 200 if PostgreSQL is reachable, 503 if unreachable
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+}).AllowAnonymous();
+
+// 3. Composite health endpoint: runs all checks (including database readiness) for default probes
+app.MapHealthChecks("/health", new HealthCheckOptions()).AllowAnonymous();
 
 
 // ── Phase 9: MCP endpoint ─────────────────────────────────────────────────
