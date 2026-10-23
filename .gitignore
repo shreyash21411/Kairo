@@ -37,3 +37,9 @@ scratch/
 .pytest_cache/
 .next/
 *.tsbuildinfo
+
+# Test results & code coverage
+[Tt]est[Rr]esults/
+*.trx
+*.coverage
+*.coveragexml

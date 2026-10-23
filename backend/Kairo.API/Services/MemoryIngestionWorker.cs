@@ -7,6 +7,7 @@ using Kairo.Application.DTOs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Kairo.API.Security;
 
 namespace Kairo.API.Services;
 
@@ -91,6 +92,10 @@ public class MemoryIngestionWorker : BackgroundService
                         _logger.LogWarning("[MemoryIngestionWorker] Skipping job {JobId}: lease expired before processing started", job.JobId);
                         continue;
                     }
+
+                    // Ensure the ambient ApiKeyContext reflects the job's captured tenant identity
+                    var apiKeyContext = scope.ServiceProvider.GetService<ApiKeyContext>();
+                    apiKeyContext?.SetContext(job.UserId, job.ProjectId, 0);
 
                     await ProcessJobWithLeaseRenewalAsync(jobService, job, stoppingToken);
                 }

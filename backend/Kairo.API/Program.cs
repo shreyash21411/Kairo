@@ -466,3 +466,8 @@ app.MapMcp("/mcp")
 
 
 app.Run();
+
+// Make Program accessible to WebApplicationFactory<Program> in the test project.
+// This is a standard .NET convention for top-level statement programs — it adds
+// zero runtime behaviour and is only compiled away in non-test builds.
+public partial class Program { }
