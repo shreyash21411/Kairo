@@ -19,25 +19,25 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Kairo — Persistent Memory for AI",
-    template: "%s | Kairo",
+    default: "VOIDZONE — Persistent Memory for AI",
+    template: "%s | VOIDZONE",
   },
   description:
-    "Kairo provides persistent memory infrastructure for AI applications and agents. Create, retrieve, and semantically search memories that outlast any single session.",
+    "VOIDZONE provides persistent memory infrastructure for AI applications and agents. Create, retrieve, and semantically search memories that outlast any single session.",
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://kairo.ai"
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://voidzone-frontend.vercel.app"
   ),
   openGraph: {
     type: "website",
     locale: "en_US",
-    siteName: "Kairo",
-    title: "Kairo — Persistent Memory for AI",
+    siteName: "VOIDZONE",
+    title: "VOIDZONE — Persistent Memory for AI",
     description:
       "Persistent memory infrastructure for AI applications and agents.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Kairo — Persistent Memory for AI",
+    title: "VOIDZONE — Persistent Memory for AI",
     description:
       "Persistent memory infrastructure for AI applications and agents.",
   },

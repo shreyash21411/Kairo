@@ -456,22 +456,52 @@ export default function MemoriesPage() {
   const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
   const [confirmDeactivateId, setConfirmDeactivateId] = useState<number | null>(null);
 
-  const fetchMemories = useCallback(async () => {
-    if (!sessionApiKey) { setMemories([]); return; }
+  const fetchMemories = useCallback(async (signal?: AbortSignal) => {
+    if (!sessionApiKey || !selectedProject) {
+      setMemories([]);
+      return;
+    }
+    const capturedProjectId = selectedProject.projectId;
+    const capturedKey = sessionApiKey;
+
     setIsLoading(true);
     setError(null);
     try {
-      const data = await memoriesApi.list(sessionApiKey);
-      setMemories(data.memories || []);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load project memories.");
-      setMemories([]);
+      const data = await memoriesApi.list(capturedKey, signal);
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setMemories(data.memories || []);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setError(err instanceof ApiError ? err.message : "Failed to load project memories.");
+        setMemories([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setIsLoading(false);
+      }
     }
-  }, [sessionApiKey]);
+  }, [sessionApiKey, selectedProject]);
 
-  useEffect(() => { fetchMemories(); }, [fetchMemories, selectedProject]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setInspectingMemory(null);
+    setEditingMemory(null);
+    fetchMemories(controller.signal);
+    return () => {
+      controller.abort();
+    };
+  }, [fetchMemories, selectedProject?.projectId]);
 
   const handleInspect = async (memoryId: number) => {
     if (!sessionApiKey) return;
@@ -539,7 +569,7 @@ export default function MemoriesPage() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={fetchMemories}
+              onClick={() => { fetchMemories(); }}
               disabled={isLoading}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
               title="Refresh"
@@ -677,7 +707,7 @@ export default function MemoriesPage() {
               {memories.length} active record{memories.length !== 1 ? "s" : ""}
             </span>
             <span className="text-[10px] font-mono text-muted-foreground/50 hidden sm:block">
-              GET /api/v1/memories
+              Active Memory Records · Synchronized
             </span>
           </div>
         </div>

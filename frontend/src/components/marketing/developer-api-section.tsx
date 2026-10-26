@@ -37,8 +37,8 @@ const ENDPOINTS: ApiEndpoint[] = [
   "createdAt": "2026-09-17T22:30:00Z",
   "isActive": true
 }`,
-    curlSnippet: `curl -X POST https://api.kairo.dev/api/v1/memories \\
-  -H "Authorization: Bearer kairo_live_sec_..." \\
+    curlSnippet: `curl -X POST https://api.voidzone.dev/api/v1/memories \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "content": "Prefers PostgreSQL for new projects",
@@ -74,8 +74,8 @@ const ENDPOINTS: ApiEndpoint[] = [
     "createdAt": "2026-09-16T18:45:00Z"
   }
 ]`,
-    curlSnippet: `curl -X POST https://api.kairo.dev/api/v1/memories/search \\
-  -H "Authorization: Bearer kairo_live_sec_..." \\
+    curlSnippet: `curl -X POST https://api.voidzone.dev/api/v1/memories/search \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "query": "What database does this developer prefer?",
@@ -99,8 +99,8 @@ const ENDPOINTS: ApiEndpoint[] = [
     "isActive": true
   }
 ]`,
-    curlSnippet: `curl -X GET "https://api.kairo.dev/api/v1/memories?actorId=user_123" \\
-  -H "Authorization: Bearer kairo_live_sec_..."`,
+    curlSnippet: `curl -X GET "https://api.voidzone.dev/api/v1/memories?actorId=user_123" \\
+  -H "Authorization: Bearer vz_live_sec_..."`,
   },
 ]
 

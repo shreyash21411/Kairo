@@ -14,7 +14,7 @@ import { apiKeyRequest } from "./client";
 export const memoriesApi = {
   /**
    * Creates a new memory.
-   * POST /api/v1/memories (Scheme: KairoApiKey)
+   * POST /api/v1/memories (Scheme: VoidzoneApiKey)
    *
    * Note on return type:
    * Status 201 Created: returns MemoryResponse
@@ -47,7 +47,7 @@ export const memoriesApi = {
 
   /**
    * Retrieves a single memory by ID.
-   * GET /api/v1/memories/{memoryId} (Scheme: KairoApiKey)
+   * GET /api/v1/memories/{memoryId} (Scheme: VoidzoneApiKey)
    */
   async getById(apiKey: string, memoryId: number): Promise<MemoryResponse> {
     const res = await apiKeyRequest<MemoryResponse>(
@@ -62,19 +62,20 @@ export const memoriesApi = {
 
   /**
    * Lists all active memories for the authenticated project.
-   * GET /api/v1/memories (Scheme: KairoApiKey)
+   * GET /api/v1/memories (Scheme: VoidzoneApiKey)
    * NOTE: The backend takes NO parameters (no actorId parameter exists).
    */
-  async list(apiKey: string): Promise<ListMemoriesResponse> {
+  async list(apiKey: string, signal?: AbortSignal): Promise<ListMemoriesResponse> {
     const res = await apiKeyRequest<ListMemoriesResponse>("/api/v1/memories", apiKey, {
       method: "GET",
+      signal,
     });
     return res.data;
   },
 
   /**
    * Updates a memory content and memoryType.
-   * PUT /api/v1/memories/{memoryId} (Scheme: KairoApiKey)
+   * PUT /api/v1/memories/{memoryId} (Scheme: VoidzoneApiKey)
    */
   async update(
     apiKey: string,
@@ -94,7 +95,7 @@ export const memoriesApi = {
 
   /**
    * Soft-deactivates a memory.
-   * DELETE /api/v1/memories/{memoryId} (Scheme: KairoApiKey)
+   * DELETE /api/v1/memories/{memoryId} (Scheme: VoidzoneApiKey)
    */
   async delete(apiKey: string, memoryId: number): Promise<DeleteMemoryResponse> {
     const res = await apiKeyRequest<DeleteMemoryResponse>(
@@ -109,11 +110,12 @@ export const memoriesApi = {
 
   /**
    * Performs semantic vector search scoped to the project and actorId.
-   * POST /api/v1/memories/search (Scheme: KairoApiKey)
+   * POST /api/v1/memories/search (Scheme: VoidzoneApiKey)
    */
   async search(
     apiKey: string,
-    data: MemorySearchRequest
+    data: MemorySearchRequest,
+    signal?: AbortSignal
   ): Promise<MemorySearchResponse> {
     const res = await apiKeyRequest<MemorySearchResponse>(
       "/api/v1/memories/search",
@@ -121,6 +123,7 @@ export const memoriesApi = {
       {
         method: "POST",
         body: JSON.stringify(data),
+        signal,
       }
     );
     return res.data;

@@ -521,6 +521,30 @@ public sealed class VoidzoneV1LiveHttpAcceptanceTests : IAsyncLifetime
         delReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", keyA);
         var delRes = await _client.SendAsync(delReq);
         Assert.Equal(HttpStatusCode.NotFound, delRes.StatusCode);
+
+        // 7. Cross-Project List: Key A lists memories -> contains memA, does NOT contain memB
+        using var listReqA = new HttpRequestMessage(HttpMethod.Get, "/api/v1/memories");
+        listReqA.Headers.Authorization = new AuthenticationHeaderValue("Bearer", keyA);
+        var listResA = await _client.SendAsync(listReqA);
+        Assert.Equal(HttpStatusCode.OK, listResA.StatusCode);
+        using var listDataA = await listResA.Content.ReadFromJsonAsync<JsonDocument>(JsonOptions);
+        Assert.NotNull(listDataA);
+        var memIdsA = listDataA.RootElement.GetProperty("memories").EnumerateArray()
+            .Select(m => m.GetProperty("memoryId").GetInt64()).ToList();
+        Assert.Contains(memA.MemoryId, memIdsA);
+        Assert.DoesNotContain(memB.MemoryId, memIdsA);
+
+        // 8. Cross-Project List: Key B lists memories -> contains memB, does NOT contain memA
+        using var listReqB = new HttpRequestMessage(HttpMethod.Get, "/api/v1/memories");
+        listReqB.Headers.Authorization = new AuthenticationHeaderValue("Bearer", keyB);
+        var listResB = await _client.SendAsync(listReqB);
+        Assert.Equal(HttpStatusCode.OK, listResB.StatusCode);
+        using var listDataB = await listResB.Content.ReadFromJsonAsync<JsonDocument>(JsonOptions);
+        Assert.NotNull(listDataB);
+        var memIdsB = listDataB.RootElement.GetProperty("memories").EnumerateArray()
+            .Select(m => m.GetProperty("memoryId").GetInt64()).ToList();
+        Assert.Contains(memB.MemoryId, memIdsB);
+        Assert.DoesNotContain(memA.MemoryId, memIdsB);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -777,5 +801,105 @@ public sealed class VoidzoneV1LiveHttpAcceptanceTests : IAsyncLifetime
         Assert.DoesNotContain("Host=", errorBody, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Password=", errorBody, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("kairo_fresh_init_test", errorBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scenario 10: Server-Side API Key Validation and Project Ownership Binding
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Scenario10_ApiKeyValidationAndOwnershipVerification_EnforcesProjectBinding()
+    {
+        var userA = await RegisterAndLoginAsync("key_val_a");
+        var userB = await RegisterAndLoginAsync("key_val_b");
+
+        // User A creates Project Alpha and Project Beta
+        var projA = await CreateProjectAsync(userA.Token, "Project Alpha Validation");
+        var projB = await CreateProjectAsync(userA.Token, "Project Beta Validation");
+
+        // User A generates Key A for Project Alpha and Key B for Project Beta
+        var keyA = await CreateApiKeyAsync(userA.Token, projA.ProjectId, "Alpha Key");
+        var keyB = await CreateApiKeyAsync(userA.Token, projB.ProjectId, "Beta Key");
+
+        // 1. User A validates Key A via POST /api/v1/api-keys/validate -> returns Project Alpha ID
+        using var validateReqA = new HttpRequestMessage(HttpMethod.Post, "/api/v1/api-keys/validate")
+        {
+            Content = JsonContent.Create(new ValidateApiKeyRequest { ApiKey = keyA })
+        };
+        validateReqA.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userA.Token);
+        var validateResA = await _client.SendAsync(validateReqA);
+        Assert.Equal(HttpStatusCode.OK, validateResA.StatusCode);
+        var valResultA = await validateResA.Content.ReadFromJsonAsync<ValidateApiKeyResponse>(JsonOptions);
+        Assert.NotNull(valResultA);
+        Assert.True(valResultA.IsValid);
+        Assert.Equal(projA.ProjectId, valResultA.ProjectId);
+
+        // 2. User A validates Key B via POST /api/v1/api-keys/validate -> returns Project Beta ID
+        using var validateReqB = new HttpRequestMessage(HttpMethod.Post, "/api/v1/api-keys/validate")
+        {
+            Content = JsonContent.Create(new ValidateApiKeyRequest { ApiKey = keyB })
+        };
+        validateReqB.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userA.Token);
+        var validateResB = await _client.SendAsync(validateReqB);
+        Assert.Equal(HttpStatusCode.OK, validateResB.StatusCode);
+        var valResultB = await validateResB.Content.ReadFromJsonAsync<ValidateApiKeyResponse>(JsonOptions);
+        Assert.NotNull(valResultB);
+        Assert.True(valResultB.IsValid);
+        Assert.Equal(projB.ProjectId, valResultB.ProjectId);
+
+        // 3. User B attempts to validate User A's key -> rejected with IsValid = false (key does not belong to User B)
+        using var foreignValReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/api-keys/validate")
+        {
+            Content = JsonContent.Create(new ValidateApiKeyRequest { ApiKey = keyA })
+        };
+        foreignValReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userB.Token);
+        var foreignValRes = await _client.SendAsync(foreignValReq);
+        Assert.Equal(HttpStatusCode.OK, foreignValRes.StatusCode);
+        var foreignValResult = await foreignValRes.Content.ReadFromJsonAsync<ValidateApiKeyResponse>(JsonOptions);
+        Assert.NotNull(foreignValResult);
+        Assert.False(foreignValResult.IsValid);
+
+        // 4. Validate malformed / invalid key -> returns IsValid = false
+        using var malformedReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/api-keys/validate")
+        {
+            Content = JsonContent.Create(new ValidateApiKeyRequest { ApiKey = "kairo_live_invalid_garbage_key" })
+        };
+        malformedReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userA.Token);
+        var malformedRes = await _client.SendAsync(malformedReq);
+        Assert.Equal(HttpStatusCode.OK, malformedRes.StatusCode);
+        var malformedResult = await malformedRes.Content.ReadFromJsonAsync<ValidateApiKeyResponse>(JsonOptions);
+        Assert.NotNull(malformedResult);
+        Assert.False(malformedResult.IsValid);
+
+        // 5. Verify Key A using GET /api/v1/api-keys/verify (ApiKey authenticated)
+        using var verifyReqA = new HttpRequestMessage(HttpMethod.Get, "/api/v1/api-keys/verify");
+        verifyReqA.Headers.Authorization = new AuthenticationHeaderValue("Bearer", keyA);
+        var verifyResA = await _client.SendAsync(verifyReqA);
+        Assert.Equal(HttpStatusCode.OK, verifyResA.StatusCode);
+        var verifyResultA = await verifyResA.Content.ReadFromJsonAsync<VerifyApiKeyResponse>(JsonOptions);
+        Assert.NotNull(verifyResultA);
+        Assert.True(verifyResultA.Valid);
+        Assert.Equal(projA.ProjectId, verifyResultA.ProjectId);
+
+        // 6. Verify Key B using GET /api/v1/api-keys/verify (ApiKey authenticated)
+        using var verifyReqB = new HttpRequestMessage(HttpMethod.Get, "/api/v1/api-keys/verify");
+        verifyReqB.Headers.Authorization = new AuthenticationHeaderValue("Bearer", keyB);
+        var verifyResB = await _client.SendAsync(verifyReqB);
+        Assert.Equal(HttpStatusCode.OK, verifyResB.StatusCode);
+        var verifyResultB = await verifyResB.Content.ReadFromJsonAsync<VerifyApiKeyResponse>(JsonOptions);
+        Assert.NotNull(verifyResultB);
+        Assert.True(verifyResultB.Valid);
+        Assert.Equal(projB.ProjectId, verifyResultB.ProjectId);
+
+        // 7. Revoke Key A and confirm verify fails closed with 401 Unauthorized
+        using var revokeReq = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/api-keys/{valResultA.ApiKeyId}");
+        revokeReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userA.Token);
+        var revokeRes = await _client.SendAsync(revokeReq);
+        Assert.Equal(HttpStatusCode.OK, revokeRes.StatusCode);
+
+        using var verifyRevokedReq = new HttpRequestMessage(HttpMethod.Get, "/api/v1/api-keys/verify");
+        verifyRevokedReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", keyA);
+        var verifyRevokedRes = await _client.SendAsync(verifyRevokedReq);
+        Assert.Equal(HttpStatusCode.Unauthorized, verifyRevokedRes.StatusCode);
     }
 }

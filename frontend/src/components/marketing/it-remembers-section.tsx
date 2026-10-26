@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import {
@@ -31,7 +31,7 @@ export function ItRemembersSection() {
             It remembers.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            Important details don&apos;t disappear when the conversation ends. Kairo extracts durable preferences and facts automatically.
+            Important details don&apos;t disappear when the conversation ends. VOIDZONE extracts durable preferences and facts automatically.
           </p>
         </div>
 

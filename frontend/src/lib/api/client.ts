@@ -1,13 +1,23 @@
 import { ApiError, ProblemDetails } from "@/types/api";
 import { TokenPair } from "@/types/auth";
 
-const ACCESS_TOKEN_KEY = "kairo_access_token";
-const REFRESH_TOKEN_KEY = "kairo_refresh_token";
+const ACCESS_TOKEN_KEY = "vz_access_token";
+const REFRESH_TOKEN_KEY = "vz_refresh_token";
 
 export function getApiBaseUrl(): string {
-  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_KAIRO_API_URL) {
-    return process.env.NEXT_PUBLIC_KAIRO_API_URL.replace(/\/+$/, "");
+  const envUrl = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_VOIDZONE_API_URL?.trim() : undefined;
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, "");
   }
+
+  // Deployed production builds must have an explicit backend URL configured.
+  // Silent fallback to localhost in production redirects client browser requests to the user's local machine.
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "NEXT_PUBLIC_VOIDZONE_API_URL is not configured. Production builds require an explicit VOIDZONE API URL."
+    );
+  }
+
   return "http://localhost:5171";
 }
 
@@ -92,7 +102,7 @@ async function executeSingleFlightRefresh(): Promise<string | null> {
 
 function dispatchAuthLogout(): void {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("kairo:auth:logout"));
+    window.dispatchEvent(new CustomEvent("voidzone:auth:logout"));
   }
 }
 
@@ -218,9 +228,7 @@ export async function anonymousRequest<T>(
 
 // ── API-Key-Authenticated Client (Memory V1 API, Chat Processing) ───────────
 
-export interface ApiKeyRequestOptions extends RequestInit {
-  // Empty - no _retry flag because API keys do not rotate via JWT refresh
-}
+export type ApiKeyRequestOptions = RequestInit;
 
 export async function apiKeyRequest<T>(
   endpoint: string,
@@ -228,7 +236,7 @@ export async function apiKeyRequest<T>(
   options: ApiKeyRequestOptions = {}
 ): Promise<{ status: number; data: T }> {
   if (!apiKey || !apiKey.trim()) {
-    throw new ApiError(401, "A valid Kairo API key is required for this operation.");
+    throw new ApiError(401, "A valid VOIDZONE API key is required for this operation.");
   }
 
   const baseUrl = getApiBaseUrl();

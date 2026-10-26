@@ -25,11 +25,11 @@ export function HeroStoryAnimation() {
         timer = setTimeout(() => setStep(2), 2200)
         break
       case 2:
-        // Step 2: SVG path draws down to Kairo -> advance to processing at 0.9s
+        // Step 2: SVG path draws down to VOIDZONE -> advance to processing at 0.9s
         timer = setTimeout(() => setStep(3), 900)
         break
       case 3:
-        // Step 3: Kairo pulse "Remembering..." -> advance to memory created at 1.1s
+        // Step 3: VOIDZONE pulse "Remembering..." -> advance to memory created at 1.1s
         timer = setTimeout(() => setStep(4), 1100)
         break
       case 4:
@@ -133,7 +133,7 @@ export function HeroStoryAnimation() {
               </svg>
               {step >= 3 && step <= 4 && (
                 <span className="my-0.5 px-2 py-0.5 rounded border border-primary/40 bg-primary/10 text-[9px] font-mono text-primary animate-pulse tracking-wider">
-                  Kairo: Ingesting & Embedding
+                  VOIDZONE: Ingesting & Embedding
                 </span>
               )}
             </div>
@@ -201,7 +201,7 @@ export function HeroStoryAnimation() {
             <div className="flex items-center justify-center py-1 animate-in fade-in duration-300">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-primary/50 bg-primary/10 text-primary font-mono text-[10px] font-medium">
                 <Sparkles className="h-3 w-3 animate-pulse" />
-                Retrieved & injected from Kairo (sim: 0.94)
+                Retrieved & injected from VOIDZONE (sim: 0.94)
               </span>
             </div>
           )}
@@ -220,7 +220,7 @@ export function HeroStoryAnimation() {
 
       {/* Bottom Subtitle */}
       <div className="mt-5 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] font-mono text-muted-foreground">
-        <span>Kairo bridges the gap across independent sessions.</span>
+        <span>VOIDZONE bridges the gap across independent sessions.</span>
         <span className="text-primary">Durable Memory</span>
       </div>
     </div>

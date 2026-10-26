@@ -32,3 +32,30 @@ public class CreatedApiKeyResponse : ApiKeyResponse
 {
     public string ApiKey { get; set; } = null!;
 }
+
+public class ValidateApiKeyRequest
+{
+    public string ApiKey { get; set; } = null!;
+}
+
+public class ValidateApiKeyResponse
+{
+    public bool IsValid { get; set; }
+
+    public long ProjectId { get; set; }
+
+    public long ApiKeyId { get; set; }
+
+    public string? Message { get; set; }
+}
+
+public class VerifyApiKeyResponse
+{
+    public bool Valid { get; set; }
+
+    public long ProjectId { get; set; }
+
+    public long UserId { get; set; }
+
+    public long ApiKeyId { get; set; }
+}

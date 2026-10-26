@@ -69,9 +69,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       handleLogoutEvent();
     };
 
-    window.addEventListener("kairo:auth:logout", onCustomLogout);
+    window.addEventListener("voidzone:auth:logout", onCustomLogout);
     return () => {
-      window.removeEventListener("kairo:auth:logout", onCustomLogout);
+      window.removeEventListener("voidzone:auth:logout", onCustomLogout);
     };
   }, [refreshProfile, handleLogoutEvent]);
 

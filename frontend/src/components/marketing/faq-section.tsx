@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
@@ -11,34 +11,34 @@ interface FaqItem {
 
 const FAQS: FaqItem[] = [
   {
-    question: "What does Kairo remember?",
+    question: "What does VOIDZONE remember?",
     answer:
-      "Kairo remembers discrete facts, preferences, goals, and context extracted from user conversations or explicit API calls. You can save structured memory types such as 'Preference', 'Goal', 'Context', or 'Fact'. Fleeting conversational pleasantries are filtered out automatically.",
+      "VOIDZONE remembers discrete facts, preferences, goals, and context extracted from user conversations or explicit API calls. You can save structured memory types such as 'Preference', 'Goal', 'Context', or 'Fact'. Fleeting conversational pleasantries are filtered out automatically.",
   },
   {
     question: "How is memory scoped and isolated?",
     answer:
-      "Memories are partitioned hierarchically. Every memory is bound to a specific Organization, Project, and Actor ID. Kairo enforces cryptographic data isolation so that queries executed on behalf of one user or project can never retrieve another user's stored context.",
+      "Memories are partitioned hierarchically. Every memory is bound to a specific Organization, Project, and Actor ID. VOIDZONE enforces cryptographic data isolation so that queries executed on behalf of one user or project can never retrieve another user's stored context.",
   },
   {
-    question: "How does semantic search work in Kairo?",
+    question: "How does semantic search work in VOIDZONE?",
     answer:
-      "Every stored memory is projected into high-dimensional vector embeddings and indexed in pgvector. When a query is submitted, Kairo performs cosine similarity search across the vector space to recall the most contextually relevant memories, even when the query uses completely different words.",
+      "Every stored memory is projected into high-dimensional vector embeddings and indexed in pgvector. When a query is submitted, VOIDZONE performs cosine similarity search across the vector space to recall the most contextually relevant memories, even when the query uses completely different words.",
   },
   {
-    question: "How do I integrate Kairo into an existing AI agent?",
+    question: "How do I integrate VOIDZONE into an existing AI agent?",
     answer:
-      "Integration requires only two API operations: (1) Ingest facts into Kairo at the end of each session or turn using POST /api/v1/memories, and (2) Retrieve relevant memories using POST /api/v1/memories/search before sending prompts to your LLM. Official SDKs are available for Python and Node.js.",
+      "Integration requires only two API operations: (1) Ingest facts into VOIDZONE at the end of each session or turn using direct memory ingestion, and (2) Retrieve relevant memories using semantic search before sending prompts to your LLM. Official SDKs are available for Python and Node.js.",
   },
   {
-    question: "Can I connect Kairo to Claude Desktop or Cursor via MCP?",
+    question: "Can I connect VOIDZONE to Claude Desktop or Cursor via MCP?",
     answer:
-      "Yes. Kairo provides a Model Context Protocol (MCP) server. You can configure Kairo in Claude Desktop or Cursor using npx @kairo/mcp-server, enabling your coding assistant to recall preferences and architectural guidelines across sessions automatically.",
+      "Yes. VOIDZONE provides a Model Context Protocol (MCP) server. You can configure VOIDZONE in Claude Desktop or Cursor using npx @voidzone/mcp-server, enabling your coding assistant to recall preferences and architectural guidelines across sessions automatically.",
   },
   {
-    question: "Does Kairo replace my database or vector store?",
+    question: "Does VOIDZONE replace my database or vector store?",
     answer:
-      "No. Kairo is specialized memory infrastructure for conversational agents. It handles deduplication, temporal relevance, actor scoping, and semantic recall so you do not need to build complex memory extraction pipelines or custom vector search infrastructure yourself.",
+      "No. VOIDZONE is specialized memory infrastructure for conversational agents. It handles deduplication, temporal relevance, actor scoping, and semantic recall so you do not need to build complex memory extraction pipelines or custom vector search infrastructure yourself.",
   },
 ]
 
@@ -62,7 +62,7 @@ export function FaqSection() {
             Frequently asked questions.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            Everything you need to know about Kairo&apos;s architecture, memory isolation, and developer integration.
+            Everything you need to know about VOIDZONE&apos;s architecture, memory isolation, and developer integration.
           </p>
         </div>
 

@@ -20,7 +20,7 @@ const USE_CASES: UseCase[] = [
     category: "Developer & Coding Agents",
     headline: "Persistent understanding of your repository architecture and style.",
     problem: "Coding assistants repeatedly suggest incompatible packages, violate private architectural rules, or forget previously established migration decisions on each fresh pull request.",
-    solution: "Kairo stores repository goals, developer framework preferences, and team styling conventions as permanent memory objects, providing continuity across weeks of iteration.",
+    solution: "VOIDZONE stores repository goals, developer framework preferences, and team styling conventions as permanent memory objects, providing continuity across weeks of iteration.",
     memorySnippet: "Memory: [Preference] Always use Dapper with strict parameterization instead of heavy ORMs for analytics services.",
   },
   {
@@ -29,7 +29,7 @@ const USE_CASES: UseCase[] = [
     category: "Multi-Tenant AI SaaS",
     headline: "Zero cross-customer context leakage with project and actor scoping.",
     problem: "When building multi-tenant AI applications, customer context easily bleeds across shared prompt caches or unstructured vector namespaces, posing catastrophic security risks.",
-    solution: "Kairo's cryptographic tenant scoping guarantees that an actor's memories are strictly accessible only within that actor's explicit project partition.",
+    solution: "VOIDZONE's cryptographic tenant scoping guarantees that an actor's memories are strictly accessible only within that actor's explicit project partition.",
     memorySnippet: "Scope Guarantee: Tenant 'org_acme' and Tenant 'org_globex' execute in isolated vector partitions.",
   },
   {
@@ -38,8 +38,8 @@ const USE_CASES: UseCase[] = [
     category: "Personal Assistants & Copilots",
     headline: "Relationships and goals that endure beyond the active tab.",
     problem: "Chatbots feel artificial and transactional because closing the browser tab permanently evaporates all user context, routines, and ongoing life goals.",
-    solution: "Kairo continuously distills conversation threads into durable Goal and Preference memories, allowing assistants to resume seamlessly on mobile, web, or terminal.",
-    memorySnippet: "Memory: [Goal] Target launch date for Kairo v1 is October 15th; prioritize zero-defect launch readiness.",
+    solution: "VOIDZONE continuously distills conversation threads into durable Goal and Preference memories, allowing assistants to resume seamlessly on mobile, web, or terminal.",
+    memorySnippet: "Memory: [Goal] Target launch date for VOIDZONE v1 is October 15th; prioritize zero-defect launch readiness.",
   },
   {
     id: "autonomous-agents",
@@ -47,7 +47,7 @@ const USE_CASES: UseCase[] = [
     category: "Autonomous Multi-Step Workflows",
     headline: "Long-horizon state preservation across complex tool loops.",
     problem: "Autonomous agents executing 50+ tool calls exhaust their context window quickly, crashing into token limits and forgetting their initial mission parameters.",
-    solution: "Instead of ballooning prompt token counts, agents offload intermediate discoveries to Kairo and retrieve only the salient facts needed for the current step.",
+    solution: "Instead of ballooning prompt token counts, agents offload intermediate discoveries to VOIDZONE and retrieve only the salient facts needed for the current step.",
     memorySnippet: "Memory: [Fact] Endpoint /api/v1/auth returned 429 rate limit after 100 requests; exponential backoff verified.",
   },
 ]
@@ -69,7 +69,7 @@ export function UseCasesSection() {
             Where persistent memory changes the equation.
           </h2>
           <p className="mt-4 text-base text-muted-foreground leading-relaxed">
-            Persistent context transforms episodic AI toys into reliable software colleagues. Here is how modern teams deploy Kairo.
+            Persistent context transforms episodic AI toys into reliable software colleagues. Here is how modern teams deploy VOIDZONE.
           </p>
         </div>
 
@@ -117,7 +117,7 @@ export function UseCasesSection() {
                 Case Analysis: {currentCase.category}
               </span>
               <span className="font-mono text-[10px] text-muted-foreground">
-                Kairo Architecture Profile
+                VOIDZONE Architecture Profile
               </span>
             </div>
 
@@ -138,7 +138,7 @@ export function UseCasesSection() {
             {/* Solution Narrative */}
             <div className="mb-6 rounded-lg border border-emerald-500/20 bg-surface-subtle/40 p-4">
               <div className="font-mono text-[10px] text-emerald-400 font-semibold uppercase mb-1">
-                The Kairo Solution
+                The VOIDZONE Solution
               </div>
               <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed">
                 {currentCase.solution}

@@ -72,7 +72,7 @@ export default function LoginPage() {
             <div className="h-6 w-6 rounded-[5px] bg-primary/20 border border-primary/40 flex items-center justify-center">
               <Shield className="h-3.5 w-3.5 text-primary" />
             </div>
-            <span className="font-semibold tracking-tight text-sm">Kairo</span>
+            <span className="font-semibold tracking-tight text-sm">VOIDZONE</span>
             <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-[4px] border border-border/50">
               v1.0
             </span>
@@ -108,7 +108,7 @@ export default function LoginPage() {
               <div className="flex items-center gap-2.5 text-foreground/90">
                 <span className="text-[10px] text-muted-foreground/60 w-4">01</span>
                 <span className="text-primary font-semibold">Agent Ingestion</span>
-                <span className="text-[10px] text-muted-foreground truncate">POST /api/v1/memories</span>
+                <span className="text-[10px] text-muted-foreground truncate">Direct Memory Ingestion</span>
               </div>
               <div className="h-3 w-px bg-border/80 ml-5" />
 
@@ -137,7 +137,7 @@ export default function LoginPage() {
 
         {/* Telemetry Footer */}
         <div className="relative z-10 flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 border-t border-border/40 pt-4">
-          <span>HOST: localhost:5171</span>
+          <span>PLATFORM: VOIDZONE Cloud</span>
           <span>PROTOCOL: REST + MCP</span>
         </div>
       </div>
@@ -155,7 +155,7 @@ export default function LoginPage() {
           </Link>
           <div className="lg:hidden flex items-center gap-1.5 font-semibold text-xs text-foreground">
             <Shield className="h-3.5 w-3.5 text-primary" />
-            <span>Kairo</span>
+            <span>VOIDZONE</span>
           </div>
         </div>
 
@@ -163,7 +163,7 @@ export default function LoginPage() {
         <div className="my-auto w-full max-w-sm mx-auto space-y-6">
           <div className="space-y-1.5">
             <h2 className="text-xl font-bold tracking-tight text-foreground">
-              Sign in to Kairo
+              Sign in to VOIDZONE
             </h2>
             <p className="text-xs text-muted-foreground">
               Enter your developer credentials to manage your workspaces, API keys, and memory scopes.

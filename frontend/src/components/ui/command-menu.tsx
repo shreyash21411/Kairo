@@ -80,7 +80,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         category: "Navigation",
         id: "nav-playground",
         title: "Developer Playground",
-        subtitle: "Test Kairo Memory operations live",
+        subtitle: "Test VOIDZONE Memory operations live",
         icon: Terminal,
         onSelect: () => router.push("/dashboard/playground"),
       },
@@ -281,7 +281,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             <span>↑↓ to navigate</span>
             <span>↵ to select</span>
           </div>
-          <span>Kairo Command</span>
+          <span>VOIDZONE Command</span>
         </div>
       </div>
     </div>

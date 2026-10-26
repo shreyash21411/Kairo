@@ -1,4 +1,4 @@
-// ── Kairo syntax highlighter ─────────────────────────────────────────────────
+// ── VOIDZONE syntax highlighter ─────────────────────────────────────────────────
 // A minimal, dependency-free lexer for the languages shown in the quickstart.
 
 export type TokKind =

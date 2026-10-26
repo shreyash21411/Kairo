@@ -80,7 +80,7 @@ export function DurableMemorySection() {
               Not unstructured text. Structured, typed memory.
             </h2>
             <p className="mt-4 text-base text-muted-foreground leading-relaxed">
-              Dumping raw chat transcripts into a vector database creates noise. Kairo structures persistent knowledge into typed, versioned memory entities linked to discrete project scopes.
+              Dumping raw chat transcripts into a vector database creates noise. VOIDZONE structures persistent knowledge into typed, versioned memory entities linked to discrete project scopes.
             </p>
           </div>
 

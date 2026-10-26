@@ -38,17 +38,11 @@ export function Navbar() {
         {/* Brand identity */}
         <Link
           href="/"
-          className="group flex items-center gap-2.5 focus-visible:outline-none"
-          aria-label="Kairo home"
+          className="group flex items-center focus-visible:outline-none"
+          aria-label="voidzone home"
         >
-          <div className="flex h-6 w-6 items-center justify-center rounded-[5px] border border-border bg-surface-elevated text-foreground transition-colors group-hover:border-primary/50">
-            <span className="font-mono text-xs font-semibold text-primary">K</span>
-          </div>
-          <span className="font-mono text-[13px] font-semibold tracking-wider text-foreground uppercase">
-            Kairo
-          </span>
-          <span className="hidden font-mono text-[10px] text-muted-foreground/60 sm:inline-block border border-border/60 rounded px-1.5 py-0.5">
-            v1.0
+          <span className="font-sans text-[18px] sm:text-[20px] font-bold tracking-tight text-foreground lowercase select-none transition-opacity group-hover:opacity-85">
+            voidzone
           </span>
         </Link>
 

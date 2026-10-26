@@ -1,5 +1,5 @@
 /**
- * KAIRO DESIGN SYSTEM FOUNDATION
+ * VOIDZONE DESIGN SYSTEM FOUNDATION
  * Phase 15.3A — Centralized Design Tokens & Semantic UI Configuration
  *
  * Source of truth for CSS variables: src/app/globals.css
@@ -13,7 +13,7 @@
  * - MCP Server Protocol Pages
  * - Interactive Playground & Memory Explorer
  *
- * RULE: Before creating a new Kairo page or component, inspect and reuse
+ * RULE: Before creating a new VOIDZONE page or component, inspect and reuse
  * this system. Do not invent new colors, fonts, radii, or icons.
  */
 
@@ -58,10 +58,10 @@ import {
   Key,
 } from "lucide-react";
 
-export const KairoDesignSystem = {
+export const VoidzoneDesignSystem = {
   /* ── Brand Identity ─────────────────────────────────────────────────────── */
   brand: {
-    name: "Kairo",
+    name: "VOIDZONE",
     version: "v1.0",
     tagline: "Persistent memory infrastructure for autonomous AI agents & applications",
     motto: "Durable · Scoped · Semantic",
@@ -72,22 +72,22 @@ export const KairoDesignSystem = {
   /* ── Color System (References CSS variables in globals.css) ─────────────── */
   colors: {
     // Semantic tokens referencing globals.css
-    background: "var(--kairo-background)",
-    backgroundElevated: "var(--kairo-surface-elevated)",
-    surface: "var(--kairo-surface)",
-    surfaceElevated: "var(--kairo-surface-elevated)",
-    primary: "var(--kairo-primary)",
-    primaryHover: "var(--kairo-primary-hover)",
-    primaryMuted: "var(--kairo-primary-muted)",
-    textPrimary: "var(--kairo-text-primary)",
-    textSecondary: "var(--kairo-text-secondary)",
-    textMuted: "var(--kairo-text-muted)",
-    border: "var(--kairo-border)",
-    borderSubtle: "var(--kairo-border-subtle)",
-    borderStrong: "var(--kairo-border-strong)",
-    success: "var(--kairo-success)",
-    warning: "var(--kairo-warning)",
-    danger: "var(--kairo-danger)",
+    background: "var(--vz-background)",
+    backgroundElevated: "var(--vz-surface-elevated)",
+    surface: "var(--vz-surface)",
+    surfaceElevated: "var(--vz-surface-elevated)",
+    primary: "var(--vz-primary)",
+    primaryHover: "var(--vz-primary-hover)",
+    primaryMuted: "var(--vz-primary-muted)",
+    textPrimary: "var(--vz-text-primary)",
+    textSecondary: "var(--vz-text-secondary)",
+    textMuted: "var(--vz-text-muted)",
+    border: "var(--vz-border)",
+    borderSubtle: "var(--vz-border-subtle)",
+    borderStrong: "var(--vz-border-strong)",
+    success: "var(--vz-success)",
+    warning: "var(--vz-warning)",
+    danger: "var(--vz-danger)",
 
     // Foundation values (for documentation and non-CSS contexts)
     palette: {
@@ -255,4 +255,4 @@ export const KairoDesignSystem = {
   },
 } as const;
 
-export type KairoDesignSystemType = typeof KairoDesignSystem;
+export type VoidzoneDesignSystemType = typeof VoidzoneDesignSystem;

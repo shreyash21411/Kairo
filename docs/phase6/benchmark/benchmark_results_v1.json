@@ -14,7 +14,7 @@
     "totalCrossProjectLeakage": 0,
     "totalExpiredReturned": 0,
     "totalInactiveReturned": 0,
-    "evaluationTimestampUtc": "2026-10-22T10:41:19.0184969Z"
+    "evaluationTimestampUtc": "2026-10-26T10:48:41.0728575Z"
   },
   "queries": [
     {
@@ -47,7 +47,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 29
+      "latencyMs": 19
     },
     {
       "queryId": "Q02_SEMANTIC_PARAPHRASE",
@@ -79,7 +79,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 11
+      "latencyMs": 26
     },
     {
       "queryId": "Q03_HARD_NEGATIVE",
@@ -111,7 +111,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 14
+      "latencyMs": 9
     },
     {
       "queryId": "Q04_TEMPORAL_RECENCY",
@@ -143,7 +143,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 6
+      "latencyMs": 9
     },
     {
       "queryId": "Q05_ACTOR_ISOLATION",
@@ -175,7 +175,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 6
+      "latencyMs": 8
     },
     {
       "queryId": "Q06_PROJECT_ISOLATION_LEAKAGE",
@@ -207,7 +207,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 7
+      "latencyMs": 8
     },
     {
       "queryId": "Q07_CATEGORY_FILTER",
@@ -239,7 +239,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 9
+      "latencyMs": 13
     },
     {
       "queryId": "Q08_METADATA_FILTER",
@@ -269,7 +269,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 9
+      "latencyMs": 8
     },
     {
       "queryId": "Q09_EXPIRED_MEMORY_FILTER",
@@ -333,7 +333,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 27
+      "latencyMs": 31
     },
     {
       "queryId": "Q11_ENTITY_GRAPH",
@@ -365,7 +365,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 9
+      "latencyMs": 14
     },
     {
       "queryId": "Q12_RERANK_BENEFIT",
@@ -397,7 +397,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 6
+      "latencyMs": 8
     },
     {
       "queryId": "Q13_RERANK_NEGATIVE_CONTROL",
@@ -429,7 +429,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 6
+      "latencyMs": 8
     },
     {
       "queryId": "Q14_CONTRADICTORY_FACT",
@@ -461,7 +461,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 6
+      "latencyMs": 8
     },
     {
       "queryId": "Q15_COMPLEX_MULTI_FILTER",
@@ -491,7 +491,7 @@
       "crossProjectLeakage": 0,
       "expiredReturned": 0,
       "inactiveReturned": 0,
-      "latencyMs": 5
+      "latencyMs": 7
     }
   ]
 }

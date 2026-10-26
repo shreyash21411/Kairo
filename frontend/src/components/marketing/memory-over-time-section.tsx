@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
@@ -32,9 +32,9 @@ const TIMELINE_NODES: TimelineNode[] = [
     day: "Wednesday",
     date: "Sep 14",
     label: "Session 02",
-    rawMessage: "I'm building an AI memory platform called Kairo.",
+    rawMessage: "I'm building an AI memory platform called VOIDZONE.",
     type: "Context",
-    memorySummary: "Building AI memory platform called Kairo",
+    memorySummary: "Building AI memory platform called VOIDZONE",
     benefit: "Saved active project context",
   },
   {
@@ -64,7 +64,7 @@ export function MemoryOverTimeSection() {
             Every conversation adds context.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            Instead of resetting when a chat closes, Kairo assembles an enduring understanding of you, your team, and your architecture over time.
+            Instead of resetting when a chat closes, VOIDZONE assembles an enduring understanding of you, your team, and your architecture over time.
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export function MemoryOverTimeSection() {
 
                   <div>
                     <span className="font-mono text-[10px] uppercase text-muted-foreground block mb-1.5">
-                      Distilled into Kairo
+                      Distilled into VOIDZONE
                     </span>
                     <MemoryObject
                       type={node.type}

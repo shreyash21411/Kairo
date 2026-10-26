@@ -110,8 +110,8 @@ export default function DocsPage() {
       <div>
         <h1 className="text-base font-semibold tracking-tight text-foreground">API Reference</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Kairo Memory Platform V1 · Base URL:{" "}
-          <code className="font-mono text-foreground/80">http://localhost:5171</code>
+          VOIDZONE Memory Platform V1 · Base URL:{" "}
+          <code className="font-mono text-foreground/80">https://voidzone-staging-api.onrender.com</code>
         </p>
       </div>
 
@@ -119,7 +119,7 @@ export default function DocsPage() {
       <Section
         icon={Shield}
         title="Authentication"
-        description="Kairo uses two separate authentication schemes based on the endpoint group."
+        description="VOIDZONE uses two separate authentication schemes based on the endpoint group."
       >
         <div className="space-y-3">
           <div className="border border-border/60 rounded-lg overflow-hidden">
@@ -133,11 +133,11 @@ export default function DocsPage() {
           </div>
           <div className="border border-border/60 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 border-b border-border/30 bg-surface-subtle/30">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Kairo API Key — Data plane</span>
+              <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">VOIDZONE API Key — Data plane</span>
             </div>
             <div className="p-4 space-y-1.5 text-xs text-muted-foreground">
               <p>Used for <code className="font-mono text-foreground">/api/v1/memories/*</code>, <code className="font-mono text-foreground">/api/chats</code>, and <code className="font-mono text-foreground">/api/chat-processing/*</code>.</p>
-              <p>Include as <code className="font-mono text-foreground">Authorization: Bearer kairo_live_…</code>. Backend derives Project and User context from the key.</p>
+              <p>Include as <code className="font-mono text-foreground">Authorization: Bearer vz_live_sec_…</code>. Backend derives Project and User context from the key.</p>
             </div>
           </div>
         </div>
@@ -166,9 +166,9 @@ curl -X POST http://localhost:5171/api/v1/api-keys \\
   -H "Content-Type: application/json" \\
   -d '{"projectId": 1, "name": "Production"}'`} />
 
-        <CodeBlock language="bash" code={`# 4. Store a memory (Kairo API Key)
+        <CodeBlock language="bash" code={`# 4. Store a memory (VOIDZONE API Key)
 curl -X POST http://localhost:5171/api/v1/memories \\
-  -H "Authorization: Bearer kairo_live_..." \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "content": "User prefers TypeScript and dark mode",
@@ -178,7 +178,7 @@ curl -X POST http://localhost:5171/api/v1/memories \\
 
 # 5. Semantic recall
 curl -X POST http://localhost:5171/api/v1/memories/search \\
-  -H "Authorization: Bearer kairo_live_..." \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "query": "What are the user preferences?",
@@ -191,7 +191,7 @@ curl -X POST http://localhost:5171/api/v1/memories/search \\
       <Section
         icon={Cpu}
         title="Memory API"
-        description="Core durable memory operations. All endpoints use Kairo API Key authentication."
+        description="Core durable memory operations. All endpoints use VOIDZONE API Key authentication."
       >
         <div className="border border-border/60 rounded-lg overflow-hidden">
           <div className="px-4 py-2 border-b border-border/40 bg-surface-subtle/30">
@@ -232,15 +232,15 @@ curl -X POST http://localhost:5171/api/v1/memories/search \\
       <Section
         icon={Layers}
         title="SDK"
-        description="Install the official Kairo .NET SDK."
+        description="Install the official VOIDZONE .NET SDK."
       >
-        <CodeBlock language="bash" code="dotnet add package Kairo.SDK" />
+        <CodeBlock language="bash" code="dotnet add package Voidzone.SDK" />
 
-        <CodeBlock language="csharp" code={`using Kairo.SDK;
-using Kairo.SDK.Models;
+        <CodeBlock language="csharp" code={`using Voidzone.SDK;
+using Voidzone.SDK.Models;
 
 // Initialize the client
-var client = new KairoClient("kairo_live_...");
+var client = new VoidzoneClient("vz_live_sec_...");
 
 // Store a memory
 var result = await client.Memories.StoreAsync(new StoreMemoryRequest

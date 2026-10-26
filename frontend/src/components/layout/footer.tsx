@@ -41,12 +41,9 @@ export function Footer() {
 
           {/* Brand Column */}
           <div className="col-span-2 sm:col-span-1">
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="flex h-6 w-6 items-center justify-center rounded-lg border border-border/70 bg-surface-elevated text-foreground font-mono text-[11px] font-bold text-primary">
-                K
-              </div>
-              <span className="font-mono text-sm font-semibold tracking-wider text-foreground uppercase">
-                Kairo
+            <div className="flex items-center mb-3">
+              <span className="font-sans text-[20px] font-bold tracking-tight text-foreground lowercase select-none">
+                voidzone
               </span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
@@ -83,7 +80,7 @@ export function Footer() {
         {/* Bottom Bar */}
         <div className="mt-14 pt-6 border-t border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[11px] font-mono text-muted-foreground/70">
           <div>
-            © {new Date().getFullYear()} Kairo Systems. All rights reserved.
+            © {new Date().getFullYear()} VOIDZONE. All rights reserved.
           </div>
           <div className="flex items-center gap-3">
             <span>REST API v1.0</span>

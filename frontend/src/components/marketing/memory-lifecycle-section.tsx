@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
@@ -67,7 +67,7 @@ export function MemoryLifecycleSection() {
             The Memory Lifecycle.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            How Kairo turns fleeting dialogue into permanent, privacy-isolated, and semantically queryable context.
+            How VOIDZONE turns fleeting dialogue into permanent, privacy-isolated, and semantically queryable context.
           </p>
         </div>
 

@@ -18,22 +18,22 @@ const STEPS: FlowStep[] = [
     title: "Capture & Remember",
     headline: "Transform application events into structured memory objects",
     description: "Ingest agent interactions, tool execution results, or user dialogue via REST endpoints or SDK helpers.",
-    codeSnippet: `await kairo.memories.create({
+    codeSnippet: `await vz.memories.create({
   content: "Prefers PostgreSQL and clean architecture for microservices",
   memoryType: "Preference",
   actorId: "actor_dev_01"
-});`,
+})`,
     badge: "POST /api/v1/memories",
   },
   {
     number: "02",
     title: "Understand & Vectorize",
     headline: "Dense semantic embedding with structured classification",
-    description: "Kairo generates high-dimensional embeddings and categorizes memory types (Preference, Goal, Fact, Context, Skill, Relationship) for fast multi-modal indexing.",
+    description: "VOIDZONE generates high-dimensional embeddings and categorizes memory types (Preference, Goal, Fact, Context, Skill, Relationship) for fast multi-modal indexing.",
     codeSnippet: `{
   "embedding": [0.0142, -0.0821, 0.0418, ...],
   "memoryType": "Preference",
-  "projectScope": "kairo-prod",
+  "projectScope": "vz-prod",
   "indexed": true
 }`,
     badge: "Vector Embedding Pipeline",
@@ -54,7 +54,7 @@ Deduplication: Exact matches merged`,
     title: "Retrieve & Contextualize",
     headline: "Semantic retrieval of relevant memory and context",
     description: "Execute natural-language vector queries with cosine distance scoring. Relevant memories are injected directly into your agent prompt.",
-    codeSnippet: `const matches = await kairo.memories.search({
+    codeSnippet: `const matches = await vz.memories.search({
   query: "What database should I suggest for this project?",
   actorId: "actor_dev_01",
   limit: 3
@@ -77,7 +77,7 @@ export function HowItWorksSection() {
             02 / Architecture & Flow
           </p>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-foreground">
-            How Kairo turns dialogue into durable intelligence.
+            How VOIDZONE turns dialogue into durable intelligence.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
             From raw conversation events to contextual recall: a four-stage pipeline designed for extreme reliability, tenant isolation, and semantic precision.
@@ -149,7 +149,7 @@ export function HowItWorksSection() {
             <div className="relative rounded-lg border border-border/80 bg-background/90 p-4 font-mono text-xs overflow-x-auto shadow-inner">
               <div className="flex items-center justify-between text-muted-foreground/60 text-[10px] border-b border-border/40 pb-2 mb-3">
                 <span>payload_preview.ts</span>
-                <span>kairo-v1.0</span>
+                <span>vz-v1.0</span>
               </div>
               <pre className="text-foreground/90 leading-relaxed">
                 <code>{STEPS[activeStep].codeSnippet}</code>

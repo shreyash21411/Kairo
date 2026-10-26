@@ -38,39 +38,39 @@ export const DEMO_STEPS: DemoStep[] = [
     num: "01",
     title: "Create your workspace",
     subtitle: "Default Project & Engine",
-    route: "app.kairo.dev/dashboard",
+    route: "app.voidzone.ai/dashboard",
   },
   {
     id: "apikey",
     num: "02",
     title: "Generate an API key",
     subtitle: "Provision Bearer token",
-    route: "app.kairo.dev/dashboard/api-keys",
+    route: "app.voidzone.ai/dashboard/api-keys",
   },
   {
     id: "memory",
     num: "03",
     title: "Store a memory",
     subtitle: "Ingest structured context",
-    route: "app.kairo.dev/dashboard/memories",
+    route: "app.voidzone.ai/dashboard/memories",
   },
   {
     id: "search",
     num: "04",
     title: "Recall it naturally",
     subtitle: "Vector semantic search",
-    route: "app.kairo.dev/dashboard/search",
+    route: "app.voidzone.ai/dashboard/search",
   },
   {
     id: "mcp",
     num: "05",
     title: "Connect your agent",
     subtitle: "Model Context Protocol",
-    route: "app.kairo.dev/developers/mcp",
+    route: "app.voidzone.ai/developers/mcp",
   },
 ]
 
-export function SeeKairoSection() {
+export function SeeVoidzoneSection() {
   const containerRef = React.useRef<HTMLDivElement>(null)
 
   // ── Active Step State ──
@@ -204,7 +204,7 @@ export function SeeKairoSection() {
         setActiveStepId(step.id)
 
         // ══════════════════════════════════════════════════════
-        // STEP 1: WORKSPACE / ENTER KAIRO
+        // STEP 1: WORKSPACE / ENTER VOIDZONE
         // ══════════════════════════════════════════════════════
         if (step.id === "workspace") {
           setProjectDropdownOpen(false)
@@ -485,7 +485,7 @@ export function SeeKairoSection() {
             <span>Interactive Product Walkthrough</span>
           </div>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-foreground">
-            See Kairo in action.
+            See VOIDZONE in action.
           </h2>
           <p className="mt-3 text-base sm:text-lg text-muted-foreground leading-relaxed">
             Build with memory in a few simple steps.
@@ -578,7 +578,7 @@ export function SeeKairoSection() {
             </div>
           </div>
 
-          {/* ── Internal Kairo Dashboard Canvas ── */}
+          {/* ── Internal VOIDZONE Dashboard Canvas ── */}
           <div className="grid grid-cols-1 md:grid-cols-12 min-h-[480px]">
             
             {/* Miniature Dashboard Sidebar */}
@@ -587,9 +587,9 @@ export function SeeKairoSection() {
                 {/* Logo & Version */}
                 <div className="flex items-center gap-2 px-1">
                   <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-primary-foreground font-mono text-xs font-bold">
-                    K
+                    V
                   </div>
-                  <span className="font-semibold text-foreground text-sm tracking-tight">Kairo</span>
+                  <span className="font-semibold text-foreground text-sm tracking-tight">VOIDZONE</span>
                   <span className="rounded bg-surface-elevated border border-border/60 px-1 py-0.2 font-mono text-[9px] text-muted-foreground">
                     v1.0
                   </span>
@@ -744,7 +744,7 @@ export function SeeKairoSection() {
                       <span className="text-xs font-semibold text-foreground">Persistent Memory Engine Ready</span>
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Start from your Kairo workspace. Dedicated memory partition provisioned with actor scoping and HNSW vector index.
+                      Start from your VOIDZONE workspace. Dedicated memory partition provisioned with actor scoping and HNSW vector index.
                     </p>
                   </div>
 
@@ -832,7 +832,7 @@ export function SeeKairoSection() {
                       <div className="flex items-start gap-2.5">
                         <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                         <div>
-                          <div className="text-xs font-semibold text-foreground">Save your new Kairo API key</div>
+                          <div className="text-xs font-semibold text-foreground">Save your new VOIDZONE API key</div>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             ⚠️ This key will never be shown again. Stored securely on the server.
                           </p>
@@ -841,7 +841,7 @@ export function SeeKairoSection() {
 
                       <div className="flex items-center gap-2">
                         <div className="flex-1 rounded-md border border-border bg-background/90 px-3 py-1.5 font-mono text-xs text-primary font-medium truncate">
-                          kairo_live_demo_9a4f2b18c7e0
+                          vz_live_demo_9a4f2b18c7e0
                         </div>
                         <button
                           type="button"
@@ -880,7 +880,7 @@ export function SeeKairoSection() {
                       </div>
                       <div className="grid grid-cols-3 px-3 py-2.5 items-center font-mono text-[11px]">
                         <span className="text-foreground font-sans font-medium">production-agent</span>
-                        <span className="text-muted-foreground">kairo_live_demo…</span>
+                        <span className="text-muted-foreground">vz_live_demo…</span>
                         <span className="text-right text-emerald-500 flex items-center justify-end gap-1 font-sans">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
                         </span>
@@ -1093,7 +1093,7 @@ export function SeeKairoSection() {
                     {/* Tool Invocation */}
                     <div className="rounded-lg border border-border/60 bg-background/80 p-3 space-y-1">
                       <div className="flex items-center justify-between text-primary font-semibold text-[11px]">
-                        <span>⚡ Tool: kairo_recall</span>
+                        <span>⚡ Tool: vz_recall</span>
                         <span className="text-[10px] text-muted-foreground">Actor: user_alex</span>
                       </div>
                       <div className="text-[11px] text-muted-foreground">
@@ -1119,7 +1119,7 @@ export function SeeKairoSection() {
               <div className="pt-3 border-t border-border/30 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Database className="h-3 w-3 text-primary" />
-                  Kairo Engine · PostgreSQL + pgvector
+                  VOIDZONE Engine · PostgreSQL + pgvector
                 </span>
                 <span className="text-primary font-medium">
                   Step {DEMO_STEPS.findIndex((s) => s.id === activeStepId) + 1} of 5

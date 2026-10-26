@@ -22,3 +22,21 @@ export interface ApiKeyResponse {
 export interface CreatedApiKeyResponse extends ApiKeyResponse {
   apiKey: string;
 }
+
+export interface ValidateApiKeyRequest {
+  apiKey: string;
+}
+
+export interface ValidateApiKeyResponse {
+  isValid: boolean;
+  projectId?: number;
+  apiKeyId?: number;
+  message?: string;
+}
+
+export interface VerifyApiKeyResponse {
+  valid: boolean;
+  projectId: number;
+  userId: number;
+  apiKeyId: number;
+}

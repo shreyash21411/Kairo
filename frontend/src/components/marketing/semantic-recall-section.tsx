@@ -80,7 +80,7 @@ const SCENARIOS: QueryScenario[] = [
     results: [
       {
         type: "Goal",
-        content: "Build Kairo into a production AI persistent memory platform with zero session loss.",
+        content: "Build VOIDZONE into a production AI persistent memory platform with zero session loss.",
         similarity: 0.954,
         similarityPercent: "95.4%",
         reason: "Core platform objective matches query intention",
@@ -120,7 +120,7 @@ export function SemanticRecallSection() {
             Recall context by meaning, not exact keywords.
           </h2>
           <p className="mt-4 text-base text-muted-foreground leading-relaxed">
-            Your agents don't need keyword matching. Kairo indexes high-dimensional vectors and performs semantic retrieval, returning the exact memories needed to answer vague or complex inquiries.
+            Your agents don't need keyword matching. VOIDZONE indexes high-dimensional vectors and performs semantic retrieval, returning the exact memories needed to answer vague or complex inquiries.
           </p>
         </div>
 
@@ -220,7 +220,7 @@ export function SemanticRecallSection() {
           </div>
 
           <div className="mt-6 border-t border-border/50 pt-4 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] font-mono text-muted-foreground gap-2">
-            <span>Illustrative simulation values based on Kairo cosine vector distance.</span>
+            <span>Illustrative simulation values based on VOIDZONE cosine vector distance.</span>
             <span>Zero prompt hallucination</span>
           </div>
 

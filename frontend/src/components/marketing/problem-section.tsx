@@ -20,7 +20,7 @@ export function ProblemSection() {
           </p>
         </div>
 
-        {/* Asymmetric Architecture Comparison (Disconnected vs Kairo) */}
+        {/* Asymmetric Architecture Comparison (Disconnected vs VOIDZONE) */}
         <div className="mt-14 grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
           
           {/* Left: The Stateless Paradigm */}
@@ -28,7 +28,7 @@ export function ProblemSection() {
             <div>
               <div className="flex items-center justify-between mb-6">
                 <span className="font-mono text-xs uppercase tracking-wider text-rose-400/90 font-medium">
-                  Stateless Execution (Without Kairo)
+                  Stateless Execution (Without VOIDZONE)
                 </span>
                 <span className="rounded border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 font-mono text-[10px] text-rose-400">
                   CONTEXT LOST
@@ -86,21 +86,21 @@ export function ProblemSection() {
             </div>
           </div>
 
-          {/* Right: The Kairo Persistent Substrate */}
+          {/* Right: The VOIDZONE Persistent Substrate */}
           <div className="relative rounded-xl border border-primary/30 bg-surface-elevated p-6 sm:p-8 flex flex-col justify-between overflow-hidden shadow-lg shadow-primary/5">
             <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-2xl" />
 
             <div>
               <div className="flex items-center justify-between mb-6">
                 <span className="font-mono text-xs uppercase tracking-wider text-primary font-medium">
-                  Persistent Substrate (With Kairo)
+                  Persistent Substrate (With VOIDZONE)
                 </span>
                 <span className="rounded border border-primary/40 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
                   CONTINUOUS CONTEXT
                 </span>
               </div>
 
-              {/* Sessions converging into Kairo */}
+              {/* Sessions converging into VOIDZONE */}
               <div className="space-y-2.5 font-mono text-xs">
                 <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
                   <div className="rounded border border-border/60 bg-surface-subtle p-2">
@@ -119,7 +119,7 @@ export function ProblemSection() {
 
                 {/* Convergence Arrow */}
                 <div className="flex items-center justify-center py-2 text-primary font-mono text-xs">
-                  <span>↓ Ingested & Scoped into Kairo Layer ↓</span>
+                  <span>↓ Ingested & Scoped into VOIDZONE Layer ↓</span>
                 </div>
 
                 {/* Persistent Knowledge Representation */}

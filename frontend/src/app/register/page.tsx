@@ -83,7 +83,7 @@ export default function RegisterPage() {
             <div className="h-6 w-6 rounded-[5px] bg-primary/20 border border-primary/40 flex items-center justify-center">
               <Shield className="h-3.5 w-3.5 text-primary" />
             </div>
-            <span className="font-semibold tracking-tight text-sm">Kairo</span>
+            <span className="font-semibold tracking-tight text-sm">VOIDZONE</span>
             <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-[4px] border border-border/50">
               v1.0
             </span>
@@ -165,7 +165,7 @@ export default function RegisterPage() {
           </Link>
           <div className="lg:hidden flex items-center gap-1.5 font-semibold text-xs text-foreground">
             <Shield className="h-3.5 w-3.5 text-primary" />
-            <span>Kairo</span>
+            <span>VOIDZONE</span>
           </div>
         </div>
 

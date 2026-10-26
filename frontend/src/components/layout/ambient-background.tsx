@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-// Kairo Global Ambient Background
+// VOIDZONE Global Ambient Background
 // Near-black canvas + very large soft blue light fields + extreme blur + subtle organic movement
 // Pure blue palette only (no purple/violet/pink), continuous across entire page.
 

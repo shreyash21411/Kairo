@@ -24,8 +24,8 @@ const PRODUCT_ITEMS = [
 const DEVELOPER_ITEMS = [
   { label: "Developer Hub", href: "/developers",         description: "Start here — all integration paths" },
   { label: "REST API",      href: "/developers/api",     description: "Full HTTP API reference" },
-  { label: "Python SDK",    href: "/developers/python",  description: "pip install kairo" },
-  { label: "Node.js SDK",   href: "/developers/node",    description: "npm install @kairo/sdk" },
+  { label: "Python SDK",    href: "/developers/python",  description: "pip install voidzone" },
+  { label: "Node.js SDK",   href: "/developers/node",    description: "npm install @voidzone/sdk" },
   { label: "MCP",           href: "/developers/mcp",     description: "Model Context Protocol native integration" },
 ] as const
 
@@ -151,16 +151,12 @@ export function FloatingNavbar() {
           {/* Brand */}
           <Link
             href="/"
-            className="group flex items-center gap-2.5 focus-visible:outline-none flex-shrink-0"
-            aria-label="Kairo Home"
+            className="group flex items-center focus-visible:outline-none flex-shrink-0 py-0.5"
+            aria-label="voidzone Home"
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/70 bg-surface-elevated transition-all duration-200 group-hover:border-primary/60 group-hover:shadow-xs group-hover:shadow-primary/20">
-              <span className="font-mono text-xs font-semibold text-primary">K</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-[13px] font-semibold tracking-wider text-foreground uppercase">Kairo</span>
-              <span className="hidden font-mono text-[9px] text-muted-foreground/70 sm:inline-block border border-border/50 rounded px-1 leading-none py-0.5">v1.0</span>
-            </div>
+            <span className="font-sans text-[18px] sm:text-[20px] font-bold tracking-tight text-foreground lowercase select-none transition-opacity group-hover:opacity-85">
+              voidzone
+            </span>
           </Link>
 
           {/* Desktop nav — 3 dropdowns */}

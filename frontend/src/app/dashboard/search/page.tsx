@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useProject } from "@/providers/project-provider";
 import { memoriesApi } from "@/lib/api/memoriesApi";
 import { RetrievedMemory } from "@/types/memory";
@@ -63,30 +63,72 @@ export default function SemanticSearchPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  React.useEffect(() => { setActorId(activeActorId); }, [activeActorId]);
-  React.useEffect(() => { setResults(null); setLastQuery(null); }, [selectedProject]);
+  const activeSearchAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => { setActorId(activeActorId); }, [activeActorId]);
+  useEffect(() => {
+    activeSearchAbortControllerRef.current?.abort();
+    activeSearchAbortControllerRef.current = null;
+    setResults(null);
+    setLastQuery(null);
+    setError(null);
+  }, [selectedProject?.projectId, sessionApiKey]);
+
+  useEffect(() => {
+    return () => {
+      activeSearchAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sessionApiKey) { setError("A project API key is required for semantic search."); return; }
+    if (!sessionApiKey || !selectedProject) { setError("A project API key is required for semantic search."); return; }
     if (!query.trim() || !actorId.trim()) { setError("Query and Actor ID are both required."); return; }
+
+    const capturedProjectId = selectedProject.projectId;
+    const capturedKey = sessionApiKey;
+
+    activeSearchAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    activeSearchAbortControllerRef.current = controller;
 
     setError(null);
     setIsSearching(true);
 
     try {
-      const res = await memoriesApi.search(sessionApiKey, {
-        query: query.trim(),
-        topK,
-        actorId: actorId.trim(),
-      });
-      setResults(res.memories);
-      setLastQuery(res.query);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Semantic search failed.");
-      setResults(null);
+      const res = await memoriesApi.search(
+        capturedKey,
+        {
+          query: query.trim(),
+          topK,
+          actorId: actorId.trim(),
+        },
+        controller.signal
+      );
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setResults(res.memories);
+        setLastQuery(res.query);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if ((err as { name?: string })?.name === "AbortError") return;
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setError(err instanceof ApiError ? err.message : "Semantic search failed.");
+        setResults(null);
+      }
     } finally {
-      setIsSearching(false);
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setIsSearching(false);
+      }
     }
   };
 
@@ -234,7 +276,7 @@ export default function SemanticSearchPage() {
               </div>
               <div className="px-4 py-2 border-t border-border/30 bg-surface-subtle/20">
                 <span className="text-[10px] font-mono text-muted-foreground/50">
-                  POST /api/v1/memories/search · actor: {actorId}
+                  Semantic Vector Search · Actor: {actorId}
                 </span>
               </div>
             </div>

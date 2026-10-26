@@ -27,31 +27,50 @@ export default function DashboardOverviewPage() {
   const [memories, setMemories] = useState<MemoryListItem[]>([]);
   const [isLoadingMemories, setIsLoadingMemories] = useState(false);
 
-  // Load real active memories for the selected project
+  // Load real active memories for the selected project with race protection
   useEffect(() => {
-    let isMounted = true;
-    if (!sessionApiKey) {
+    if (!sessionApiKey || !selectedProject) {
       setMemories([]);
       return;
     }
 
+    const abortController = new AbortController();
+    const capturedProjectId = selectedProject.projectId;
+    const capturedKey = sessionApiKey;
+
     setIsLoadingMemories(true);
     memoriesApi
-      .list(sessionApiKey)
+      .list(capturedKey, abortController.signal)
       .then((data) => {
-        if (isMounted) setMemories(data.memories || []);
+        if (
+          selectedProject?.projectId === capturedProjectId &&
+          sessionApiKey === capturedKey
+        ) {
+          setMemories(data.memories || []);
+        }
       })
-      .catch(() => {
-        if (isMounted) setMemories([]);
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        if (
+          selectedProject?.projectId === capturedProjectId &&
+          sessionApiKey === capturedKey
+        ) {
+          setMemories([]);
+        }
       })
       .finally(() => {
-        if (isMounted) setIsLoadingMemories(false);
+        if (
+          selectedProject?.projectId === capturedProjectId &&
+          sessionApiKey === capturedKey
+        ) {
+          setIsLoadingMemories(false);
+        }
       });
 
     return () => {
-      isMounted = false;
+      abortController.abort();
     };
-  }, [sessionApiKey, selectedProject]);
+  }, [sessionApiKey, selectedProject?.projectId]);
 
   const activeKeysCount = projectApiKeys.filter((k) => k.isActive).length;
 
@@ -252,7 +271,7 @@ export default function DashboardOverviewPage() {
             SDK Reference →
           </Link>
         </div>
-        <span>Kairo Core Engine v1.0</span>
+        <span>VOIDZONE Core Engine v1.0</span>
       </div>
     </div>
   );

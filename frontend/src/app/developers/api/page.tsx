@@ -12,17 +12,17 @@ import {
 import { ArrowRight } from "lucide-react"
 
 export const metadata: Metadata = {
-  title: "REST API Reference — Kairo",
-  description: "Complete Kairo REST API reference. Authenticate with an API key and manage memories, search semantically, and run chat pipelines.",
+  title: "REST API Reference — VOIDZONE",
+  description: "Complete VOIDZONE REST API reference. Authenticate with an API key and manage memories, search semantically, and run chat pipelines.",
 }
 
 // ── Real API examples derived from implementation ─────────────────────────────
 
-const AUTH_EXAMPLE = `curl -X GET https://api.kairo.dev/api/v1/memories \\
-  -H "Authorization: Bearer kairo_live_sec_..."`
+const AUTH_EXAMPLE = `curl -X GET https://api.voidzone.dev/api/v1/memories \\
+  -H "Authorization: Bearer vz_live_sec_..."`
 
-const CREATE_MEMORY_CURL = `curl -X POST https://api.kairo.dev/api/v1/memories \\
-  -H "Authorization: Bearer kairo_live_sec_..." \\
+const CREATE_MEMORY_CURL = `curl -X POST https://api.voidzone.dev/api/v1/memories \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "content": "User prefers PostgreSQL for new projects",
@@ -45,8 +45,8 @@ const CREATE_MEMORY_RESPONSE_DUP = `{
   "reason": "SemanticDuplicate: similarity 0.97 with memory #12"
 }`
 
-const LIST_MEMORIES_CURL = `curl -X GET https://api.kairo.dev/api/v1/memories \\
-  -H "Authorization: Bearer kairo_live_sec_..."`
+const LIST_MEMORIES_CURL = `curl -X GET https://api.voidzone.dev/api/v1/memories \\
+  -H "Authorization: Bearer vz_live_sec_..."`
 
 const LIST_MEMORIES_RESPONSE = `{
   "userId": 4,
@@ -64,27 +64,27 @@ const LIST_MEMORIES_RESPONSE = `{
   ]
 }`
 
-const GET_MEMORY_CURL = `curl -X GET https://api.kairo.dev/api/v1/memories/17 \\
-  -H "Authorization: Bearer kairo_live_sec_..."`
+const GET_MEMORY_CURL = `curl -X GET https://api.voidzone.dev/api/v1/memories/17 \\
+  -H "Authorization: Bearer vz_live_sec_..."`
 
-const UPDATE_MEMORY_CURL = `curl -X PUT https://api.kairo.dev/api/v1/memories/17 \\
-  -H "Authorization: Bearer kairo_live_sec_..." \\
+const UPDATE_MEMORY_CURL = `curl -X PUT https://api.voidzone.dev/api/v1/memories/17 \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "content": "User strongly prefers PostgreSQL, avoids MySQL",
     "memoryType": "Preference"
   }'`
 
-const DELETE_MEMORY_CURL = `curl -X DELETE https://api.kairo.dev/api/v1/memories/17 \\
-  -H "Authorization: Bearer kairo_live_sec_..."`
+const DELETE_MEMORY_CURL = `curl -X DELETE https://api.voidzone.dev/api/v1/memories/17 \\
+  -H "Authorization: Bearer vz_live_sec_..."`
 
 const DELETE_MEMORY_RESPONSE = `{
   "memoryId": 17,
   "message": "Memory deactivated. The record is preserved in the database."
 }`
 
-const SEARCH_CURL = `curl -X POST https://api.kairo.dev/api/v1/memories/search \\
-  -H "Authorization: Bearer kairo_live_sec_..." \\
+const SEARCH_CURL = `curl -X POST https://api.voidzone.dev/api/v1/memories/search \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "query": "What database does this user prefer?",
@@ -127,7 +127,7 @@ export default function ApiDocsPage() {
             REST API Reference
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
-            The Kairo REST API is the foundation of all integrations. Use it directly from any HTTP client, or via the Python and Node.js SDKs which wrap these exact endpoints.
+            The VOIDZONE REST API is the foundation of all integrations. Use it directly from any HTTP client, or via the Python and Node.js SDKs which wrap these exact endpoints.
           </p>
         </div>
 
@@ -292,7 +292,7 @@ export default function ApiDocsPage() {
         <DocsSection id="search" title="Semantic Search">
           <div className="mb-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Kairo embeds your search query using the same model used at ingestion time, computes cosine similarity against stored memories within the actor scope, and applies relevance evaluation to return the most contextually appropriate results.
+              VOIDZONE embeds your search query using the same model used at ingestion time, computes cosine similarity against stored memories within the actor scope, and applies relevance evaluation to return the most contextually appropriate results.
             </p>
           </div>
           <EndpointCard

@@ -10,18 +10,18 @@ import {
 import { ArrowRight } from "lucide-react"
 
 export const metadata: Metadata = {
-  title: "Python SDK — Kairo Developer Docs",
-  description: "Official Kairo Python SDK documentation. Install with pip install kairo and add persistent memory to your Python applications and AI agents.",
+  title: "Python SDK — VOIDZONE Developer Docs",
+  description: "Official VOIDZONE Python SDK documentation. Install with pip install voidzone and add persistent memory to your Python applications and AI agents.",
 }
 
 // ── Real Python SDK code examples (from actual SDK implementation) ─────────────
 
-const INSTALL_CODE = `pip install kairo`
+const INSTALL_CODE = `pip install voidzone`
 
-const QUICKSTART_CODE = `from kairo import Kairo
+const QUICKSTART_CODE = `from voidzone import Voidzone
 
-# Reads KAIRO_API_KEY environment variable automatically
-client = Kairo()
+# Reads VOIDZONE_API_KEY environment variable automatically
+client = Voidzone()
 
 # Store a memory
 result = client.memories.create(
@@ -41,22 +41,22 @@ for m in results.memories:
     print(f"[{m.similarity:.4f}] {m.content}")`
 
 const AUTH_CODE = `import os
-from kairo import Kairo
+from voidzone import Voidzone
 
 # Option 1: Environment variable (recommended)
-# export KAIRO_API_KEY=kairo_live_sec_...
-client = Kairo()
+# export VOIDZONE_API_KEY=vz_live_sec_...
+client = Voidzone()
 
 # Option 2: Pass explicitly
-client = Kairo(api_key="kairo_live_sec_...")
+client = Voidzone(api_key="vz_live_sec_...")
 
 # Option 3: Context manager (auto-closes HTTP pool)
-with Kairo(api_key=os.environ["KAIRO_API_KEY"]) as client:
+with Voidzone(api_key=os.environ["VOIDZONE_API_KEY"]) as client:
     memories = client.memories.list()`
 
-const CREATE_CODE = `from kairo import Kairo
+const CREATE_CODE = `from voidzone import Voidzone
 
-client = Kairo()
+client = Voidzone()
 
 result = client.memories.create(
     content="User works in Python and prefers type hints",
@@ -73,9 +73,9 @@ else:
     print(f"  type:    {memory.memory_type}")
     print(f"  active:  {memory.is_active}")`
 
-const SEARCH_CODE = `from kairo import Kairo
+const SEARCH_CODE = `from voidzone import Voidzone
 
-client = Kairo()
+client = Voidzone()
 
 results = client.memories.search(
     query="What interface theme does the user prefer?",
@@ -87,20 +87,20 @@ print(f"Found {results.count} memories for query: {results.query!r}")
 for m in results.memories:
     print(f"  [{m.similarity:.4f}] {m.content}")`
 
-const GET_CODE = `from kairo import Kairo, KairoNotFoundError
+const GET_CODE = `from voidzone import Voidzone, VoidzoneNotFoundError
 
-client = Kairo()
+client = Voidzone()
 
 try:
     memory = client.memories.get(memory_id=17)
     print(memory.content)
     print(memory.created_at)
-except KairoNotFoundError:
+except VoidzoneNotFoundError:
     print("Memory not found or not owned by this user")`
 
-const UPDATE_CODE = `from kairo import Kairo
+const UPDATE_CODE = `from voidzone import Voidzone
 
-client = Kairo()
+client = Voidzone()
 
 updated = client.memories.update(
     memory_id=17,
@@ -110,34 +110,34 @@ updated = client.memories.update(
 
 print(f"Updated at: {updated.updated_at}")`
 
-const DELETE_CODE = `from kairo import Kairo
+const DELETE_CODE = `from voidzone import Voidzone
 
-client = Kairo()
+client = Voidzone()
 
 result = client.memories.delete(memory_id=17)
 print(result.message)
 # Memory deactivated. The record is preserved in the database.`
 
-const LIST_CODE = `from kairo import Kairo
+const LIST_CODE = `from voidzone import Voidzone
 
-client = Kairo()
+client = Voidzone()
 
 memories = client.memories.list()
 for m in memories:
     print(f"[{m.memory_id}] {m.memory_type}: {m.content}")`
 
-const ERROR_CODE = `from kairo import (
-    Kairo,
-    KairoAuthenticationError,
-    KairoAuthorizationError,
-    KairoValidationError,
-    KairoNotFoundError,
-    KairoRateLimitError,
-    KairoServerError,
-    KairoConnectionError,
+const ERROR_CODE = `from voidzone import (
+    Voidzone,
+    VoidzoneAuthenticationError,
+    VoidzoneAuthorizationError,
+    VoidzoneValidationError,
+    VoidzoneNotFoundError,
+    VoidzoneRateLimitError,
+    VoidzoneServerError,
+    VoidzoneConnectionError,
 )
 
-client = Kairo()
+client = Voidzone()
 
 try:
     result = client.memories.create(
@@ -145,16 +145,16 @@ try:
         memory_type="Fact",
         actor_id="user-123",
     )
-except KairoValidationError as e:
+except VoidzoneValidationError as e:
     print(f"Validation failed: {e.message} (HTTP {e.status_code})")
-except KairoAuthenticationError as e:
+except VoidzoneAuthenticationError as e:
     print(f"Auth failed — check your API key: {e}")
-except KairoRateLimitError as e:
+except VoidzoneRateLimitError as e:
     retry_in = e.retry_after
     print(f"Rate limited. Retry in {retry_in}s")
-except KairoConnectionError as e:
+except VoidzoneConnectionError as e:
     print(f"Network error: {e}")
-except KairoServerError as e:
+except VoidzoneServerError as e:
     print(f"Server error (HTTP {e.status_code}): {e}")`
 
 export default function PythonSdkPage() {
@@ -171,7 +171,7 @@ export default function PythonSdkPage() {
         <div>
           <div className="mb-3 flex items-center gap-2">
             <span className="rounded-[4px] border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-400 font-medium">
-              kairo 0.1.0
+              voidzone 0.1.0
             </span>
             <span className="rounded-[4px] border border-border/60 bg-surface-elevated px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
               Python 3.10+
@@ -181,7 +181,7 @@ export default function PythonSdkPage() {
             Python SDK
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
-            Official Python client for the Kairo AI Memory Platform. Built on{" "}
+            Official Python client for the VOIDZONE AI Memory Platform. Built on{" "}
             <code className="text-[12px] bg-surface-elevated px-1 rounded">httpx</code> with typed dataclasses, automatic error mapping, and context manager support.
           </p>
         </div>
@@ -191,7 +191,7 @@ export default function PythonSdkPage() {
           <div className="space-y-4">
             <DocsCodeBlock code={INSTALL_CODE} lang="bash" filename="Terminal" />
             <div className="text-xs text-muted-foreground space-y-1">
-              <p>Package name: <code className="bg-surface-elevated px-1 rounded">kairo</code></p>
+              <p>Package name: <code className="bg-surface-elevated px-1 rounded">voidzone</code></p>
               <p>Requires: Python 3.10 or later, httpx ≥ 0.27.0</p>
             </div>
           </div>
@@ -201,13 +201,13 @@ export default function PythonSdkPage() {
         <DocsSection id="authentication" title="Authentication">
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              The <code className="bg-surface-elevated px-1 rounded text-[11px]">Kairo</code> client requires an API key from your{" "}
+              The <code className="bg-surface-elevated px-1 rounded text-[11px]">Voidzone</code> client requires an API key from your{" "}
               <Link href="/dashboard/api-keys" className="text-primary hover:underline">API Keys dashboard</Link>.
               The key is sent as a Bearer token on every request and is never exposed through repr or exception messages.
             </p>
             <DocsCodeBlock code={AUTH_CODE} lang="python" filename="auth.py" />
             <Callout variant="warning">
-              Prefer environment variables over hard-coding keys. Set <code>KAIRO_API_KEY</code> in your environment and call <code>Kairo()</code> with no arguments.
+              Prefer environment variables over hard-coding keys. Set <code>VOIDZONE_API_KEY</code> in your environment and call <code>Voidzone()</code> with no arguments.
             </Callout>
           </div>
         </DocsSection>
@@ -258,7 +258,7 @@ export default function PythonSdkPage() {
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
               <code className="bg-surface-elevated px-1 rounded text-[11px]">client.memories.get(memory_id)</code> retrieves a single memory by ID.
-              Raises <code className="bg-surface-elevated px-1 rounded text-[11px]">KairoNotFoundError</code> if the memory does not exist or does not belong to the authenticated user.
+              Raises <code className="bg-surface-elevated px-1 rounded text-[11px]">VoidzoneNotFoundError</code> if the memory does not exist or does not belong to the authenticated user.
             </p>
             <DocsCodeBlock code={GET_CODE} lang="python" filename="get_memory.py" />
           </div>
@@ -303,9 +303,9 @@ export default function PythonSdkPage() {
         <DocsSection id="errors" title="Error Handling">
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              All SDK exceptions inherit from <code className="bg-surface-elevated px-1 rounded text-[11px]">KairoError</code>. Each typed exception includes a{" "}
+              All SDK exceptions inherit from <code className="bg-surface-elevated px-1 rounded text-[11px]">VoidzoneError</code>. Each typed exception includes a{" "}
               <code className="bg-surface-elevated px-1 rounded text-[11px]">message</code> and <code className="bg-surface-elevated px-1 rounded text-[11px]">status_code</code>.
-              <code className="bg-surface-elevated px-1 rounded text-[11px]">KairoRateLimitError</code> additionally exposes <code className="bg-surface-elevated px-1 rounded text-[11px]">retry_after</code> (seconds).
+              <code className="bg-surface-elevated px-1 rounded text-[11px]">VoidzoneRateLimitError</code> additionally exposes <code className="bg-surface-elevated px-1 rounded text-[11px]">retry_after</code> (seconds).
             </p>
             <div className="overflow-x-auto rounded-md border border-border/60">
               <table className="w-full text-xs">
@@ -318,14 +318,14 @@ export default function PythonSdkPage() {
                 </thead>
                 <tbody>
                   {[
-                    ["KairoAuthenticationError", "401", "Invalid or missing API key"],
-                    ["KairoAuthorizationError", "403", "API key lacks permission for the resource"],
-                    ["KairoValidationError", "400", "Invalid request body or missing required fields"],
-                    ["KairoNotFoundError", "404", "Memory not found or not owned by this user"],
-                    ["KairoConflictError", "409", "Conflict with existing server state"],
-                    ["KairoRateLimitError", "429", "Too many requests — check retry_after"],
-                    ["KairoServerError", "5xx", "Unexpected server-side error"],
-                    ["KairoConnectionError", "—", "Network failure, timeout, DNS error"],
+                    ["VoidzoneAuthenticationError", "401", "Invalid or missing API key"],
+                    ["VoidzoneAuthorizationError", "403", "API key lacks permission for the resource"],
+                    ["VoidzoneValidationError", "400", "Invalid request body or missing required fields"],
+                    ["VoidzoneNotFoundError", "404", "Memory not found or not owned by this user"],
+                    ["VoidzoneConflictError", "409", "Conflict with existing server state"],
+                    ["VoidzoneRateLimitError", "429", "Too many requests — check retry_after"],
+                    ["VoidzoneServerError", "5xx", "Unexpected server-side error"],
+                    ["VoidzoneConnectionError", "—", "Network failure, timeout, DNS error"],
                   ].map(([exc, status, when]) => (
                     <tr key={exc} className="border-b border-border/40 last:border-0">
                       <td className="px-4 py-2 font-mono text-[11px] text-primary/90">{exc}</td>

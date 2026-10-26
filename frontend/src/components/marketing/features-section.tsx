@@ -60,7 +60,7 @@ export function FeaturesSection() {
                 System capabilities & technical boundaries.
               </h2>
               <p className="mt-4 text-[16px] leading-relaxed text-muted-foreground">
-                Kairo is engineered to decouple agent state from runtime execution.
+                VOIDZONE is engineered to decouple agent state from runtime execution.
                 Every memory operation is bounded by tenant isolation, vector integrity, and strict immutability.
               </p>
 

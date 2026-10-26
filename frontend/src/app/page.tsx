@@ -7,7 +7,7 @@ import { MemoryOverTimeSection } from "@/components/marketing/memory-over-time-s
 import { AskNaturallySection } from "@/components/marketing/ask-naturally-section"
 import { RightPersonSection } from "@/components/marketing/right-person-section"
 import { MemoryLifecycleSection } from "@/components/marketing/memory-lifecycle-section"
-import { SeeKairoSection } from "@/components/marketing/see-kairo-section"
+import { SeeVoidzoneSection } from "@/components/marketing/see-voidzone-section"
 import { SimpleToAddSection } from "@/components/marketing/simple-to-add-section"
 import { HumanUseCasesSection } from "@/components/marketing/human-use-cases-section"
 import { FaqSection } from "@/components/marketing/faq-section"
@@ -42,8 +42,8 @@ export default function Home() {
         {/* Section 06: Memory Lifecycle — Ingest, Classify, Retrieve, Expire */}
         <MemoryLifecycleSection />
 
-        {/* Section 07: See Kairo in Action — Interactive Live Walkthrough */}
-        <SeeKairoSection />
+        {/* Section 07: See VOIDZONE in Action — Interactive Live Walkthrough */}
+        <SeeVoidzoneSection />
 
         {/* Section 08: "Simple to add." — REST, Python, Node, MCP */}
         <SimpleToAddSection />

@@ -25,8 +25,8 @@ const EXAMPLES: Record<LangKey, ExampleConfig> = {
     code: `import os
 import requests
 
-BASE_URL = os.environ.get("KAIRO_API_URL", "http://localhost:5000")
-API_KEY = os.environ.get("KAIRO_API_KEY", "")
+BASE_URL = os.environ.get("VOIDZONE_API_URL", "http://localhost:5000")
+API_KEY = os.environ.get("VOIDZONE_API_KEY", "")
 
 headers = {
     "Authorization": f"Bearer {API_KEY}",
@@ -75,8 +75,8 @@ for memory in search_res.json().get("memories", []):
     lang: "js",
     filename: "quickstart.ts",
     installCmd: "npm install node-fetch",
-    code: `const BASE_URL = process.env.KAIRO_API_URL || "http://localhost:5000";
-const API_KEY = process.env.KAIRO_API_KEY || "";
+    code: `const BASE_URL = process.env.VOIDZONE_API_URL || "http://localhost:5000";
+const API_KEY = process.env.VOIDZONE_API_KEY || "";
 
 const headers = {
   "Authorization": \`Bearer \${API_KEY}\`,
@@ -126,12 +126,12 @@ console.log("Retrieved context:", memories);`,
     filename: "quickstart.sh",
     installCmd: "curl -sSL",
     code: `# Configure local or deployed endpoint
-export KAIRO_API_URL="\${KAIRO_API_URL:-http://localhost:5000}"
-export KAIRO_API_KEY="$KAIRO_API_KEY"
+export VOIDZONE_API_URL="\${VOIDZONE_API_URL:-http://localhost:5000}"
+export VOIDZONE_API_KEY="$VOIDZONE_API_KEY"
 
 # 1. Create a memory
-curl -X POST "$KAIRO_API_URL/api/v1/memories" \\
-  -H "Authorization: Bearer $KAIRO_API_KEY" \\
+curl -X POST "$VOIDZONE_API_URL/api/v1/memories" \\
+  -H "Authorization: Bearer $VOIDZONE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "content": "The user prefers dark mode in all applications.",
@@ -139,8 +139,8 @@ curl -X POST "$KAIRO_API_URL/api/v1/memories" \\
   }'
 
 # 2. Semantic vector search
-curl -X POST "$KAIRO_API_URL/api/v1/memories/search" \\
-  -H "Authorization: Bearer $KAIRO_API_KEY" \\
+curl -X POST "$VOIDZONE_API_URL/api/v1/memories/search" \\
+  -H "Authorization: Bearer $VOIDZONE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "query": "What are the user's UI preferences?",
@@ -185,7 +185,7 @@ export function QuickstartSection() {
             Integrate with the Memory V1 API.
           </h2>
           <p className="mt-3 text-[16px] leading-relaxed text-muted-foreground">
-            Call Kairo directly from your agent runtime with standard HTTP requests.
+            Call VOIDZONE directly from your agent runtime with standard HTTP requests.
             Authenticate with your API key, persist structured memories, and query semantic context.
           </p>
         </div>

@@ -1,17 +1,22 @@
-# Kairo SDKs & Agent Integration
+# VOIDZONE SDKs & Agent Integration
 
-Official client libraries and agent integrations for the [Kairo AI Memory Platform](https://kairo.ai).
+Client libraries and agent integrations for the [VOIDZONE AI Memory Platform](https://voidzone.ai).
 
-Kairo equips AI applications and autonomous agents with persistent, scoped, searchable memory powered by semantic vector embeddings.
+VOIDZONE equips AI applications and autonomous agents with persistent, scoped, searchable memory powered by semantic vector embeddings.
 
 ---
 
-## SDK Packages
+## SDK Packages (Source In-Repo)
 
-| Package | Language | Runtime | Directory | Documentation |
-|---|---|---|---|---|
-| **`kairo`** | Python | Python 3.10+ | [`sdks/python/`](python/) | [Python README](python/README.md) |
-| **`@kairo/sdk`** | TypeScript / JavaScript | Node.js 18+ | [`sdks/node/`](node/) | [Node README](node/README.md) |
+The SDK libraries in this repository are developed as local packages. They can be installed directly from source:
+
+| Package Name | Language | Runtime | Source Directory | Documentation | Local Installation |
+|---|---|---|---|---|---|
+| **`kairo`** | Python | Python 3.10+ | [`sdks/python/`](python/) | [Python README](python/README.md) | `pip install -e sdks/python` |
+| **`@kairo/sdk`** | TypeScript / JavaScript | Node.js 18+ | [`sdks/node/`](node/) | [Node README](node/README.md) | `npm install ./sdks/node` |
+
+> [!NOTE]
+> These packages are currently built and tested from local source in this repository. They are not yet published to public PyPI / npm registries under `voidzone` or `@voidzone/sdk`.
 
 For the complete technical guide covering both languages, architectural deep dives, and troubleshooting, see the [Master Developer Guide](../docs/SDK_GUIDE.md).
 
@@ -33,7 +38,7 @@ For the complete technical guide covering both languages, architectural deep div
 ```python
 from kairo import Kairo, KairoAgentMemory
 
-client = Kairo()  # reads KAIRO_API_KEY
+client = Kairo()  # reads KAIRO_API_KEY or VOIDZONE API key passed explicitly: Kairo(api_key="...")
 agent = KairoAgentMemory(client, actor_id="user-123")
 
 # Remember
@@ -47,7 +52,7 @@ context = agent.recall(query="What language does the user prefer?")
 ```typescript
 import { Kairo, KairoAgentMemory } from "@kairo/sdk";
 
-const client = new Kairo(); // reads KAIRO_API_KEY
+const client = new Kairo(); // reads KAIRO_API_KEY or pass apiKey explicitly: new Kairo({ apiKey: "..." })
 const agent = new KairoAgentMemory(client, { actorId: "user-123" });
 
 // Remember
@@ -63,5 +68,5 @@ const context = await agent.recall({ query: "What language does the user prefer?
 
 - **API Base URL**: `http://localhost:5171` (default for local development)
 - **Environment Variables**:
-  - `KAIRO_API_KEY`: Project API key (required)
+  - `KAIRO_API_KEY`: Project API key (required when not passed in constructor)
   - `KAIRO_BASE_URL`: Override base URL (e.g. `http://localhost:5171`)

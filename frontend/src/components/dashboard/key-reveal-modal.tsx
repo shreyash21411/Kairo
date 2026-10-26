@@ -35,7 +35,7 @@ export function KeyRevealModal({
           </div>
           <div>
             <h3 className="text-base font-semibold text-foreground">
-              Save Your New Kairo API Key
+              Save Your New VOIDZONE API Key
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               Key name: <span className="font-medium text-foreground">{createdKey.name}</span> (Project #{createdKey.projectId})

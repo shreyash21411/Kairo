@@ -296,7 +296,7 @@ export default function ProjectsPage() {
 
           <div className="px-4 py-2 border-t border-border/30 bg-surface-subtle/20">
             <span className="text-[10px] font-mono text-muted-foreground/50">
-              {projects.length} project{projects.length !== 1 ? "s" : ""} · GET /api/v1/projects
+              {projects.length} project{projects.length !== 1 ? "s" : ""} · Managed Workspaces
             </span>
           </div>
         </div>

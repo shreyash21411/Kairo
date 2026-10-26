@@ -19,7 +19,7 @@ export function ScopingSection() {
             The right memory. For the right context.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            Persistent memory must never become a chaotic global dump. Kairo isolates memory by project and actor, ensuring that individual users, autonomous agents, and production environments retain strict boundaries.
+            Persistent memory must never become a chaotic global dump. VOIDZONE isolates memory by project and actor, ensuring that individual users, autonomous agents, and production environments retain strict boundaries.
           </p>
         </div>
 
@@ -27,10 +27,10 @@ export function ScopingSection() {
         <div className="mt-14 rounded-xl border border-border/80 bg-surface-elevated p-6 sm:p-10 relative overflow-hidden shadow-xl">
           <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
 
-          {/* Top Level: Kairo Organization */}
+          {/* Top Level: VOIDZONE Organization */}
           <div className="flex flex-col items-center text-center">
             <div className="rounded-lg border border-border/80 bg-background px-4 py-2 font-mono text-xs font-semibold text-foreground shadow-sm">
-              KAIRO WORKSPACE
+              VOIDZONE WORKSPACE
             </div>
             
             {/* Trunk Line */}

@@ -50,10 +50,10 @@ const STAGES: PipelineStage[] = [
     title: "Scoped Partition",
     subtitle: "Project + Actor Isolation",
     tag: "SECURITY",
-    meta: "proj: kairo-prod",
+    meta: "proj: vz-prod",
     detail: {
       type: "Scope Partition",
-      content: "Isolated to [Project: kairo-prod] × [Actor: dev_sarah]",
+      content: "Isolated to [Project: vz-prod] × [Actor: dev_sarah]",
       target: "Zero Cross-Leakage",
     },
   },
@@ -115,7 +115,7 @@ export function InfrastructureVisualizer() {
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           </span>
           <span className="font-mono text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            Kairo Pipeline Engine
+            VOIDZONE Pipeline Engine
           </span>
           <span className="font-mono text-[10px] text-muted-foreground/40">|</span>
           <span className="font-mono text-[10px] text-muted-foreground/80">
@@ -294,7 +294,7 @@ export function InfrastructureVisualizer() {
 
       {/* Pipeline narrative strip */}
       <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground/80 font-mono">
-        <span>Information enters Kairo → becomes durable memory → emerges as context</span>
+        <span>Information enters VOIDZONE → becomes durable memory → emerges as context</span>
         <span className="hidden sm:inline">Zero session reset</span>
       </div>
     </div>

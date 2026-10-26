@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ── Kairo Design Tokens (Tailwind v4 @theme) ─────────────────────────────── */
+/* ── VOIDZONE Design Tokens (Tailwind v4 @theme) ─────────────────────────────── */
 @theme {
   /* Semantic colour tokens */
   --color-background:          hsl(var(--background));
@@ -15,7 +15,7 @@
   --color-popover:             hsl(var(--popover));
   --color-popover-foreground:  hsl(var(--popover-foreground));
 
-  /* Kairo Cobalt/Indigo engineering accent */
+  /* VOIDZONE Cobalt/Indigo engineering accent */
   --color-primary:             hsl(var(--primary));
   --color-primary-foreground:  hsl(var(--primary-foreground));
 
@@ -49,42 +49,42 @@
   --radius-pill: 9999px;
   --radius-full: 9999px;
 
-  /* Kairo Semantic Design Tokens */
-  --color-kairo-background:          var(--kairo-background);
-  --color-kairo-surface:             var(--kairo-surface);
-  --color-kairo-surface-elevated:    var(--kairo-surface-elevated);
-  --color-kairo-primary:             var(--kairo-primary);
-  --color-kairo-primary-hover:       var(--kairo-primary-hover);
-  --color-kairo-primary-muted:       var(--kairo-primary-muted);
-  --color-kairo-text-primary:        var(--kairo-text-primary);
-  --color-kairo-text-secondary:      var(--kairo-text-secondary);
-  --color-kairo-text-muted:          var(--kairo-text-muted);
-  --color-kairo-border:              var(--kairo-border);
-  --color-kairo-border-subtle:       var(--kairo-border-subtle);
-  --color-kairo-border-strong:       var(--kairo-border-strong);
-  --color-kairo-success:             var(--kairo-success);
-  --color-kairo-warning:             var(--kairo-warning);
-  --color-kairo-danger:              var(--kairo-danger);
+  /* VOIDZONE Semantic Design Tokens */
+  --color-vz-background:          var(--vz-background);
+  --color-vz-surface:             var(--vz-surface);
+  --color-vz-surface-elevated:    var(--vz-surface-elevated);
+  --color-vz-primary:             var(--vz-primary);
+  --color-vz-primary-hover:       var(--vz-primary-hover);
+  --color-vz-primary-muted:       var(--vz-primary-muted);
+  --color-vz-text-primary:        var(--vz-text-primary);
+  --color-vz-text-secondary:      var(--vz-text-secondary);
+  --color-vz-text-muted:          var(--vz-text-muted);
+  --color-vz-border:              var(--vz-border);
+  --color-vz-border-subtle:       var(--vz-border-subtle);
+  --color-vz-border-strong:       var(--vz-border-strong);
+  --color-vz-success:             var(--vz-success);
+  --color-vz-warning:             var(--vz-warning);
+  --color-vz-danger:              var(--vz-danger);
 }
 
 /* ── CSS Custom Property Values (Source of Truth) ─────────────────────────── */
 :root {
-  /* ── Core Kairo Semantic Design Tokens (Light) ── */
-  --kairo-background:          hsl(0 0% 100%);
-  --kairo-surface:             hsl(240 5% 96%);
-  --kairo-surface-elevated:    hsl(0 0% 98%);
-  --kairo-primary:             hsl(226 70% 50%);
-  --kairo-primary-hover:       hsl(226 70% 44%);
-  --kairo-primary-muted:       hsl(226 80% 96%);
-  --kairo-text-primary:        hsl(240 10% 3.9%);
-  --kairo-text-secondary:      hsl(240 4% 35%);
-  --kairo-text-muted:          hsl(240 4% 45%);
-  --kairo-border:              hsl(240 6% 88%);
-  --kairo-border-subtle:       hsl(240 6% 93%);
-  --kairo-border-strong:       hsl(240 6% 75%);
-  --kairo-success:             hsl(142 71% 45%);
-  --kairo-warning:             hsl(38 92% 50%);
-  --kairo-danger:              hsl(0 72% 51%);
+  /* ── Core VOIDZONE Semantic Design Tokens (Light) ── */
+  --vz-background:          hsl(0 0% 100%);
+  --vz-surface:             hsl(240 5% 96%);
+  --vz-surface-elevated:    hsl(0 0% 98%);
+  --vz-primary:             hsl(226 70% 50%);
+  --vz-primary-hover:       hsl(226 70% 44%);
+  --vz-primary-muted:       hsl(226 80% 96%);
+  --vz-text-primary:        hsl(240 10% 3.9%);
+  --vz-text-secondary:      hsl(240 4% 35%);
+  --vz-text-muted:          hsl(240 4% 45%);
+  --vz-border:              hsl(240 6% 88%);
+  --vz-border-subtle:       hsl(240 6% 93%);
+  --vz-border-strong:       hsl(240 6% 75%);
+  --vz-success:             hsl(142 71% 45%);
+  --vz-warning:             hsl(38 92% 50%);
+  --vz-danger:              hsl(0 72% 51%);
 
   /* Light mode (clean, restrained technical gray) */
   --background:        0 0% 100%;
@@ -125,22 +125,22 @@
 }
 
 .dark {
-  /* ── Core Kairo Semantic Design Tokens (Dark - Primary Target) ── */
-  --kairo-background:          hsl(240 10% 3.5%); /* #09090b */
-  --kairo-surface:             hsl(240 5% 10%);   /* #18181b */
-  --kairo-surface-elevated:    hsl(240 6% 7%);    /* #111113 */
-  --kairo-primary:             hsl(226 70% 58%); /* #3b5bf5 */
-  --kairo-primary-hover:       hsl(226 70% 64%);
-  --kairo-primary-muted:       hsl(226 50% 14%);
-  --kairo-text-primary:        hsl(0 0% 98%);     /* #fafafa */
-  --kairo-text-secondary:      hsl(240 4% 75%);   /* #d4d4d8 */
-  --kairo-text-muted:          hsl(240 4% 65%);   /* #a1a1aa */
-  --kairo-border:              hsl(240 5% 15%);   /* #26262a hairline */
-  --kairo-border-subtle:       hsl(240 5% 10%);   /* #18181b hairline */
-  --kairo-border-strong:       hsl(240 5% 25%);   /* #3f3f46 */
-  --kairo-success:             hsl(142 71% 45%);  /* emerald-500 */
-  --kairo-warning:             hsl(38 92% 50%);   /* amber-500 */
-  --kairo-danger:              hsl(0 62% 52%);    /* red-500 */
+  /* ── Core VOIDZONE Semantic Design Tokens (Dark - Primary Target) ── */
+  --vz-background:          hsl(240 10% 3.5%); /* #09090b */
+  --vz-surface:             hsl(240 5% 10%);   /* #18181b */
+  --vz-surface-elevated:    hsl(240 6% 7%);    /* #111113 */
+  --vz-primary:             hsl(226 70% 58%); /* #3b5bf5 */
+  --vz-primary-hover:       hsl(226 70% 64%);
+  --vz-primary-muted:       hsl(226 50% 14%);
+  --vz-text-primary:        hsl(0 0% 98%);     /* #fafafa */
+  --vz-text-secondary:      hsl(240 4% 75%);   /* #d4d4d8 */
+  --vz-text-muted:          hsl(240 4% 65%);   /* #a1a1aa */
+  --vz-border:              hsl(240 5% 15%);   /* #26262a hairline */
+  --vz-border-subtle:       hsl(240 5% 10%);   /* #18181b hairline */
+  --vz-border-strong:       hsl(240 5% 25%);   /* #3f3f46 */
+  --vz-success:             hsl(142 71% 45%);  /* emerald-500 */
+  --vz-warning:             hsl(38 92% 50%);   /* amber-500 */
+  --vz-danger:              hsl(0 62% 52%);    /* red-500 */
 
   --ambient-opacity-mult: 1;
   /* Dark mode (near-black / graphite foundation) */
@@ -180,7 +180,7 @@
   --radius:            0.375rem; /* 6px */
 }
 
-/* ── Kairo Semantic Typography Scale ──────────────────────────────────────── */
+/* ── VOIDZONE Semantic Typography Scale ──────────────────────────────────────── */
 .text-display {
   font-family: var(--font-sans);
   font-size: clamp(2.25rem, 5vw, 3.75rem);

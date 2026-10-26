@@ -57,7 +57,7 @@ export const authApi = {
 
   /**
    * Returns profile information and owned projects for the authenticated developer.
-   * GET /api/auth/me (Scheme: KairoJwt)
+   * GET /api/auth/me (Scheme: VoidzoneJwt)
    */
   async getMe(): Promise<AccountMeResult> {
     return jwtRequest<AccountMeResult>("/api/auth/me", {

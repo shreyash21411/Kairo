@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useProject } from "@/providers/project-provider";
 import { chatApi } from "@/lib/api/chatApi";
 import { ChatProcessingResult } from "@/types/chat";
@@ -37,12 +37,42 @@ export default function ChatProcessingPage() {
     "Got it! I will remember your preference for dark mode and TypeScript."
   );
 
+  // Abort Controllers
+  const ingestAbortRef = useRef<AbortController | null>(null);
+  const processAbortRef = useRef<AbortController | null>(null);
+
+  // Clear state and cancel in-flight requests on project or key switch
+  useEffect(() => {
+    ingestAbortRef.current?.abort();
+    ingestAbortRef.current = null;
+    processAbortRef.current?.abort();
+    processAbortRef.current = null;
+    setChatIdInput("");
+    setResult(null);
+    setError(null);
+  }, [selectedProject?.projectId, sessionApiKey]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      ingestAbortRef.current?.abort();
+      processAbortRef.current?.abort();
+    };
+  }, []);
+
   const handleIngest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionApiKey || !selectedProject) {
       setError("A project API key is required before ingesting conversations.");
       return;
     }
+    const capturedProjectId = selectedProject.projectId;
+    const capturedKey = sessionApiKey;
+
+    ingestAbortRef.current?.abort();
+    const controller = new AbortController();
+    ingestAbortRef.current = controller;
+
     setError(null);
     setIsIngesting(true);
     setResult(null);
@@ -70,13 +100,30 @@ export default function ChatProcessingPage() {
         ],
       };
 
-      const res = await chatApi.ingestChat(sessionApiKey, payload);
-      setChatIdInput(String(res.chatId));
-      setConversationId(`conv-${Date.now()}`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to ingest chat conversation.");
+      const res = await chatApi.ingestChat(capturedKey, payload, controller.signal);
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setChatIdInput(String(res.chatId));
+        setConversationId(`conv-${Date.now()}`);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if ((err as { name?: string })?.name === "AbortError") return;
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setError(err instanceof ApiError ? err.message : "Failed to ingest chat conversation.");
+      }
     } finally {
-      setIsIngesting(false);
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setIsIngesting(false);
+      }
     }
   };
 
@@ -84,19 +131,43 @@ export default function ChatProcessingPage() {
     e.preventDefault();
     const id = Number(chatIdInput.trim());
     if (!id || id <= 0) { setError("Provide a valid positive Chat ID."); return; }
-    if (!sessionApiKey) { setError("A project API key is required."); return; }
+    if (!sessionApiKey || !selectedProject) { setError("A project API key is required."); return; }
+
+    const capturedProjectId = selectedProject.projectId;
+    const capturedKey = sessionApiKey;
+
+    processAbortRef.current?.abort();
+    const controller = new AbortController();
+    processAbortRef.current = controller;
 
     setError(null);
     setIsProcessing(true);
     setResult(null);
 
     try {
-      const data = await chatApi.processChat(sessionApiKey, id);
-      setResult(data);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Chat processing failed.");
+      const data = await chatApi.processChat(capturedKey, id, controller.signal);
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setResult(data);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if ((err as { name?: string })?.name === "AbortError") return;
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setError(err instanceof ApiError ? err.message : "Chat processing failed.");
+      }
     } finally {
-      setIsProcessing(false);
+      if (
+        selectedProject?.projectId === capturedProjectId &&
+        sessionApiKey === capturedKey
+      ) {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -129,7 +200,7 @@ export default function ChatProcessingPage() {
             </span>
             <div>
               <div className="text-xs font-semibold text-foreground">Ingest Conversation</div>
-              <div className="text-[10px] font-mono text-muted-foreground">POST /api/chats</div>
+              <div className="text-[10px] font-mono text-muted-foreground">Stage Conversation Session</div>
             </div>
           </div>
 
@@ -186,7 +257,7 @@ export default function ChatProcessingPage() {
             <div>
               <div className="text-xs font-semibold text-foreground">Trigger Processing</div>
               <div className="text-[10px] font-mono text-muted-foreground">
-                POST /api/chat-processing/{"{chatId}"}
+                Extract & Consolidate Intelligence
               </div>
             </div>
           </div>

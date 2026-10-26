@@ -16,9 +16,9 @@ const SDK_OPTIONS: SdkOption[] = [
     id: "python",
     label: "Python SDK",
     language: "python",
-    snippet: `from kairo import Kairo
+    snippet: `from voidzone import Voidzone
 
-client = Kairo(api_key="kairo_live_...")
+client = Voidzone(api_key="vz_live_...")
 
 # Store durable memory
 memory = client.memories.create(
@@ -33,31 +33,31 @@ recalled = client.memories.search(
     actor_id="user_482",
     limit=3
 )`,
-    notes: "pip install kairo-sdk",
+    notes: "pip install voidzone-sdk",
   },
   {
     id: "nodejs",
     label: "TypeScript / Node",
     language: "typescript",
-    snippet: `import { KairoClient } from "@kairo/sdk";
+    snippet: `import { VoidzoneClient } from "@voidzone/sdk";
 
-const kairo = new KairoClient({
-  apiKey: process.env.KAIRO_API_KEY!
+const vz = new VoidzoneClient({
+  apiKey: process.env.VOIDZONE_API_KEY!
 });
 
 // Create scoped memory
-await kairo.memories.create({
+await vz.memories.create({
   content: "Prefers PostgreSQL with pgvector for embedding workloads",
   memoryType: "Preference",
   actorId: "dev_99"
 });
 
 // Semantic retrieval
-const results = await kairo.memories.search({
+const results = await vz.memories.search({
   query: "Database preferences for embedding stores",
   actorId: "dev_99"
 });`,
-    notes: "npm install @kairo/sdk",
+    notes: "npm install @voidzone/sdk",
   },
   {
     id: "mcp",
@@ -65,16 +65,16 @@ const results = await kairo.memories.search({
     language: "json",
     snippet: `{
   "mcpServers": {
-    "kairo": {
+    "voidzone": {
       "command": "npx",
-      "args": ["-y", "@kairo/mcp-server"],
+      "args": ["-y", "@voidzone/mcp-server"],
       "env": {
-        "KAIRO_API_KEY": "kairo_live_sec_..."
+        "VOIDZONE_API_KEY": "vz_live_sec_..."
       }
     }
   }
 }`,
-    notes: "Connect AI tools and agents to Kairo's persistent memory through the Model Context Protocol.",
+    notes: "Connect AI tools and agents to VOIDZONE's persistent memory through the Model Context Protocol.",
   },
 ]
 
@@ -102,7 +102,7 @@ export function SdkMcpSection() {
             Integrate anywhere in minutes.
           </h2>
           <p className="mt-4 text-base text-muted-foreground leading-relaxed">
-            Whether using Python agents, Node.js microservices, or standard Model Context Protocol (MCP) clients, Kairo seamlessly binds to your execution stack.
+            Whether using Python agents, Node.js microservices, or standard Model Context Protocol (MCP) clients, VOIDZONE seamlessly binds to your execution stack.
           </p>
         </div>
 

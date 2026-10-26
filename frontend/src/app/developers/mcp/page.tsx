@@ -10,21 +10,21 @@ import {
 import { ArrowRight } from "lucide-react"
 
 export const metadata: Metadata = {
-  title: "MCP Integration — Kairo Developer Docs",
-  description: "Connect any Model Context Protocol compatible AI application directly to Kairo memory. Tools: remember, recall, update, forget.",
+  title: "MCP Integration — VOIDZONE Developer Docs",
+  description: "Connect any Model Context Protocol compatible AI application directly to VOIDZONE memory. Tools: remember, recall, update, forget.",
 }
 
-// ── Real MCP examples from KairoMemoryTools.cs implementation ─────────────────
+// ── Real MCP examples from VoidzoneMemoryTools.cs implementation ─────────────────
 
-const MCP_ENDPOINT = `https://api.kairo.dev/mcp`
+const MCP_ENDPOINT = `https://api.voidzone.dev/mcp`
 
 const CURSOR_CONFIG = `// .cursor/mcp.json
 {
   "mcpServers": {
-    "kairo": {
-      "url": "https://api.kairo.dev/mcp",
+    "voidzone": {
+      "url": "https://api.voidzone.dev/mcp",
       "headers": {
-        "Authorization": "Bearer kairo_live_sec_..."
+        "Authorization": "Bearer vz_live_sec_..."
       }
     }
   }
@@ -33,10 +33,10 @@ const CURSOR_CONFIG = `// .cursor/mcp.json
 const CLAUDE_DESKTOP_CONFIG = `// claude_desktop_config.json
 {
   "mcpServers": {
-    "kairo": {
-      "url": "https://api.kairo.dev/mcp",
+    "voidzone": {
+      "url": "https://api.voidzone.dev/mcp",
       "headers": {
-        "Authorization": "Bearer kairo_live_sec_..."
+        "Authorization": "Bearer vz_live_sec_..."
       }
     }
   }
@@ -45,22 +45,22 @@ const CLAUDE_DESKTOP_CONFIG = `// claude_desktop_config.json
 const WINDSURF_CONFIG = `// ~/.codeium/windsurf/mcp_config.json
 {
   "mcpServers": {
-    "kairo": {
-      "serverUrl": "https://api.kairo.dev/mcp",
+    "voidzone": {
+      "serverUrl": "https://api.voidzone.dev/mcp",
       "headers": {
-        "Authorization": "Bearer kairo_live_sec_..."
+        "Authorization": "Bearer vz_live_sec_..."
       }
     }
   }
 }`
 
-const PING_EXAMPLE = `// Tool: kairo_ping
+const PING_EXAMPLE = `// Tool: vz_ping
 // Confirms the MCP server is reachable and authenticates your key
 // Input: (no parameters)
-// Output: "Kairo MCP v1 online. Authenticated as user 4."`
+// Output: "VOIDZONE MCP v1 online. Authenticated as user 4."`
 
 const REMEMBER_EXAMPLE = `// Tool: remember
-// Stores a durable memory in Kairo
+// Stores a durable memory in VOIDZONE
 // Parameters:
 //   content:    string  — Memory text (max 10,000 chars)
 //   memoryType: string  — Preference | Fact | Goal | Context | Skill | Relationship | Other
@@ -172,10 +172,10 @@ forget(
 const RESOURCES_EXAMPLE = `// MCP Resources — Read-only data exposed to clients
 // No tool call needed; clients can read these URIs directly
 
-kairo://user/profile       — Current user profile & project context
-kairo://projects           — All active projects for this user
-kairo://memories           — All active memories for this user
-kairo://memories/{id}      — Single memory by numeric ID`
+voidzone://user/profile       — Current user profile & project context
+voidzone://projects           — All active projects for this user
+voidzone://memories           — All active memories for this user
+voidzone://memories/{id}      — Single memory by numeric ID`
 
 export default function McpDocsPage() {
   return (
@@ -201,7 +201,7 @@ export default function McpDocsPage() {
             Model Context Protocol
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
-            Kairo exposes a native MCP server at <code className="text-[12px] bg-surface-elevated px-1 rounded">/mcp</code>.
+            VOIDZONE exposes a native MCP server at <code className="text-[12px] bg-surface-elevated px-1 rounded">/mcp</code>.
             Connect any MCP-compatible AI application — Cursor, Claude Desktop, Windsurf, or a custom agent — and give it persistent, searchable memory with no SDK required.
           </p>
         </div>
@@ -210,7 +210,7 @@ export default function McpDocsPage() {
         <DocsSection id="overview" title="How It Works">
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              The Kairo MCP server uses the same authentication and memory pipeline as the REST API.
+              The VOIDZONE MCP server uses the same authentication and memory pipeline as the REST API.
               Your API key is authenticated by the same handler used by all other endpoints.
               Tools are thin adapters — they call the existing memory service directly. No memory logic is duplicated in the MCP layer.
             </p>
@@ -234,10 +234,10 @@ export default function McpDocsPage() {
         <DocsSection id="authentication" title="Authentication">
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Send your Kairo API key in the <code className="bg-surface-elevated px-1 rounded text-[11px]">Authorization</code> header as a Bearer token.
+              Send your VOIDZONE API key in the <code className="bg-surface-elevated px-1 rounded text-[11px]">Authorization</code> header as a Bearer token.
               The MCP endpoint is the same as the REST API — it requires the same key format.
             </p>
-            <DocsCodeBlock code={`Authorization: Bearer kairo_live_sec_...`} lang="bash" filename="Required header" />
+            <DocsCodeBlock code={`Authorization: Bearer vz_live_sec_...`} lang="bash" filename="Required header" />
             <Callout variant="warning">
               API keys are per-project. The MCP server uses the key to determine which project and user the memory operations belong to. Never share keys between projects.
             </Callout>
@@ -276,13 +276,13 @@ export default function McpDocsPage() {
         <DocsSection id="tools" title="Available Tools">
           <div className="mb-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Kairo exposes 5 MCP tools. All memory-scoping and authentication is enforced server-side from the API key — actor identity is never accepted from tool arguments.
+              VOIDZONE exposes 5 MCP tools. All memory-scoping and authentication is enforced server-side from the API key — actor identity is never accepted from tool arguments.
             </p>
           </div>
 
           <div className="space-y-2 mb-6">
             {[
-              { name: "kairo_ping", desc: "Health check — confirms the server is live and the API key is valid" },
+              { name: "vz_ping", desc: "Health check — confirms the server is live and the API key is valid" },
               { name: "remember", desc: "Store a durable, deduplicated, vectorized memory" },
               { name: "recall", desc: "Semantically search memories within an actor scope" },
               { name: "update", desc: "Update an existing memory and regenerate its embedding" },
@@ -295,10 +295,10 @@ export default function McpDocsPage() {
             ))}
           </div>
 
-          {/* kairo_ping */}
-          <div id="kairo_ping" className="scroll-mt-28 mb-8">
+          {/* vz_ping */}
+          <div id="vz_ping" className="scroll-mt-28 mb-8">
             <h3 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
-              <code className="font-mono text-[13px] text-primary">kairo_ping</code>
+              <code className="font-mono text-[13px] text-primary">vz_ping</code>
             </h3>
             <DocsCodeBlock code={PING_EXAMPLE} lang="bash" />
           </div>
@@ -368,7 +368,7 @@ export default function McpDocsPage() {
         <DocsSection id="resources" title="MCP Resources">
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Kairo also exposes read-only MCP Resources. These are data URIs your MCP client can read directly without calling a tool. All resources are scoped to the authenticated API key.
+              VOIDZONE also exposes read-only MCP Resources. These are data URIs your MCP client can read directly without calling a tool. All resources are scoped to the authenticated API key.
             </p>
             <DocsCodeBlock code={RESOURCES_EXAMPLE} lang="bash" filename="Resource URIs" />
             <div className="overflow-x-auto rounded-md border border-border/60">
@@ -381,10 +381,10 @@ export default function McpDocsPage() {
                 </thead>
                 <tbody>
                   {[
-                    ["kairo://user/profile", "Current user profile, active project, API key ID, project count"],
-                    ["kairo://projects", "All active projects belonging to the authenticated user"],
-                    ["kairo://memories", "All active memories for the authenticated user, newest first"],
-                    ["kairo://memories/{memoryId}", "Single memory by ID, enforcing tenant boundary"],
+                    ["voidzone://user/profile", "Current user profile, active project, API key ID, project count"],
+                    ["voidzone://projects", "All active projects belonging to the authenticated user"],
+                    ["voidzone://memories", "All active memories for the authenticated user, newest first"],
+                    ["voidzone://memories/{memoryId}", "Single memory by ID, enforcing tenant boundary"],
                   ].map(([uri, desc]) => (
                     <tr key={uri} className="border-b border-border/40 last:border-0">
                       <td className="px-4 py-2.5 font-mono text-[11px] text-primary/90 whitespace-nowrap">{uri}</td>

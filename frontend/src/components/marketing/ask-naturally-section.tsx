@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
@@ -37,7 +37,7 @@ export function AskNaturallySection() {
             Ask naturally.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            You don&apos;t need exact keywords or query syntax. Kairo performs vector similarity search to find the right memories based on the meaning behind what you ask.
+            You don&apos;t need exact keywords or query syntax. VOIDZONE performs vector similarity search to find the right memories based on the meaning behind what you ask.
           </p>
         </div>
 

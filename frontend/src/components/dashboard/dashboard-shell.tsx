@@ -20,7 +20,6 @@ import {
   LogOut,
   Menu,
   X,
-  Shield,
   User,
   ChevronRight,
   Key,
@@ -106,11 +105,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Top Navigation Header */}
       <header className="md:hidden flex items-center justify-between px-4 h-12 border-b border-border bg-surface-elevated sticky top-0 z-40">
-        <Link href="/dashboard" className="flex items-center gap-2 font-semibold tracking-tight text-xs">
-          <div className="h-5 w-5 rounded-[4px] bg-primary/20 border border-primary/40 flex items-center justify-center">
-            <Shield className="h-3 w-3 text-primary" />
-          </div>
-          <span>Kairo</span>
+        <Link href="/dashboard" className="flex items-center gap-2 focus-visible:outline-none">
+          <span className="font-sans text-[15px] font-bold tracking-tight text-foreground lowercase select-none">
+            voidzone
+          </span>
           <span className="text-[10px] font-mono text-muted-foreground">v1.0</span>
         </Link>
         <div className="flex items-center gap-1.5">
@@ -140,11 +138,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       >
         {/* Sidebar Header: Brand & Status */}
         <div className="h-12 px-4 border-b border-border/60 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight text-xs text-foreground">
-            <div className="h-5 w-5 rounded-[4px] bg-primary/20 border border-primary/40 flex items-center justify-center">
-              <Shield className="h-3 w-3 text-primary" />
-            </div>
-            <span>Kairo</span>
+          <Link href="/" className="flex items-center gap-2 text-foreground focus-visible:outline-none">
+            <span className="font-sans text-[16px] font-bold tracking-tight text-foreground lowercase select-none">
+              voidzone
+            </span>
             <span className="text-[9px] font-mono text-muted-foreground bg-muted/60 px-1 py-0.2 rounded border border-border/40">
               v1.0
             </span>
@@ -280,7 +277,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <div className="h-12 border-b border-border/60 bg-surface-elevated/40 backdrop-blur-xs px-4 sm:px-6 hidden md:flex items-center justify-between gap-4">
           {/* Left Breadcrumb Context */}
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <span className="text-foreground">Kairo</span>
+            <span className="text-foreground">VOIDZONE</span>
             <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
             <span className="text-foreground font-semibold">
               {selectedProject?.name || "No Project"}

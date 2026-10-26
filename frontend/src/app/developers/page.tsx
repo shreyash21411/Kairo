@@ -7,8 +7,8 @@ import { Footer } from "@/components/layout/footer"
 import { AmbientBackground } from "@/components/layout/ambient-background"
 
 export const metadata: Metadata = {
-  title: "Developer Hub — Kairo",
-  description: "Build with Kairo. Integrate persistent AI memory via REST API, Python SDK, Node.js SDK, or Model Context Protocol.",
+  title: "Developer Hub — VOIDZONE",
+  description: "Build with VOIDZONE. Integrate persistent AI memory via REST API, Python SDK, Node.js SDK, or Model Context Protocol.",
 }
 
 const INTEGRATION_PATHS = [
@@ -27,10 +27,10 @@ const INTEGRATION_PATHS = [
     id: "python",
     icon: FileCode,
     label: "Python SDK",
-    subtitle: "pip install kairo",
+    subtitle: "pip install voidzone",
     description: "Official Python client built on httpx. Typed dataclasses, automatic retry logic, and context manager support.",
     href: "/developers/python",
-    install: "pip install kairo",
+    install: "pip install voidzone",
     badge: "Python 3.10+",
     badgeColor: "text-amber-400 bg-amber-500/10 border-amber-500/30",
   },
@@ -38,10 +38,10 @@ const INTEGRATION_PATHS = [
     id: "node",
     icon: Code2,
     label: "Node.js SDK",
-    subtitle: "npm install @kairo/sdk",
+    subtitle: "npm install @voidzone/sdk",
     description: "Official TypeScript/JavaScript client built on native fetch. Full type coverage and tree-shakeable exports.",
     href: "/developers/node",
-    install: "npm install @kairo/sdk",
+    install: "npm install @voidzone/sdk",
     badge: "Node ≥ 18",
     badgeColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
   },
@@ -50,7 +50,7 @@ const INTEGRATION_PATHS = [
     icon: Cpu,
     label: "Model Context Protocol",
     subtitle: "Native MCP integration",
-    description: "Connect any MCP-compatible AI app directly to Kairo. Tools: remember, recall, update, forget. No SDK required.",
+    description: "Connect any MCP-compatible AI app directly to VOIDZONE. Tools: remember, recall, update, forget. No SDK required.",
     href: "/developers/mcp",
     install: "Authorization: Bearer <API_KEY>",
     badge: "MCP v1",
@@ -87,7 +87,7 @@ export default function DevelopersPage() {
               </div>
             </div>
             <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-4">
-              Build with Kairo
+              Build with VOIDZONE
             </h1>
             <p className="text-base text-muted-foreground leading-relaxed">
               Give your AI application persistent memory in minutes. Choose your integration path and follow the documentation to your first stored memory.
@@ -154,7 +154,7 @@ export default function DevelopersPage() {
 
           {/* Developer journey */}
           <div className="rounded-xl border border-border/60 bg-surface-elevated/30 p-5 sm:p-6">
-            <h2 className="mb-4 text-sm font-semibold text-foreground">Your first Kairo integration</h2>
+            <h2 className="mb-4 text-sm font-semibold text-foreground">Your first VOIDZONE integration</h2>
             
             {/* Desktop: 1 → 2 → 3 → 4 → 5 */}
             <div className="hidden lg:flex items-center gap-2 w-full">

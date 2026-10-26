@@ -196,7 +196,7 @@ export default function ApiKeysPage() {
     projectApiKeys,
     isLoadingApiKeys,
     reloadApiKeys,
-    setSessionApiKey,
+    activateSessionApiKey,
   } = useProject();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -251,7 +251,7 @@ export default function ApiKeysPage() {
           <p className="text-xs text-muted-foreground mt-0.5">
             Project:{" "}
             <span className="font-medium text-foreground font-mono">{selectedProject.name}</span>
-            {" · "}Bearer token authentication for Memory V1 API
+            {" · "}Project Access Tokens & API Credentials
           </p>
         </div>
         <Button
@@ -272,9 +272,13 @@ export default function ApiKeysPage() {
       <KeyRevealModal
         createdKey={createdKey}
         onClose={() => setCreatedKey(null)}
-        onSetAsSessionKey={(rawKey) => {
-          setSessionApiKey(rawKey);
-          setSuccess("Key loaded into ephemeral session state for testing.");
+        onSetAsSessionKey={async (rawKey) => {
+          const res = await activateSessionApiKey(rawKey);
+          if (res.success) {
+            setSuccess("Key verified and loaded into ephemeral session state for testing.");
+          } else {
+            setError(res.error || "Failed to activate session key.");
+          }
         }}
       />
 
@@ -374,7 +378,7 @@ export default function ApiKeysPage() {
 
           <div className="px-4 py-2 border-t border-border/30 bg-surface-subtle/20">
             <span className="text-[10px] font-mono text-muted-foreground/50">
-              GET /api/v1/api-keys · JWT authenticated
+              Active Project Credentials · Secure Storage
             </span>
           </div>
         </div>

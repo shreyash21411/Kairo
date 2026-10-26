@@ -16,8 +16,8 @@ const SNIPPETS: CodeSnippet[] = [
     id: "curl",
     label: "cURL / REST",
     note: "Works with any HTTP client or backend runtime",
-    code: `curl -X POST https://api.kairo.dev/api/v1/memories \\
-  -H "Authorization: Bearer kairo_live_sec_..." \\
+    code: `curl -X POST https://api.voidzone.dev/api/v1/memories \\
+  -H "Authorization: Bearer vz_live_sec_..." \\
   -H "Content-Type: application/json" \\
   -d '{
     "content": "Prefers PostgreSQL for new projects",
@@ -28,10 +28,10 @@ const SNIPPETS: CodeSnippet[] = [
   {
     id: "python",
     label: "Python",
-    note: "pip install kairo-sdk",
-    code: `from kairo import Kairo
+    note: "pip install voidzone-sdk",
+    code: `from voidzone import Voidzone
 
-client = Kairo(api_key="kairo_live_sec_...")
+client = Voidzone(api_key="vz_live_sec_...")
 
 # Ingest and embed a memory
 memory = client.memories.create(
@@ -49,22 +49,22 @@ results = client.memories.search(
   {
     id: "node",
     label: "TypeScript / Node",
-    note: "npm install @kairo/sdk",
-    code: `import { KairoClient } from "@kairo/sdk";
+    note: "npm install @voidzone/sdk",
+    code: `import { VoidzoneClient } from "@voidzone/sdk";
 
-const kairo = new KairoClient({ 
-  apiKey: process.env.KAIRO_API_KEY 
+const vz = new VoidzoneClient({
+  apiKey: process.env.VOIDZONE_API_KEY
 });
 
 // Ingest memory
-await kairo.memories.create({
+await vz.memories.create({
   content: "Prefers PostgreSQL for new projects",
   memoryType: "Preference",
   actorId: "usr_alex_123"
 });
 
 // Recall context
-const results = await kairo.memories.search({
+const results = await vz.memories.search({
   query: "What database does this user prefer?",
   actorId: "usr_alex_123"
 });`,
@@ -75,11 +75,11 @@ const results = await kairo.memories.search({
     note: "Connect AI coding tools and desktop agents directly",
     code: `{
   "mcpServers": {
-    "kairo": {
+    "voidzone": {
       "command": "npx",
-      "args": ["-y", "@kairo/mcp-server"],
+      "args": ["-y", "@voidzone/mcp-server"],
       "env": {
-        "KAIRO_API_KEY": "kairo_live_sec_..."
+        "VOIDZONE_API_KEY": "vz_live_sec_..."
       }
     }
   }
@@ -165,7 +165,7 @@ export function SimpleToAddSection() {
                 <ArrowRight className="h-3.5 w-3.5 text-primary" />
                 <span className="px-2 py-0.5 rounded border border-primary/40 bg-primary/10 text-primary font-semibold flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
-                  Kairo Engine
+                  VOIDZONE Engine
                 </span>
                 <ArrowRight className="h-3.5 w-3.5 text-primary" />
                 <span className="px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-semibold flex items-center gap-1">

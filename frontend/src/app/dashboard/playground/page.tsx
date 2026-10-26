@@ -54,7 +54,7 @@ function RequestPreview({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    const text = `${method} ${path}\nAuthorization: Bearer kairo_live_••••••••\nContent-Type: application/json\n\n${JSON.stringify(body, null, 2)}`;
+    const text = `${method} ${path}\nAuthorization: Bearer voidzone_live_••••••••\nContent-Type: application/json\n\n${JSON.stringify(body, null, 2)}`;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -80,7 +80,7 @@ function RequestPreview({
       <pre className="px-3 py-3 text-[11px] font-mono text-muted-foreground leading-relaxed overflow-x-auto">
         <span className="text-muted-foreground/60">Authorization: </span>
         <span className="text-foreground">
-          Bearer {hasMaskedKey ? "kairo_live_••••••••" : "<session key>"}
+          Bearer {hasMaskedKey ? "voidzone_live_••••••••" : "<session key>"}
         </span>
         {"\n"}
         <span className="text-muted-foreground/60">Content-Type: </span>
@@ -163,7 +163,7 @@ export default function PlaygroundPage() {
     setResponseStatus(null);
     setResponseData(null);
     setResponseError(null);
-  }, [selectedProject, operation]);
+  }, [selectedProject, sessionApiKey, operation]);
 
   const currentOp = OPERATIONS.find((o) => o.id === operation)!;
 
