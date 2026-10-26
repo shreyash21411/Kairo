@@ -27,15 +27,21 @@ RUN dotnet publish -c Release -o /app/publish --no-restore
 # ─────────────────────────────────────────────────────────────────────────────
 # Runtime Stage
 # ─────────────────────────────────────────────────────────────────────────────
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Non-root security (default unprivileged app user in .NET 8/10 images)
+# Install the native GSSAPI/Kerberos dependency required at runtime.
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Restore non-root execution.
 USER $APP_UID
 
 COPY --from=build --chown=$APP_UID:$APP_UID /app/publish .
 
-# Default configuration for Render/cloud container
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 
