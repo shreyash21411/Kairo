@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import MemoryToggle from "./components/MemoryToggle";
+import Continuity from "./continuity/Continuity";
 import "./App.css";
 
 function App() {
@@ -116,6 +117,8 @@ function App() {
             </option>
           </select>
         </section>
+
+        <Continuity />
 
         <div
           className={`status ${memoryEnabled

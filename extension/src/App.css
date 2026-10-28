@@ -509,3 +509,182 @@ button,
 select {
   font-family: inherit;
 }
+/* ================================
+   VOIDZONE Continuity
+================================ */
+
+.continuity-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.continuity-view h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.continuity-view h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.continuity-label {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.continuity-input,
+.continuity-textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: #19191f;
+  color: #f5f5f7;
+  font: inherit;
+  font-size: 11px;
+}
+
+.continuity-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.continuity-input:focus,
+.continuity-textarea:focus {
+  outline: 2px solid rgba(185, 140, 255, 0.35);
+  outline-offset: 1px;
+}
+
+.continuity-help {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.continuity-button {
+  padding: 10px 12px;
+  border: 1px solid rgba(185, 140, 255, 0.3);
+  border-radius: 9px;
+  background: rgba(120, 80, 255, 0.15);
+  color: #f5f5f7;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.continuity-button:hover:not(:disabled) {
+  background: rgba(120, 80, 255, 0.24);
+}
+
+.continuity-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.continuity-button-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.continuity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.continuity-import-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.continuity-button-small {
+  padding: 6px 10px;
+  font-size: 10px;
+}
+
+.continuity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.continuity-badge {
+  font-size: 9px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: monospace;
+}
+
+.continuity-badge-success {
+  background: rgba(80, 200, 120, 0.15);
+  color: #72f099;
+  border-color: rgba(80, 200, 120, 0.3);
+}
+
+.continuity-badge-warning {
+  background: rgba(255, 180, 50, 0.15);
+  color: #ffd074;
+  border-color: rgba(255, 180, 50, 0.3);
+}
+
+.continuity-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.continuity-result p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.continuity-error,
+.continuity-status {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+pre.continuity-error {
+  font-family: monospace;
+  white-space: pre-wrap;
+  background: rgba(255, 80, 80, 0.08);
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 80, 80, 0.2);
+}
+
+.continuity-error {
+  color: #ff9b9b;
+}
+
+.continuity-status {
+  color: #c9b4ff;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}

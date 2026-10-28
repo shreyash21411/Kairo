@@ -70,6 +70,10 @@ export async function saveConversation(
     newMessages: Conversation["messages"];
     isNewConversation: boolean;
 }> {
+    if (!conversation || !Array.isArray(conversation.messages)) {
+        throw new Error("Invalid conversation: messages array is required.");
+    }
+
     const conversations = await getConversations();
 
     const existingIndex = conversations.findIndex(
@@ -78,7 +82,7 @@ export async function saveConversation(
     );
 
     let updatedConversations: Conversation[];
-    let newMessages: Conversation["messages"] = [];
+    let newMessages: Conversation["messages"];
 
     /*
      * EXISTING CONVERSATION
@@ -155,15 +159,25 @@ export async function saveConversation(
     }
 
     /*
-     * Persist everything in one storage operation.
+     * Persist everything in one storage operation with error handling.
      */
-    await chrome.storage.local.set({
-        [CONVERSATIONS_KEY]: updatedConversations,
+    try {
+        await chrome.storage.local.set({
+            [CONVERSATIONS_KEY]: updatedConversations,
 
-        [LATEST_CONVERSATION_KEY]: conversation,
+            [LATEST_CONVERSATION_KEY]: conversation,
 
-        [LATEST_NEW_MESSAGES_KEY]: newMessages,
-    });
+            [LATEST_NEW_MESSAGES_KEY]: newMessages,
+        });
+    } catch (error) {
+        console.error("AI Memory storage quota or write failure:", error);
+        throw new Error(
+            `Failed to save conversation to local storage: ${
+                error instanceof Error ? error.message : "Storage error"
+            }`,
+            { cause: error }
+        );
+    }
 
     console.log(
         "AI Memory conversations stored:",

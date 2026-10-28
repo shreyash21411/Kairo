@@ -6,18 +6,20 @@
     /*
      * Prevent installing the interceptor more than once.
      */
-    if (
-        (window as any).__AI_MEMORY_NETWORK_INTERCEPTOR__
-    ) {
+    type InterceptorWindow = Window & {
+        __AI_MEMORY_NETWORK_INTERCEPTOR__?: boolean;
+    };
+
+    const interceptorWindow = window as InterceptorWindow;
+
+    if (interceptorWindow.__AI_MEMORY_NETWORK_INTERCEPTOR__) {
         console.log(
             "AI Memory: Network interceptor already installed"
         );
-
         return;
     }
 
-    (window as any).__AI_MEMORY_NETWORK_INTERCEPTOR__ =
-        true;
+    interceptorWindow.__AI_MEMORY_NETWORK_INTERCEPTOR__ = true;
 
     const originalFetch = window.fetch;
 
