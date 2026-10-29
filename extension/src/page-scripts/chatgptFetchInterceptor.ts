@@ -170,6 +170,9 @@
 
     interface LiveStreamState {
         conversationId: string | null;
+        completed: boolean;
+        hasReceivedContent: boolean;
+        pendingUserMessage: Record<string, unknown> | null;
     }
 
     /*
@@ -325,6 +328,27 @@
                 "AI Memory: LIVE SSE stream completed"
             );
 
+            if (
+                !streamState.completed &&
+                streamState.hasReceivedContent &&
+                streamState.conversationId
+            ) {
+                streamState.completed = true;
+
+                postToContentScript(
+                    "AI_MEMORY_CHATGPT_CONVERSATION_EVENT",
+                    {
+                        url,
+                        event: "done",
+                        data: {
+                            type: "message_stream_complete",
+                            conversation_id: streamState.conversationId,
+                        },
+                        conversationId: streamState.conversationId,
+                    }
+                );
+            }
+
             /*
              * Clear stream state.
              */
@@ -352,6 +376,22 @@
             return;
         }
 
+        const eventType =
+            data && typeof data === "object"
+                ? (data as Record<string, unknown>)["type"]
+                : undefined;
+
+        if (
+            eventName === "delta" ||
+            eventType === "input_message"
+        ) {
+            streamState.hasReceivedContent = true;
+        }
+
+        if (eventType === "message_stream_complete") {
+            streamState.completed = true;
+        }
+
         /*
          * --------------------------------------------------------
          * Extract conversation ID if this event contains one.
@@ -368,9 +408,41 @@
         if (
             eventConversationId
         ) {
-
+            const wasNull = !streamState.conversationId;
             streamState.conversationId =
                 eventConversationId;
+
+            if (wasNull) {
+                postToContentScript(
+                    "AI_MEMORY_CHATGPT_CONVERSATION_EVENT",
+                    {
+                        url,
+                        event: "conversation_id_updated",
+                        data: {
+                            type: "conversation_id_updated",
+                            conversation_id: eventConversationId,
+                        },
+                        conversationId: eventConversationId,
+                    }
+                );
+
+                if (streamState.pendingUserMessage) {
+                    postToContentScript(
+                        "AI_MEMORY_CHATGPT_CONVERSATION_EVENT",
+                        {
+                            url,
+                            event: "input_message",
+                            data: {
+                                type: "input_message",
+                                input_message: streamState.pendingUserMessage,
+                                conversation_id: eventConversationId,
+                            },
+                            conversationId: eventConversationId,
+                        }
+                    );
+                    streamState.pendingUserMessage = null;
+                }
+            }
 
             console.log(
                 "AI Memory: LIVE conversation ID established",
@@ -485,7 +557,8 @@
 
     function interceptConversationResponse(
         url: string,
-        response: Response
+        response: Response,
+        init?: RequestInit
     ): void {
 
         const clonedResponse =
@@ -506,19 +579,66 @@
 
         /*
          * --------------------------------------------------------
-         * IMPORTANT:
-         *
-         * This state belongs ONLY to this response stream.
-         *
-         * If two conversations are streamed at the same time,
-         * their IDs remain independent.
+         * Attempt to extract conversation ID and user prompt directly
+         * from request init body (reliable source before SSE starts).
          * --------------------------------------------------------
          */
 
+        let reqPayload: Record<string, unknown> | null = null;
+        try {
+            if (typeof init?.body === "string") {
+                reqPayload = JSON.parse(init.body);
+            }
+        } catch {
+            // Ignore non-JSON
+        }
+
+        const urlConvIdMatch = window.location.pathname.match(/\/c\/([a-zA-Z0-9_-]+)/);
+        const urlConvId = urlConvIdMatch ? urlConvIdMatch[1] : null;
+
+        const reqConvId =
+            typeof reqPayload?.["conversation_id"] === "string" &&
+            reqPayload["conversation_id"].length > 0
+                ? (reqPayload["conversation_id"] as string)
+                : null;
+
+        const initialConvId = reqConvId || urlConvId || null;
+
         const streamState:
             LiveStreamState = {
-            conversationId: null,
+            conversationId: initialConvId,
+            completed: false,
+            hasReceivedContent: false,
+            pendingUserMessage: null,
         };
+
+        // If request body contains a user message, dispatch it or buffer until conversation ID is established
+        if (
+            reqPayload &&
+            Array.isArray(reqPayload["messages"]) &&
+            reqPayload["messages"].length > 0
+        ) {
+            const rawUserMsg = reqPayload["messages"][0] as Record<string, unknown>;
+            if (rawUserMsg) {
+                if (streamState.conversationId) {
+                    postToContentScript(
+                        "AI_MEMORY_CHATGPT_CONVERSATION_EVENT",
+                        {
+                            url,
+                            event: "input_message",
+                            data: {
+                                type: "input_message",
+                                input_message: rawUserMsg,
+                                conversation_id: streamState.conversationId,
+                            },
+                            conversationId: streamState.conversationId,
+                        }
+                    );
+                } else {
+                    streamState.pendingUserMessage = rawUserMsg;
+                }
+            }
+        }
 
         console.log(
             "AI Memory: LIVE conversation stream reader started"
@@ -587,6 +707,27 @@
                                     streamState
                                 );
                             }
+                        }
+
+                        if (
+                            !streamState.completed &&
+                            streamState.hasReceivedContent &&
+                            streamState.conversationId
+                        ) {
+                            streamState.completed = true;
+
+                            postToContentScript(
+                                "AI_MEMORY_CHATGPT_CONVERSATION_EVENT",
+                                {
+                                    url,
+                                    event: "stream_done",
+                                    data: {
+                                        type: "message_stream_complete",
+                                        conversation_id: streamState.conversationId,
+                                    },
+                                    conversationId: streamState.conversationId,
+                                }
+                            );
                         }
 
                         console.log(
@@ -675,6 +816,25 @@
                     "AI Memory: LIVE conversation stream reader failed",
                     error
                 );
+
+                if (!streamState.completed && streamState.conversationId) {
+                    postToContentScript(
+                        "AI_MEMORY_CHATGPT_CONVERSATION_EVENT",
+                        {
+                            url,
+                            event: "stream_error",
+                            data: {
+                                type: "message_stream_error",
+                                error:
+                                    error instanceof Error
+                                        ? error.message
+                                        : "Stream read error",
+                                conversation_id: streamState.conversationId,
+                            },
+                            conversationId: streamState.conversationId,
+                        }
+                    );
+                }
 
             } finally {
 
@@ -773,12 +933,11 @@
              */
 
             const isConversationEndpoint =
-                url.includes(
-                    "/backend-api/f/conversation"
-                ) &&
-                !url.includes(
-                    "/backend-api/f/conversation/prepare"
-                );
+                (url.includes("/backend-api/f/conversation") ||
+                 url.includes("/backend-api/conversation")) &&
+                !url.includes("/backend-api/conversation/prepare") &&
+                !url.includes("/backend-api/f/conversation/prepare") &&
+                !url.includes("/messages");
 
             if (
                 isConversationEndpoint
@@ -791,7 +950,8 @@
 
                 interceptConversationResponse(
                     url,
-                    response
+                    response,
+                    init
                 );
 
                 return response;

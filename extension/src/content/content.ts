@@ -8,8 +8,24 @@ import {
 } from "../connectors/conversationAccumulator";
 
 import type {
+    Conversation,
     ConversationMessage,
 } from "../connectors/types";
+
+import {
+    createCaptureSession,
+    startCapture,
+    ingestMessage,
+    startAssistantStream,
+    appendAssistantChunk,
+    completeAssistantStream,
+    interruptStream,
+    recordCheckpoint,
+    completeCapture,
+} from "../continuity/captureLifecycle";
+
+import type { CapturedConversation } from "../continuity/captureTypes";
+import { saveActiveCaptureSession } from "../storage/conversationStorage";
 
 /**
  * ============================================================
@@ -55,6 +71,62 @@ interface LiveAssistantMessage {
 
 const liveAssistantMessages =
     new Map<string, LiveAssistantMessage>();
+
+const captureSessions =
+    new Map<string, CapturedConversation>();
+
+function getOrCreateCaptureSession(conversationId: string): CapturedConversation {
+    let session = captureSessions.get(conversationId);
+    if (!session) {
+        session = createCaptureSession(
+            "chatgpt",
+            document.title && document.title !== "ChatGPT" ? document.title : "ChatGPT conversation",
+            window.location.href,
+            conversationId
+        );
+        captureSessions.set(conversationId, session);
+    } else {
+        session.url = window.location.href;
+        if (document.title && document.title !== "ChatGPT" && (!session.title || session.title === "ChatGPT conversation")) {
+            session.title = document.title;
+        }
+    }
+    return session;
+}
+
+function notifyBackgroundCapture(session: CapturedConversation): void {
+    const conversation: Conversation = {
+        id: session.id,
+        platform: "chatgpt",
+        title: session.title || document.title || "ChatGPT conversation",
+        url: window.location.href,
+        captureMethod: "supported_connector",
+        completeness: session.isComplete ? "complete" : "partial",
+        capturedAt: session.capturedAt,
+        messages: session.messages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp ?? undefined,
+            sourceMessageId: m.sourceMessageId ?? undefined,
+        })),
+    };
+
+    try {
+        chrome.runtime.sendMessage({
+            type: "CONVERSATION_CAPTURED",
+            conversation,
+        }, () => {
+            if (chrome.runtime.lastError) {
+                // Safe ignore disconnected ports
+            }
+        });
+    } catch {
+        // Extension context might be invalidated
+    }
+
+    void saveActiveCaptureSession(session);
+}
 
 /**
  * ============================================================
@@ -228,6 +300,10 @@ function normalizeMessage(
             )
             .join("\n");
 
+    if (!text || text.trim().length === 0) {
+        return null;
+    }
+
     const createTime =
         raw["create_time"];
 
@@ -364,6 +440,17 @@ function handleLiveInputMessage(
         [message]
     );
 
+    const inputSession = getOrCreateCaptureSession(conversationId);
+    const updatedInputSession = ingestMessage(startCapture(inputSession), {
+        id: message.id,
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+        sourceMessageId: message.id,
+    });
+    captureSessions.set(conversationId, updatedInputSession);
+    notifyBackgroundCapture(updatedInputSession);
+
     console.log(
         "AI Memory: Live user message captured",
         {
@@ -466,6 +553,10 @@ function handleAssistantMessageAdded(
      * Establish the assistant state immediately.
      */
 
+    if (activeAssistantMessageIds.get(conversationId) === assistantId) {
+        return;
+    }
+
     activeAssistantMessageIds.set(
         conversationId,
         assistantId
@@ -487,6 +578,16 @@ function handleAssistantMessageAdded(
                 normalized?.timestamp,
         }
     );
+
+    const asstSession = getOrCreateCaptureSession(conversationId);
+    const updatedAsstSession = startAssistantStream(
+        asstSession,
+        assistantId,
+        normalized?.content ?? "",
+        normalized?.timestamp
+    );
+    captureSessions.set(conversationId, updatedAsstSession);
+    void saveActiveCaptureSession(updatedAsstSession);
 
     console.log(
         "AI Memory: Assistant stream started",
@@ -554,6 +655,12 @@ function appendAssistantText(
 
     assistantMessage.content +=
         text;
+
+    const streamSession = captureSessions.get(conversationId);
+    if (streamSession) {
+        const updatedStreamSession = appendAssistantChunk(streamSession, text);
+        captureSessions.set(conversationId, updatedStreamSession);
+    }
 
     console.log(
         "AI Memory: Assistant text appended",
@@ -831,6 +938,15 @@ function handleMessageStreamComplete(
         [completedMessage]
     );
 
+    const completedSession = captureSessions.get(conversationId);
+    if (completedSession) {
+        const updatedCompletedSession = recordCheckpoint(
+            completeAssistantStream(completedSession)
+        );
+        captureSessions.set(conversationId, updatedCompletedSession);
+        notifyBackgroundCapture(updatedCompletedSession);
+    }
+
     console.log(
         "AI Memory: Assistant message captured",
         {
@@ -870,6 +986,58 @@ function handleMessageStreamComplete(
                 ),
         }
     );
+}
+
+/**
+ * ============================================================
+ * ASSISTANT STREAM ERROR / ABORTED
+ * ============================================================
+ */
+
+function handleMessageStreamError(
+    data: Record<string, unknown>,
+    fallbackConversationId?: string | null
+): void {
+    const conversationId =
+        getConversationIdFromLiveEvent(
+            data,
+            fallbackConversationId
+        );
+
+    if (!conversationId) {
+        return;
+    }
+
+    const assistantMessageId =
+        activeAssistantMessageIds.get(
+            conversationId
+        );
+
+    if (assistantMessageId) {
+        liveAssistantMessages.delete(
+            assistantMessageId
+        );
+        activeAssistantMessageIds.delete(
+            conversationId
+        );
+    }
+
+    const error =
+        typeof data["error"] === "string"
+            ? data["error"]
+            : "Assistant stream was aborted or interrupted by an error.";
+
+    console.warn("AI Memory: Assistant stream error received", {
+        conversationId,
+        error,
+    });
+
+    const session = captureSessions.get(conversationId);
+    if (session) {
+        const updated = interruptStream(session, error);
+        captureSessions.set(conversationId, updated);
+        void saveActiveCaptureSession(updated);
+    }
 }
 
 /**
@@ -972,6 +1140,18 @@ function handleLiveConversationEvent(
     ) {
 
         handleMessageStreamComplete(
+            eventData,
+            fallbackConversationId
+        );
+
+        return;
+    }
+
+    if (
+        type === "message_stream_error"
+    ) {
+
+        handleMessageStreamError(
             eventData,
             fallbackConversationId
         );
@@ -1229,6 +1409,36 @@ async function handleMessagesResponse(
         }
     );
 
+    const histSession = getOrCreateCaptureSession(conversationId);
+    let currentHist = histSession;
+    for (const msg of messages) {
+        currentHist = ingestMessage(currentHist, {
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.timestamp,
+            sourceMessageId: msg.id,
+        });
+    }
+    const isBoundedFullHistory =
+        messages.length > 0 &&
+        hasPreviousPage === false &&
+        hasNextPage === false;
+
+    if (isBoundedFullHistory) {
+        currentHist = completeCapture(currentHist, {
+            hasMoreHistory: false,
+            hasPreviousPage: false,
+            hasNextPage: false,
+        });
+    } else {
+        currentHist = recordCheckpoint(currentHist);
+        currentHist.hasMoreHistory = hasPreviousPage || hasNextPage;
+        currentHist.isComplete = false;
+    }
+    captureSessions.set(conversationId, currentHist);
+    notifyBackgroundCapture(currentHist);
+
     console.log(
         "AI Memory: Conversation history page captured",
         {
@@ -1445,6 +1655,19 @@ async function main(): Promise<void> {
     console.log(
         "AI Memory: Capture layer active — waiting for ChatGPT activity..."
     );
+
+    window.addEventListener("beforeunload", () => {
+        for (const [id, s] of captureSessions.entries()) {
+            if (s.state === "response_in_progress") {
+                const interrupted = interruptStream(
+                    s,
+                    "Page reloaded or navigated during response stream."
+                );
+                captureSessions.set(id, interrupted);
+                void saveActiveCaptureSession(interrupted);
+            }
+        }
+    });
 }
 
 void main();

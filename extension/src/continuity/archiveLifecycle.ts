@@ -14,10 +14,17 @@ import {
   HASH_ALGORITHM,
   type ContinuityArchive,
   type CreateArchiveOptions,
+  type ArchiveMessage,
+  type CompletenessStatus,
 } from "./archiveSchema.ts";
 import { computeSourceHash } from "./archiveHashing.ts";
 import { parseTranscriptToMessages } from "./claudeParser.ts";
 import { validateArchive } from "./archiveValidator.ts";
+import type {
+  CapturedConversation,
+  CaptureToArchiveOptions,
+} from "./captureTypes.ts";
+import { buildRawTranscriptFromMessages } from "./captureLifecycle.ts";
 
 export type {
   ContinuityArchive,
@@ -25,6 +32,13 @@ export type {
   CreateArchiveOptions,
   ArchiveMessage,
 } from "./archiveSchema.ts";
+
+export type {
+  CaptureLifecycleState,
+  NormalizedCaptureMessage,
+  CapturedConversation,
+  CaptureToArchiveOptions,
+} from "./captureTypes.ts";
 
 export interface ImportResult {
   success: boolean;
@@ -177,6 +191,122 @@ export async function createArchiveFromInput(
       messageCount,
       sourceConfirmed: isPlatformConfirmed,
       lastCheckpoint: null,
+    },
+    rawTranscript,
+    conversation: {
+      messages,
+    },
+    integrity: {
+      algorithm: HASH_ALGORITHM,
+      sourceHash,
+      canonicalFields: ["rawTranscript", "messages"],
+      verified: true,
+    },
+    voidzone: {
+      instructions: {
+        targetPlatform: options.targetPlatform ?? "chatgpt",
+        transferPrompt,
+        isEdited: Boolean(options.customTransferPrompt),
+      },
+      derivedProjectState: null,
+      reviewStatus: "unreviewed",
+    },
+  };
+
+  return archive;
+}
+
+/**
+ * Creates a canonical ContinuityArchive directly from a CapturedConversation.
+ * Preserves message ordering, timestamps, and sets honest completeness metadata.
+ */
+export async function createArchiveFromCapturedConversation(
+  captured: CapturedConversation,
+  options: CaptureToArchiveOptions = {}
+): Promise<ContinuityArchive> {
+  if (!captured || !Array.isArray(captured.messages) || captured.messages.length === 0) {
+    throw new Error("Captured conversation contains no messages.");
+  }
+
+  // Filter out empty transport fragments and invalid empty placeholders
+  const validCapturedMessages = captured.messages.filter(
+    (m) => m && typeof m.content === "string" && m.content.trim().length > 0
+  );
+
+  if (validCapturedMessages.length === 0) {
+    throw new Error("Captured conversation contains no valid non-empty messages.");
+  }
+
+  const platform = captured.platform?.toLowerCase().trim() || "other";
+  const title = captured.title?.trim() || "Captured conversation";
+
+  // Build raw transcript using platform-specific attribution (never Claude: for ChatGPT)
+  const rawTranscript = buildRawTranscriptFromMessages(validCapturedMessages, platform);
+
+  // Map normalized capture messages to ArchiveMessage
+  const messages: ArchiveMessage[] = validCapturedMessages.map((m, idx) => ({
+    id: m.id,
+    sequence: idx + 1,
+    role: m.role,
+    content: m.content,
+    timestamp: m.timestamp,
+    sourceMessageId: m.sourceMessageId ?? null,
+  }));
+
+  // Determine completeness
+  const completenessStatus: CompletenessStatus =
+    options.completenessStatus ??
+    (captured.isComplete
+      ? "complete"
+      : captured.state === "interrupted" || captured.hasMoreHistory || captured.messages.length > 0
+      ? "partial"
+      : "unknown");
+
+  const isPlatformConfirmed =
+    completenessStatus === "complete" && captured.isComplete;
+
+  const completenessReason =
+    completenessStatus === "complete"
+      ? (isPlatformConfirmed
+          ? "Source platform connector confirmed full conversation history."
+          : "User declared transcript complete; source platform confirmation unavailable.")
+      : completenessStatus === "partial"
+      ? (captured.state === "interrupted"
+          ? "Capture was interrupted before completion."
+          : captured.hasMoreHistory
+          ? "Older conversation messages remain on the platform."
+          : "Captured conversation is an incomplete portion of history (full history unverified).")
+      : "Captured conversation boundaries and completeness unverified.";
+
+  const transferPrompt =
+    options.customTransferPrompt?.trim() ||
+    buildTransferPrompt(platform, title, rawTranscript, completenessStatus);
+
+  const sourceHash = await computeSourceHash(rawTranscript, messages);
+
+  const archive: ContinuityArchive = {
+    format: CANONICAL_FORMAT,
+    schemaVersion: CANONICAL_SCHEMA_VERSION,
+    archiveId: generateArchiveId(),
+    createdAt: new Date().toISOString(),
+    source: {
+      platform,
+      captureMethod: "supported_connector",
+      title,
+      url: captured.url ?? null,
+      capturedAt: captured.capturedAt || new Date().toISOString(),
+      provenance: "source_extracted",
+    },
+    project: options.project ?? {
+      id: "default-project",
+      name: "Default Project",
+    },
+    completeness: {
+      status: completenessStatus,
+      reason: completenessReason,
+      messageCount: messages.length,
+      sourceConfirmed: isPlatformConfirmed,
+      lastCheckpoint: captured.lastCheckpointAt ?? null,
     },
     rawTranscript,
     conversation: {
