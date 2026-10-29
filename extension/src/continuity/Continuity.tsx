@@ -14,6 +14,7 @@ export default function Continuity() {
   const [transcript, setTranscript] = useState("");
   const [archive, setArchive] = useState<ContinuityArchive | null>(null);
   const [error, setError] = useState("");
+  const [importError, setImportError] = useState("");
   const [status, setStatus] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -21,6 +22,7 @@ export default function Continuity() {
 
   const handleGenerate = async () => {
     setError("");
+    setImportError("");
     setStatus("");
     setIsProcessing(true);
 
@@ -56,6 +58,7 @@ export default function Continuity() {
       );
       setStatus("Continuation prompt copied.");
       setError("");
+      setImportError("");
     } catch {
       setError("Clipboard access failed. You can export the JSON instead.");
       setStatus("");
@@ -85,8 +88,10 @@ export default function Continuity() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setError("");
-    setStatus("");
+    // Clear only the import-specific error; leave the existing archive and its
+    // status intact so a previously loaded archive remains visible if this
+    // import attempt fails.
+    setImportError("");
     setIsProcessing(true);
 
     try {
@@ -94,18 +99,22 @@ export default function Continuity() {
       const importResult = await parseAndValidateArchive(text);
 
       if (!importResult.success || !importResult.archive) {
-        setError(
+        // Show import error WITHOUT touching archive state.
+        setImportError(
           `Import rejected:\n${importResult.errors.join("\n")}`
         );
         return;
       }
 
+      // Only replace the archive state after a successful validation.
       const importedArchive = importResult.archive;
       setArchive(importedArchive);
       setPlatform(importedArchive.source.platform || "Claude");
       setTitle(importedArchive.source.title || "");
       setTranscript(importedArchive.rawTranscript);
       setCompleteness(importedArchive.completeness.status);
+      setImportError("");
+      setError("");
 
       setStatus(
         importResult.wasMigrated
@@ -113,14 +122,15 @@ export default function Continuity() {
           : `Valid archive imported (${importedArchive.conversation.messages.length} messages, integrity verified).`
       );
     } catch (cause) {
-      setError(
+      // File-read failure: show import error, preserve existing archive.
+      setImportError(
         cause instanceof Error
           ? `File read error: ${cause.message}`
           : "Failed to read the imported archive file."
       );
     } finally {
       setIsProcessing(false);
-      // Reset input value so same file can be re-selected if desired
+      // Reset input value so same file can be re-selected if desired.
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -225,6 +235,11 @@ export default function Continuity() {
       </button>
 
       {error && <pre className="continuity-error" role="alert">{error}</pre>}
+      {importError && (
+        <pre className="continuity-error continuity-error-import" role="alert">
+          {importError}
+        </pre>
+      )}
       {status && <p className="continuity-status" role="status">{status}</p>}
 
       {archive && (

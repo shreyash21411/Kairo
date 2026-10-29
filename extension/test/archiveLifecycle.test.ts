@@ -4,6 +4,7 @@ import {
   createArchiveFromInput,
   serializeArchive,
   parseAndValidateArchive,
+  buildTransferPrompt,
 } from "../src/continuity/archiveLifecycle.ts";
 import { computeSourceHash } from "../src/continuity/archiveHashing.ts";
 
@@ -269,6 +270,246 @@ describe("archiveLifecycle — Normalization, Integrity, Round-Trip & Migration"
     assert.strictEqual(
       result.archive?.conversation.messages[0].content,
       rawTranscript
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 8 — buildTransferPrompt completeness warnings (regression)
+// ---------------------------------------------------------------------------
+describe("buildTransferPrompt — completeness warnings", () => {
+  const PLATFORM = "Claude";
+  const TITLE = "Test Session";
+  const TRANSCRIPT = "Human: Hello\nClaude: Hi";
+
+  test("unknown completeness inserts UNKNOWN warning", () => {
+    const prompt = buildTransferPrompt(PLATFORM, TITLE, TRANSCRIPT, "unknown");
+    assert.ok(
+      prompt.includes("COMPLETENESS WARNING: UNKNOWN"),
+      "Expected UNKNOWN warning block"
+    );
+    assert.ok(
+      prompt.includes("may be incomplete, truncated, or missing"),
+      "Expected incomplete-transcript advisory"
+    );
+    assert.ok(
+      prompt.includes("Do NOT treat it as the full conversation history"),
+      "Expected 'Do NOT treat as full history' advisory"
+    );
+  });
+
+  test("partial completeness inserts PARTIAL warning", () => {
+    const prompt = buildTransferPrompt(PLATFORM, TITLE, TRANSCRIPT, "partial");
+    assert.ok(
+      prompt.includes("COMPLETENESS WARNING: PARTIAL"),
+      "Expected PARTIAL warning block"
+    );
+    assert.ok(
+      prompt.includes("partial portion of a longer conversation"),
+      "Expected partial-transcript advisory"
+    );
+    assert.ok(
+      prompt.includes("Do NOT treat it as the full conversation history"),
+      "Expected 'Do NOT treat as full history' advisory"
+    );
+  });
+
+  test("complete completeness does NOT insert any completeness warning", () => {
+    const prompt = buildTransferPrompt(PLATFORM, TITLE, TRANSCRIPT, "complete");
+    assert.ok(
+      !prompt.includes("COMPLETENESS WARNING"),
+      "Expected no COMPLETENESS WARNING block for complete archives"
+    );
+  });
+
+  test("defaults to unknown warning when completenessStatus omitted", () => {
+    const prompt = buildTransferPrompt(PLATFORM, TITLE, TRANSCRIPT);
+    assert.ok(
+      prompt.includes("COMPLETENESS WARNING: UNKNOWN"),
+      "Expected UNKNOWN warning when status omitted"
+    );
+  });
+
+  test("createArchiveFromInput with unknown completeness produces prompt containing UNKNOWN warning", async () => {
+    const archive = await createArchiveFromInput({
+      platform: "Claude",
+      title: "Warning Test",
+      rawTranscript: "Human: Test\nClaude: Yes",
+      completenessStatus: "unknown",
+    });
+    assert.ok(
+      archive.voidzone.instructions.transferPrompt.includes(
+        "COMPLETENESS WARNING: UNKNOWN"
+      ),
+      "Expected UNKNOWN warning in generated transfer prompt"
+    );
+    assert.strictEqual(
+      archive.voidzone.instructions.isEdited,
+      false,
+      "isEdited must be false for auto-generated prompt"
+    );
+  });
+
+  test("createArchiveFromInput with partial completeness produces prompt containing PARTIAL warning", async () => {
+    const archive = await createArchiveFromInput({
+      platform: "ChatGPT",
+      title: "Partial Test",
+      rawTranscript: "User: Half\nAssistant: Done",
+      completenessStatus: "partial",
+    });
+    assert.ok(
+      archive.voidzone.instructions.transferPrompt.includes(
+        "COMPLETENESS WARNING: PARTIAL"
+      ),
+      "Expected PARTIAL warning in generated transfer prompt"
+    );
+  });
+
+  test("custom transfer prompt is preserved as-is regardless of completeness", async () => {
+    const customPrompt = "My custom hand-written prompt.";
+    const archive = await createArchiveFromInput({
+      platform: "Claude",
+      title: "Custom Prompt Test",
+      rawTranscript: "Human: A\nClaude: B",
+      completenessStatus: "unknown",
+      customTransferPrompt: customPrompt,
+    });
+    assert.strictEqual(
+      archive.voidzone.instructions.transferPrompt,
+      customPrompt,
+      "Custom prompt must be used verbatim"
+    );
+    assert.strictEqual(
+      archive.voidzone.instructions.isEdited,
+      true,
+      "isEdited must be true when customTransferPrompt is supplied"
+    );
+    assert.ok(
+      !archive.voidzone.instructions.transferPrompt.includes(
+        "COMPLETENESS WARNING"
+      ),
+      "Custom prompt must not have auto-generated warning prepended"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 14 — import-state-preservation logic (regression, unit-level)
+//
+// The React component manages import errors with a separate `importError`
+// state so that a failed import does NOT clear the previously loaded archive.
+// This suite tests the underlying `parseAndValidateArchive` guard, which is
+// the pure-function boundary that the component relies on.
+//
+// A full browser-level React component test is not performed here; this
+// is a unit test of the import guard logic only.
+// ---------------------------------------------------------------------------
+describe("parseAndValidateArchive — import-state-preservation (Test 14 regression)", () => {
+  test("valid archive parses and validates successfully", async () => {
+    const original = await createArchiveFromInput({
+      platform: "Claude",
+      title: "State Preservation Test",
+      rawTranscript: "Human: Load me\nClaude: Loaded",
+    });
+    const json = serializeArchive(original);
+    const result = await parseAndValidateArchive(json);
+
+    assert.strictEqual(result.success, true, "Valid archive must succeed");
+    assert.ok(result.archive, "Archive must be present on success");
+  });
+
+  test("malformed JSON import fails without returning an archive (caller must preserve existing state)", async () => {
+    const result = await parseAndValidateArchive("{ not valid json !!!}");
+
+    assert.strictEqual(
+      result.success,
+      false,
+      "Malformed JSON must not succeed"
+    );
+    assert.strictEqual(
+      result.archive,
+      undefined,
+      "No archive must be returned on failure — caller keeps existing archive in state"
+    );
+    assert.ok(
+      result.errors.length > 0,
+      "At least one error must describe the failure"
+    );
+    assert.ok(
+      result.errors[0].includes("Malformed JSON"),
+      "Error must identify malformed JSON"
+    );
+  });
+
+  test("archive with tampered rawTranscript fails integrity check (caller must preserve existing state)", async () => {
+    const original = await createArchiveFromInput({
+      platform: "Claude",
+      title: "Integrity Test",
+      rawTranscript: "Human: Integrity\nClaude: Intact",
+    });
+
+    // Tamper: modify rawTranscript after the hash was computed
+    const parsed = JSON.parse(serializeArchive(original)) as Record<string, unknown>;
+    parsed["rawTranscript"] = "Human: TAMPERED\nClaude: Intact";
+    const tamperedJson = JSON.stringify(parsed);
+
+    const result = await parseAndValidateArchive(tamperedJson);
+
+    assert.strictEqual(
+      result.success,
+      false,
+      "Tampered archive must not succeed"
+    );
+    assert.strictEqual(
+      result.archive,
+      undefined,
+      "No archive must be returned after integrity failure — caller keeps existing archive in state"
+    );
+  });
+
+  test("archive with unsupported schema version (99.0) is rejected with a clear error", async () => {
+    const original = await createArchiveFromInput({
+      platform: "Claude",
+      title: "Version Test",
+      rawTranscript: "Human: Old\nClaude: Archive",
+    });
+    const parsed = JSON.parse(serializeArchive(original)) as Record<string, unknown>;
+    parsed["schemaVersion"] = "99.0";
+    const futureJson = JSON.stringify(parsed);
+
+    const result = await parseAndValidateArchive(futureJson);
+
+    assert.strictEqual(result.success, false, "Unsupported version must fail");
+    assert.ok(
+      result.errors.some((e) => e.includes("schemaVersion")),
+      "Error must reference schemaVersion field"
+    );
+  });
+
+  test("a subsequent valid import succeeds after a failed import attempt", async () => {
+    // Simulate the sequence: valid load → bad import → good import
+    const goodArchive = await createArchiveFromInput({
+      platform: "Claude",
+      title: "Good Archive",
+      rawTranscript: "Human: Good\nClaude: Archive",
+    });
+    const goodJson = serializeArchive(goodArchive);
+
+    // Step 1: first import succeeds
+    const first = await parseAndValidateArchive(goodJson);
+    assert.strictEqual(first.success, true, "First import must succeed");
+
+    // Step 2: bad import returns failure (simulate keeping first.archive in component state)
+    const bad = await parseAndValidateArchive("} broken {");
+    assert.strictEqual(bad.success, false, "Second (bad) import must fail");
+
+    // Step 3: another good import succeeds
+    const second = await parseAndValidateArchive(goodJson);
+    assert.strictEqual(second.success, true, "Third import must succeed");
+    assert.strictEqual(
+      second.archive?.archiveId,
+      goodArchive.archiveId,
+      "Re-imported archive ID must match original"
     );
   });
 });
