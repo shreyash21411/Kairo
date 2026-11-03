@@ -4,42 +4,50 @@
  * Robust DOM-based conversation history recovery for ChatGPT.
  * Extracts currently visible conversation turns from the webpage DOM
  * when the extension begins capturing an already-open conversation,
+ * during live browser turn observation via MutationObserver,
  * or when client-side navigation avoids re-fetching /conversation/{id}.
  *
  * Guarantees:
- * 1. Accurately extracts both user and assistant turns.
- * 2. Filters out UI buttons, copy controls, action bars, badges, and screen-reader text.
- * 3. Extracts stable message IDs from data-message-id or computes deterministic hashes.
- * 4. Preserves chronological order matching the visible conversation layout.
+ * 1. Accurately extracts both user and assistant turns based on live browser DOM evidence.
+ * 2. Filters out UI buttons, copy controls, action bars, badges ("Message received"), citations, and screen-reader text.
+ * 3. Extracts stable message IDs from data-message-id or computes deterministic hashes, with stable turn-based sourceMessageId for streaming reconciliation.
+ * 4. Preserves chronological order matching the visible conversation layout via compareDocumentPosition.
  * 5. Marks extracted conversation state honestly as PARTIAL (DOM only contains currently rendered turns).
  * 6. Never extracts an entire ancestor container containing both user and assistant content.
- * 7. Avoids duplicate messages from nested elements or multiple matching ancestors.
+ * 7. Avoids duplicate messages when multiple matching descendants or ancestors exist.
+ * 8. Avoids extracting nested paragraphs as separate messages; joins message blocks with preserved formatting.
+ * 9. Detects assistant streaming state (isInProgress) via live streaming indicators without repeated copies.
+ * 10. Maintains conversation identity and epoch provenance intact across navigation and reload.
  *
  * --- Selector strategy and observed DOM evidence (2026-11) ---
  *
  * User messages:
  *   Stable semantic attribute: data-user-message-bubble="true"
- *   The text is rendered inside paragraph elements within this element.
- *   We walk up from the bubble to find the turn boundary (a fixed ancestor depth).
- *   Assumption: the turn wrapper is ≤4 levels above the bubble element.
+ *   Wrapper ancestor class: group/user-message
+ *   The user message text is rendered inside paragraph (<p>) elements.
+ *   Turn boundary: the bubble itself or its immediate group/user-message wrapper;
+ *   never walk into a shared ancestor that also contains an assistant response.
  *
  * Assistant responses:
- *   Observed class: DilResponseRoot (generated suffix varies, e.g. DilResponseRoot-HfQrEh)
- *   Stable semantic attributes to prefer: data-testid starting with "bot-turn" or
- *   data-message-author-role="assistant" if present.
- *   Fallback: querySelector("[class*='DilResponseRoot']") scoped to the turn container.
- *   Important: the larger ancestor also contains a user message. We must NOT extract
- *   the entire ancestor. We only read text from within the DilResponseRoot subtree.
+ *   Observed hierarchy (from innermost to outermost):
+ *     Level 0: <p class="TextBase-... Text-..."> (actual response text)
+ *     Level 1: <div class="DilRenderer-... DilResponseRoot-...">
+ *     Level 2: <div class="PortalBoundary-...">
+ *     Level 3: <div class="entity-prose-inset">
+ *     Level 4: <div class="my-4 first:mt-0...">
+ *     Level 5: <div class="MarkdownRoot-...">
+ *     Level 6: <div class="group flex min-w-0 flex-col">
+ *     Level 7–8: larger shared container (also contains badge "Message received" and preceding user message)
  *
- * Turn boundaries:
- *   ChatGPT historically uses article elements or [data-testid^="conversation-turn-"].
- *   These may no longer be present. As a fallback, we use the observed DOM hierarchy:
- *   - User messages: data-user-message-bubble parent chain up to a reasonable depth.
- *   - Assistant messages: DilResponseRoot element or equivalent stable ancestor.
- *
- * Note: Generated CSS class names (e.g. DilResponseRoot-HfQrEh) are NOT stable across
- * ChatGPT deployments. The code matches on the class name PREFIX "DilResponseRoot" via
- * [class*="DilResponseRoot"]. This is documented as a fallback assumption.
+ *   Selection strategy:
+ *     1. Stable semantic attributes first: [data-message-author-role="assistant"],
+ *        [data-testid*="bot-turn"], [data-testid*="assistant-turn"].
+ *     2. Documented structural fallback assumptions:
+ *        [class*="DilResponseRoot"], [class*="DilRenderer"], [class*="MarkdownRoot"].
+ *     3. Turn boundary: walk up to the highest assistant-only ancestor (e.g. MarkdownRoot or Level 6 flex-col)
+ *        that does NOT contain [data-user-message-bubble="true"] and does NOT contain other assistant turns.
+ *     4. Scoping: Never extract the Level 7-8 shared ancestor as assistant content.
+ *     5. Badges: Strip [data-testid="message-badge"], [class*="Badge"], [class*="badge"], and text "Message received".
  */
 
 import type { NormalizedCaptureMessage } from "../continuity/captureTypes.ts";
@@ -55,17 +63,45 @@ export interface ExtractedDomConversation {
 // ─── Selector constants ──────────────────────────────────────────────────────
 
 /**
- * Stable selectors for user message bubble.
- * data-user-message-bubble is a stable semantic attribute observed in live ChatGPT DOM.
+ * Stable semantic selector for user message bubble.
+ * data-user-message-bubble="true" is observed in live ChatGPT DOM.
  */
-const USER_BUBBLE_SELECTOR = '[data-user-message-bubble="true"]';
+export const USER_BUBBLE_SELECTOR = '[data-user-message-bubble="true"]';
 
 /**
- * Stable selectors for turn containers, tried in preference order.
- * data-message-author-role is the most stable semantic attribute.
- * article and [data-testid^="conversation-turn-"] are historical fallbacks.
+ * Observed container class for user message wrapper.
  */
-const TURN_CONTAINER_SELECTORS = [
+export const USER_WRAPPER_SELECTOR = '[class*="group/user-message"]';
+
+/**
+ * Known selectors identifying user message turns or containers in ChatGPT.
+ */
+export const USER_SELECTORS = [
+  '[data-user-message-bubble="true"]',
+  '[class*="group/user-message"]',
+  '[data-message-author-role="user"]',
+  '[data-testid*="user-turn"]',
+] as const;
+
+/**
+ * Selectors for assistant response containers, in preference order:
+ * 1. Stable semantic attributes
+ * 2. Documented structural class prefixes observed in live ChatGPT DOM
+ */
+export const ASSISTANT_SELECTORS = [
+  '[data-message-author-role="assistant"]',
+  '[data-testid*="bot-turn"]',
+  '[data-testid*="assistant-turn"]',
+  '[class*="DilResponseRoot"]',
+  '[class*="DilRenderer"]',
+  '[class*="MarkdownRoot"]',
+] as const;
+
+/**
+ * Structured turn container selectors from earlier ChatGPT versions.
+ * Only accepted if they do not contain both user and assistant content simultaneously.
+ */
+const LEGACY_TURN_SELECTORS = [
   '[data-message-author-role]',
   'article[data-testid]',
   'article',
@@ -73,17 +109,15 @@ const TURN_CONTAINER_SELECTORS = [
 ] as const;
 
 /**
- * Prefix match for the observed DilResponseRoot assistant content container.
- * IMPORTANT: The suffix (e.g. "-HfQrEh") is generated and NOT stable.
- * Using substring class match as a documented fallback assumption.
+ * Substring class match for DilResponseRoot (documented fallback assumption).
  */
-const DIL_RESPONSE_ROOT_SELECTOR = '[class*="DilResponseRoot"]';
+export const DIL_RESPONSE_ROOT_SELECTOR = '[class*="DilResponseRoot"]';
 
 /**
- * Selector for elements that should be stripped from extracted text.
- * Covers: action buttons, copy controls, citations UI, badges, screen-reader text, icons.
+ * Selectors for UI chrome that must be stripped from extracted message text.
+ * Covers: buttons, copy controls, icons, badges, action bars, citations, screen-reader text.
  */
-const STRIP_SELECTOR = [
+export const STRIP_SELECTOR = [
   'button',
   '[role="button"]',
   'svg',
@@ -96,6 +130,8 @@ const STRIP_SELECTOR = [
   '[class*="citation"]',
   '[class*="ActionBar"]',
   '[class*="action-bar"]',
+  '[role="tooltip"]',
+  '[role="menu"]',
   '.text-xs.text-gray-500',
 ].join(', ');
 
@@ -129,21 +165,23 @@ export function extractVisibleConversationFromDOM(
   const rawMessages: NormalizedCaptureMessage[] = [];
   const seenIds = new Set<string>();
 
-  // 3. Try structured turn containers first (semantic, most stable)
-  const turns = findTurnContainers(doc);
+  // 3. Try structured turn containers first (if clean, non-shared turn elements exist)
+  const legacyTurns = findValidLegacyTurns(doc);
 
-  if (turns.length > 0) {
-    // Structured extraction: each turn element represents one message
-    for (const turn of turns) {
-      const msg = extractMessageFromTurnElement(turn, rawMessages.length + 1, seenIds);
+  if (legacyTurns.length > 0) {
+    for (const turn of legacyTurns) {
+      const msg = extractMessageFromLegacyTurn(turn, rawMessages.length + 1, seenIds, doc);
       if (msg) {
         seenIds.add(msg.id);
         rawMessages.push(msg);
       }
     }
-  } else {
-    // Fallback extraction: use observed DOM attributes directly
-    extractFallback(doc, rawMessages, seenIds);
+  }
+
+  // 4. If structured turn extraction yielded no messages (as in current ChatGPT DOM),
+  // use evidence-based extraction from observed DOM structure
+  if (rawMessages.length === 0) {
+    extractEvidenceBased(doc, rawMessages, seenIds);
   }
 
   return {
@@ -155,36 +193,447 @@ export function extractVisibleConversationFromDOM(
   };
 }
 
-// ─── Turn container discovery ─────────────────────────────────────────────────
+// ─── Evidence-based DOM extraction ───────────────────────────────────────────
+
+interface RawTurnEntry {
+  el: HTMLElement;
+  role: "user" | "assistant";
+}
 
 /**
- * Attempts to find structured turn container elements using stable semantic selectors.
- * Returns an empty array if no structured turn elements are found.
+ * Extracts conversation turns using the observed ChatGPT DOM structure.
+ *
+ * Guarantees:
+ * 1. User messages found via data-user-message-bubble="true" with safe turn boundary.
+ * 2. Assistant responses found via DilResponseRoot / MarkdownRoot / semantic attributes.
+ * 3. Never extracts a shared ancestor containing both user and assistant content.
+ * 4. Deduplicates nested elements; multiple paragraphs in one turn become ONE message.
+ * 5. Messages sorted in visual document order via compareDocumentPosition.
+ * 6. Streaming assistant response marked isInProgress=true when live streaming indicators exist.
  */
-function findTurnContainers(doc: Document): HTMLElement[] {
-  for (const selector of TURN_CONTAINER_SELECTORS) {
-    const elements = Array.from(
-      doc.querySelectorAll<HTMLElement>(selector)
+function extractEvidenceBased(
+  doc: Document,
+  rawMessages: NormalizedCaptureMessage[],
+  seenIds: Set<string>
+): void {
+  const entries: RawTurnEntry[] = [];
+  const processedElements = new Set<HTMLElement>();
+
+  // ── 1. Discover User Message Turn Elements ─────────────────────────────────
+  const rawUserElements: HTMLElement[] = [];
+  const userSeen = new Set<HTMLElement>();
+  for (const selector of USER_SELECTORS) {
+    const matches = Array.from(doc.querySelectorAll<HTMLElement>(selector));
+    for (const el of matches) {
+      if (!userSeen.has(el) && !containsAssistantContent(el)) {
+        userSeen.add(el);
+        rawUserElements.push(el);
+      }
+    }
+  }
+
+  // Filter out any user elements nested inside other user elements
+  const outermostBubbles = removeDescendantDuplicates(rawUserElements);
+
+  for (const bubble of outermostBubbles) {
+    // Establish message boundary: find immediate user container, never cross into shared container
+    const turnBoundary = findSafeUserBoundary(bubble);
+    const target = turnBoundary || bubble;
+
+    if (!processedElements.has(target)) {
+      processedElements.add(target);
+      entries.push({ el: target, role: "user" });
+    }
+  }
+
+  // ── 2. Discover Assistant Response Elements ───────────────────────────────
+  const rawAssistantCandidates = findAssistantCandidateElements(doc);
+
+  // Deduplicate candidate elements to outermost containers
+  const deduplicatedCandidates = removeDescendantDuplicates(rawAssistantCandidates);
+
+  for (const candidate of deduplicatedCandidates) {
+    // Never accept a container that contains user content or is inside a user element
+    if (
+      candidate.querySelector(USER_BUBBLE_SELECTOR) ||
+      candidate.querySelector(USER_WRAPPER_SELECTOR) ||
+      candidate.querySelector('[data-message-author-role="user"]') ||
+      candidate.closest(USER_BUBBLE_SELECTOR) ||
+      candidate.closest(USER_WRAPPER_SELECTOR) ||
+      candidate.closest('[data-message-author-role="user"]')
+    ) {
+      continue;
+    }
+
+    // Find the safe assistant turn boundary (highest ancestor that does NOT contain user content)
+    const turnBoundary = findSafeAssistantBoundary(candidate);
+    const target = turnBoundary || candidate;
+
+    // Double check that target does NOT contain user content or wrap a user message
+    if (
+      target.querySelector(USER_BUBBLE_SELECTOR) ||
+      target.querySelector(USER_WRAPPER_SELECTOR) ||
+      target.querySelector('[data-message-author-role="user"]') ||
+      target.closest(USER_BUBBLE_SELECTOR) ||
+      target.closest(USER_WRAPPER_SELECTOR) ||
+      target.closest('[data-message-author-role="user"]')
+    ) {
+      // Fallback: use candidate itself if strictly safe
+      if (
+        !processedElements.has(candidate) &&
+        !candidate.querySelector(USER_BUBBLE_SELECTOR) &&
+        !candidate.querySelector(USER_WRAPPER_SELECTOR) &&
+        !candidate.closest(USER_BUBBLE_SELECTOR) &&
+        !candidate.closest(USER_WRAPPER_SELECTOR)
+      ) {
+        processedElements.add(candidate);
+        entries.push({ el: candidate, role: "assistant" });
+      }
+      continue;
+    }
+
+    if (!processedElements.has(target)) {
+      processedElements.add(target);
+      entries.push({ el: target, role: "assistant" });
+    }
+  }
+
+  // ── 3. Sort entries in true document order ─────────────────────────────────
+  // DOCUMENT_POSITION_FOLLOWING = 4, DOCUMENT_POSITION_PRECEDING = 2
+  entries.sort((a, b) => {
+    if (a.el === b.el) return 0;
+    if (typeof a.el.compareDocumentPosition === "function") {
+      const pos = a.el.compareDocumentPosition(b.el);
+      if (pos & 4) return -1;
+      if (pos & 2) return 1;
+    }
+    return 0;
+  });
+
+  // ── 4. Extract clean text, deduplicate, and normalize ──────────────────────
+  const isStreamingActive = checkIsStreamingActive(doc);
+
+  for (let idx = 0; idx < entries.length; idx++) {
+    const entry = entries[idx];
+    const seq = rawMessages.length + 1;
+
+    // Check for stable message ID attribute if present
+    const msgIdAttr =
+      entry.el.getAttribute("data-message-id") ||
+      entry.el.querySelector("[data-message-id]")?.getAttribute("data-message-id");
+
+    if (msgIdAttr && seenIds.has(msgIdAttr)) {
+      continue;
+    }
+
+    const content = extractCleanTextFromTurnElement(entry.el, entry.role);
+    if (!content || content.trim().length === 0) {
+      continue;
+    }
+
+    const id =
+      typeof msgIdAttr === "string" && msgIdAttr.length > 0
+        ? msgIdAttr
+        : generateMessageId(entry.role, content, seq);
+
+    if (seenIds.has(id)) {
+      continue;
+    }
+    seenIds.add(id);
+
+    // Stable sourceMessageId ensures that streaming assistant chunks update in place
+    const sourceMessageId =
+      typeof msgIdAttr === "string" && msgIdAttr.length > 0
+        ? msgIdAttr
+        : `dom-turn-${seq}-${entry.role}`;
+
+    // Detect streaming on the latest assistant turn
+    const isLatestAssistant =
+      entry.role === "assistant" && idx === entries.length - 1;
+    const isInProgress = isLatestAssistant && isStreamingActive;
+
+    rawMessages.push({
+      id,
+      sequence: seq,
+      role: entry.role,
+      content,
+      timestamp: null,
+      sourceMessageId,
+      isInProgress,
+    });
+  }
+}
+
+// ─── Assistant candidate discovery ───────────────────────────────────────────
+
+/**
+ * Searches for assistant response elements using available stable semantic attributes
+ * followed by documented structural class prefix fallbacks.
+ */
+function findAssistantCandidateElements(doc: Document): HTMLElement[] {
+  const candidates: HTMLElement[] = [];
+  const seen = new Set<HTMLElement>();
+  for (const selector of ASSISTANT_SELECTORS) {
+    const elements = Array.from(doc.querySelectorAll<HTMLElement>(selector));
+    for (const el of elements) {
+      const isInsideUser = Boolean(
+        el.closest(USER_BUBBLE_SELECTOR) ||
+        el.closest(USER_WRAPPER_SELECTOR) ||
+        el.closest('[data-message-author-role="user"]') ||
+        el.closest('[data-testid*="user-turn"]')
+      );
+      const containsUser = Boolean(
+        el.querySelector(USER_BUBBLE_SELECTOR) ||
+        el.querySelector(USER_WRAPPER_SELECTOR) ||
+        el.querySelector('[data-message-author-role="user"]') ||
+        el.querySelector('[data-testid*="user-turn"]')
+      );
+      if (!seen.has(el) && !isInsideUser && !containsUser) {
+        seen.add(el);
+        candidates.push(el);
+      }
+    }
+  }
+  return removeDescendantDuplicates(candidates);
+}
+
+// ─── Safe Turn Boundary Walkers ──────────────────────────────────────────────
+
+/**
+ * Walks up from a user message bubble to find its turn boundary.
+ * Never crosses into an ancestor that contains assistant content.
+ */
+function findSafeUserBoundary(bubble: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = bubble.parentElement;
+  let bestBoundary: HTMLElement = bubble;
+  let depth = 0;
+
+  while (current && depth < 6) {
+    // If this ancestor contains assistant content, STOP immediately.
+    // The previous level was safe.
+    if (containsAssistantContent(current)) {
+      return bestBoundary;
+    }
+
+    // If this ancestor is the user-message wrapper, record it
+    const className = current.className || "";
+    if (typeof className === "string" && className.includes("group/user-message")) {
+      bestBoundary = current;
+    }
+
+    // If this ancestor matches article or user-turn
+    const testId = current.getAttribute("data-testid") || "";
+    if (
+      current.tagName.toLowerCase() === "article" ||
+      testId.includes("user-turn") ||
+      testId.includes("conversation-turn")
+    ) {
+      bestBoundary = current;
+    }
+
+    current = current.parentElement;
+    depth++;
+  }
+
+  return bestBoundary;
+}
+
+/**
+ * Walks up from an assistant response root to find the highest ancestor that
+ * is exclusive to this assistant response turn (does not contain user content).
+ */
+function findSafeAssistantBoundary(root: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = root.parentElement;
+  let bestBoundary: HTMLElement = root;
+  let depth = 0;
+
+  while (current && depth < 7) {
+    const tag = current.tagName.toLowerCase();
+    if (tag === "body" || tag === "html") {
+      break;
+    }
+
+    // If this ancestor also contains ANY user content selectors, it is a shared turn container.
+    // STOP HERE and do not include the shared container.
+    if (
+      current.querySelector(USER_BUBBLE_SELECTOR) ||
+      current.querySelector(USER_WRAPPER_SELECTOR) ||
+      current.querySelector('[data-message-author-role="user"]') ||
+      current.querySelector('[data-testid*="user-turn"]')
+    ) {
+      return bestBoundary;
+    }
+
+    // Check if this ancestor is a turn-level container
+    const className = current.className || "";
+    if (
+      typeof className === "string" &&
+      (className.includes("MarkdownRoot") ||
+        className.includes("group") ||
+        className.includes("flex-col"))
+    ) {
+      bestBoundary = current;
+    }
+
+    current = current.parentElement;
+    depth++;
+  }
+
+  return bestBoundary;
+}
+
+/**
+ * Returns true if an element contains any assistant response indicators.
+ */
+function containsAssistantContent(el: HTMLElement): boolean {
+  for (const selector of ASSISTANT_SELECTORS) {
+    if (el.querySelector(selector)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ─── Text Extraction & UI Stripping ──────────────────────────────────────────
+
+/**
+ * Extracts clean user or assistant text while stripping extraneous UI controls:
+ * - Code block "Copy code" buttons
+ * - Action buttons (Retry, Read aloud, Copy, Like, Dislike)
+ * - Badges ("Message received" and similar)
+ * - Citations UI
+ * - Screen reader announcements (.sr-only)
+ * - SVGs and icons
+ *
+ * Guarantees:
+ * - Never extracts an entire ancestor containing both user and assistant content.
+ * - Joins paragraph / heading / list blocks with appropriate newlines so nested paragraphs
+ *   are never fragmented into separate messages and formatting is preserved.
+ */
+export function extractCleanTextFromTurnElement(
+  container: HTMLElement,
+  role: "user" | "assistant"
+): string {
+  let targetNode: HTMLElement = container;
+
+  if (role === "assistant") {
+    // If container somehow still contains user content, narrow to the assistant subtree.
+    // This is a safety net: the assistant boundary walker should have already prevented
+    // shared containers from reaching here, but guard defensively against all known user selectors.
+    const containsUserContent =
+      container.querySelector(USER_BUBBLE_SELECTOR) ||
+      container.querySelector(USER_WRAPPER_SELECTOR) ||
+      container.querySelector('[data-message-author-role="user"]') ||
+      container.querySelector('[data-testid*="user-turn"]');
+    if (containsUserContent) {
+      const scoped =
+        container.querySelector<HTMLElement>(DIL_RESPONSE_ROOT_SELECTOR) ||
+        container.querySelector<HTMLElement>('[class*="MarkdownRoot"]') ||
+        container.querySelector<HTMLElement>('[data-message-author-role="assistant"]');
+      if (
+        scoped &&
+        !scoped.querySelector(USER_BUBBLE_SELECTOR) &&
+        !scoped.querySelector(USER_WRAPPER_SELECTOR) &&
+        !scoped.querySelector('[data-message-author-role="user"]')
+      ) {
+        targetNode = scoped;
+      } else {
+        // Cannot isolate safe assistant subtree — return empty to skip this element
+        return "";
+      }
+    }
+  } else {
+    // User message: bubble element itself is the authoritative boundary
+    const bubbleEl = container.matches(USER_BUBBLE_SELECTOR)
+      ? container
+      : container.querySelector<HTMLElement>(USER_BUBBLE_SELECTOR);
+    if (bubbleEl) {
+      targetNode = bubbleEl;
+    }
+  }
+
+  // Clone node so we can safely strip controls without modifying the live DOM
+  const clone = targetNode.cloneNode(true) as HTMLElement;
+
+  // Remove UI elements that pollute transcript
+  const controlsToRemove = clone.querySelectorAll(STRIP_SELECTOR);
+  controlsToRemove.forEach((node) => node.remove());
+
+  // Also remove badge elements containing known badge text ("Message received")
+  const allDescendants = Array.from(clone.querySelectorAll<HTMLElement>("*"));
+  for (const el of allDescendants) {
+    const text = (el.textContent || "").trim();
+    if (
+      text === "Message received" ||
+      text === "Message sent" ||
+      text === "Copy code" ||
+      text === "Read aloud" ||
+      text === "Retry"
+    ) {
+      el.remove();
+    }
+  }
+
+  // Extract structured block elements (<p>, <pre>, <li>, <h1>-<h6>, <blockquote>)
+  // to preserve paragraph breaks (\n\n) without relying on detached innerText
+  const blocks = Array.from(
+    clone.querySelectorAll<HTMLElement>("p, pre, li, h1, h2, h3, h4, h5, h6, blockquote")
+  );
+
+  if (blocks.length > 0) {
+    // Keep only outermost blocks (exclude nested blocks to avoid duplication)
+    const outermost = blocks.filter(
+      (b) => !blocks.some((other) => other !== b && other.contains(b))
     );
+    const textParts = outermost
+      .map((b) => (b.innerText || b.textContent || "").trim())
+      .filter((t) => t.length > 0);
+
+    if (textParts.length > 0) {
+      return textParts.join("\n\n");
+    }
+  }
+
+  const raw = clone.innerText || clone.textContent || "";
+  return raw.trim();
+}
+
+// ─── Legacy Turn Extraction (for backward compatibility) ──────────────────────
+
+function findValidLegacyTurns(doc: Document): HTMLElement[] {
+  const hasUserBubbles = Boolean(doc.querySelector(USER_BUBBLE_SELECTOR));
+
+  for (const selector of LEGACY_TURN_SELECTORS) {
+    const elements = Array.from(doc.querySelectorAll<HTMLElement>(selector));
     if (elements.length > 0) {
+      // Reject if any turn contains BOTH user and assistant content (shared container)
+      const isShared = elements.some(
+        (el) =>
+          el.querySelector(USER_BUBBLE_SELECTOR) &&
+          containsAssistantContent(el)
+      );
+      if (isShared) continue;
+
+      // If page has user bubbles, legacy turn elements must represent user turns as well
+      if (hasUserBubbles) {
+        const containsUser = elements.some(
+          (el) => el.getAttribute("data-message-author-role") === "user" || el.querySelector(USER_BUBBLE_SELECTOR)
+        );
+        if (!containsUser) continue;
+      }
+
       return elements;
     }
   }
   return [];
 }
 
-// ─── Structured turn extraction ───────────────────────────────────────────────
-
-/**
- * Extracts a normalized message from a structured turn element.
- * Returns null if the turn has no recognizable role or empty content.
- */
-function extractMessageFromTurnElement(
+function extractMessageFromLegacyTurn(
   el: HTMLElement,
   seqHint: number,
-  seenIds: Set<string>
+  seenIds: Set<string>,
+  doc: Document
 ): NormalizedCaptureMessage | null {
-  // Determine role from stable attribute
   const authorRoleAttr =
     el.getAttribute("data-message-author-role") ||
     el.querySelector("[data-message-author-role]")?.getAttribute("data-message-author-role");
@@ -194,23 +643,18 @@ function extractMessageFromTurnElement(
     role = "user";
   } else if (authorRoleAttr === "assistant") {
     role = "assistant";
-  } else {
-    // Heuristic fallback: detect user message bubble or DilResponseRoot
-    if (el.querySelector(USER_BUBBLE_SELECTOR)) {
-      role = "user";
-    } else if (el.querySelector(DIL_RESPONSE_ROOT_SELECTOR)) {
-      role = "assistant";
-    }
+  } else if (el.querySelector(USER_BUBBLE_SELECTOR)) {
+    role = "user";
+  } else if (containsAssistantContent(el)) {
+    role = "assistant";
   }
 
   if (!role) return null;
 
-  // Determine message ID from stable attribute
   const msgIdAttr =
     el.getAttribute("data-message-id") ||
     el.querySelector("[data-message-id]")?.getAttribute("data-message-id");
 
-  // Check for duplicate by stable ID before extracting content (avoid expensive clone)
   if (msgIdAttr && seenIds.has(msgIdAttr)) return null;
 
   const content = extractCleanTextFromTurnElement(el, role);
@@ -223,240 +667,48 @@ function extractMessageFromTurnElement(
 
   if (seenIds.has(id)) return null;
 
+  const sourceMessageId =
+    typeof msgIdAttr === "string" && msgIdAttr.length > 0
+      ? msgIdAttr
+      : `dom-turn-${seqHint}-${role}`;
+
+  const isStreaming = role === "assistant" && checkIsStreamingActive(doc);
+
   return {
     id,
     sequence: seqHint,
     role,
     content,
     timestamp: null,
-    sourceMessageId: typeof msgIdAttr === "string" && msgIdAttr.length > 0 ? msgIdAttr : null,
-    isInProgress: false,
+    sourceMessageId,
+    isInProgress: isStreaming,
   };
 }
 
-// ─── Fallback extraction ───────────────────────────────────────────────────────
+// ─── Streaming Detection Helper ──────────────────────────────────────────────
 
 /**
- * Fallback extraction using the observed ChatGPT DOM structure when no structured
- * turn containers exist.
- *
- * Strategy:
- *  1. Find all [data-user-message-bubble="true"] elements → user messages.
- *  2. Find all [class*="DilResponseRoot"] elements → assistant messages.
- *  3. Merge results preserving visual DOM order via compareDocumentPosition.
- *
- * Deduplication: a message is only included once even if nested elements also match.
+ * Checks whether live ChatGPT DOM shows an active streaming response.
+ * Looks for the "Stop generating" / "Stop streaming" button or streaming class.
  */
-function extractFallback(
-  doc: Document,
-  rawMessages: NormalizedCaptureMessage[],
-  seenIds: Set<string>
-): void {
-  type RawEntry = {
-    el: HTMLElement;
-    role: "user" | "assistant";
-    order: number;
-  };
-
-  const entries: RawEntry[] = [];
-
-  // ── User message bubbles ──────────────────────────────────────────────────
-  const userBubbles = Array.from(
-    doc.querySelectorAll<HTMLElement>(USER_BUBBLE_SELECTOR)
-  );
-
-  // Deduplicate: if one bubble is an ancestor of another, only keep the outermost
-  const dedupedUserBubbles = removeDescendantDuplicates(userBubbles);
-
-  for (const bubble of dedupedUserBubbles) {
-    // The message boundary is the user bubble itself (data-user-message-bubble="true")
-    // Walk up to find a meaningful turn wrapper that does NOT also contain an assistant response.
-    const turnEl = findUserTurnBoundary(bubble);
-    const target = turnEl || bubble;
-    entries.push({ el: target, role: "user", order: domOrder(target) });
+function checkIsStreamingActive(doc: Document): boolean {
+  try {
+    return Boolean(
+      doc.querySelector('button[data-testid="stop-button"]') ||
+      doc.querySelector('button[aria-label*="Stop"]') ||
+      doc.querySelector('button[aria-label*="stop"]') ||
+      doc.querySelector('[class*="result-streaming"]')
+    );
+  } catch {
+    return false;
   }
-
-  // ── Assistant response roots ──────────────────────────────────────────────
-  const assistantRoots = Array.from(
-    doc.querySelectorAll<HTMLElement>(DIL_RESPONSE_ROOT_SELECTOR)
-  );
-
-  // Deduplicate: if one root is an ancestor of another, only keep the outermost
-  const dedupedAssistantRoots = removeDescendantDuplicates(assistantRoots);
-
-  for (const root of dedupedAssistantRoots) {
-    // Verify this root does NOT also contain a user message bubble (would mean it's a container)
-    const containsUserBubble = root.querySelector(USER_BUBBLE_SELECTOR) !== null;
-    if (containsUserBubble) continue;
-
-    entries.push({ el: root, role: "assistant", order: domOrder(root) });
-  }
-
-  // Sort by document order
-  entries.sort((a, b) => a.order - b.order);
-
-  for (const entry of entries) {
-    const seq = rawMessages.length + 1;
-    const msgIdAttr =
-      entry.el.getAttribute("data-message-id") ||
-      entry.el.querySelector("[data-message-id]")?.getAttribute("data-message-id");
-
-    if (msgIdAttr && seenIds.has(msgIdAttr)) continue;
-
-    const content = extractCleanTextFromTurnElement(entry.el, entry.role);
-    if (!content || content.trim().length === 0) continue;
-
-    const id =
-      typeof msgIdAttr === "string" && msgIdAttr.length > 0
-        ? msgIdAttr
-        : generateMessageId(entry.role, content, seq);
-
-    if (seenIds.has(id)) continue;
-    seenIds.add(id);
-
-    rawMessages.push({
-      id,
-      sequence: seq,
-      role: entry.role,
-      content,
-      timestamp: null,
-      sourceMessageId: typeof msgIdAttr === "string" && msgIdAttr.length > 0 ? msgIdAttr : null,
-      isInProgress: false,
-    });
-  }
-}
-
-// ─── User turn boundary detection ─────────────────────────────────────────────
-
-/**
- * Walks up from a user-message-bubble element to find the natural turn boundary.
- *
- * Strategy: walk up the DOM tree a limited number of levels. Accept the first ancestor
- * that is a reasonable turn wrapper — i.e. one that does NOT also contain an assistant
- * response element (which would mean it is a shared parent container).
- *
- * Returns null if no safe boundary is found above the bubble; the caller will use
- * the bubble itself.
- *
- * Maximum depth: 6 levels above the bubble.
- */
-function findUserTurnBoundary(bubble: HTMLElement): HTMLElement | null {
-  let current: HTMLElement | null = bubble.parentElement;
-  let depth = 0;
-
-  while (current && depth < 6) {
-    // If this ancestor also contains an assistant response, it's a shared container — stop here
-    // and return the previous safe level (i.e., use the bubble itself)
-    if (current.querySelector(DIL_RESPONSE_ROOT_SELECTOR)) {
-      return null;
-    }
-
-    // Structural signals that indicate a turn-level element:
-    // - has role="presentation" or role="article"
-    // - is an article, section, or [data-testid] that looks like a turn
-    const tagName = current.tagName.toLowerCase();
-    const role = current.getAttribute("role");
-    const testId = current.getAttribute("data-testid") || "";
-
-    if (
-      tagName === "article" ||
-      role === "article" ||
-      testId.includes("conversation-turn") ||
-      testId.includes("user-turn")
-    ) {
-      return current;
-    }
-
-    current = current.parentElement;
-    depth++;
-  }
-
-  return null;
-}
-
-// ─── Text extraction ───────────────────────────────────────────────────────────
-
-/**
- * Extracts the user or assistant text while stripping extraneous UI controls:
- * - Code block "Copy code" buttons
- * - Action buttons (Retry, Read aloud, Copy, Like, Dislike)
- * - Badges ("Message received" and similar)
- * - Citations UI
- * - Screen reader announcements (.sr-only)
- * - SVGs and icons
- * - aria-hidden elements
- *
- * For assistant responses:
- *   Scopes extraction to the DilResponseRoot subtree if found within the container,
- *   ensuring the user message portion of a shared ancestor is not included.
- *
- * For user messages:
- *   Uses the bubble element directly or any paragraph/text elements within it.
- */
-export function extractCleanTextFromTurnElement(
-  container: HTMLElement,
-  role: "user" | "assistant"
-): string {
-  let targetNode: HTMLElement = container;
-
-  if (role === "assistant") {
-    // Prefer scoping to DilResponseRoot to avoid capturing user message text
-    // from a shared ancestor container
-    const dilRoot = container.querySelector<HTMLElement>(DIL_RESPONSE_ROOT_SELECTOR);
-    if (dilRoot && !dilRoot.querySelector(USER_BUBBLE_SELECTOR)) {
-      targetNode = dilRoot;
-    } else {
-      // Fallback: look for classic .markdown class
-      const markdownEl = container.querySelector<HTMLElement>(".markdown");
-      if (markdownEl) targetNode = markdownEl;
-    }
-  } else {
-    // User message: the bubble element itself is the best scope
-    // Try to narrow to the bubble if the container is wider
-    const bubbleEl = container.querySelector<HTMLElement>(USER_BUBBLE_SELECTOR);
-    if (bubbleEl) {
-      targetNode = bubbleEl;
-    } else if (!container.matches(USER_BUBBLE_SELECTOR)) {
-      // Try classic whitespace-pre-wrap
-      const userTextEl = container.querySelector<HTMLElement>(".whitespace-pre-wrap");
-      if (userTextEl) targetNode = userTextEl;
-    }
-  }
-
-  // Clone node so we can safely strip controls without modifying the live DOM
-  const clone = targetNode.cloneNode(true) as HTMLElement;
-
-  // Remove UI elements that pollute transcript
-  const controlsToRemove = clone.querySelectorAll(STRIP_SELECTOR);
-  controlsToRemove.forEach((node) => node.remove());
-
-  const text = clone.innerText || clone.textContent || "";
-  return text.trim();
 }
 
 // ─── DOM utilities ────────────────────────────────────────────────────────────
 
 /**
- * Returns a numeric approximation of DOM document order for an element.
- * Uses the element's TreeWalker position. Falls back to 0 if unavailable.
- */
-function domOrder(el: HTMLElement): number {
-  if (!el.ownerDocument) return 0;
-  let index = 0;
-  const walker = el.ownerDocument.createTreeWalker(
-    el.ownerDocument.body || el.ownerDocument.documentElement,
-    NodeFilter.SHOW_ELEMENT
-  );
-  while (walker.nextNode()) {
-    if (walker.currentNode === el) return index;
-    index++;
-  }
-  return index;
-}
-
-/**
- * From an array of elements, removes any that are a descendant of another element
- * in the same array. Returns only the "outermost" elements.
+ * Removes elements that are descendants of another element in the same array.
+ * Returns only the outermost elements.
  */
 function removeDescendantDuplicates(elements: HTMLElement[]): HTMLElement[] {
   return elements.filter((el) => {

@@ -1,16 +1,16 @@
-import { detectConversationPage } from "./conversationDetector";
+import { detectConversationPage } from "./conversationDetector.ts";
 // pageScriptInjector removed — Part A of Milestone 1 (safe capture refactor)
 
 import {
     addConversationPage,
     addConversationMessages,
     getAccumulatedMessageCount,
-} from "../connectors/conversationAccumulator";
+} from "../connectors/conversationAccumulator.ts";
 
 import type {
     Conversation,
     ConversationMessage,
-} from "../connectors/types";
+} from "../connectors/types.ts";
 
 import {
     createCaptureSession,
@@ -30,28 +30,30 @@ import {
     isRecognizedStreamChunk,
     type CaptureEligibilityInterval,
     type CaptureEligibilityContext,
-} from "../continuity/captureLifecycle";
-import type { MessageRole } from "../continuity/archiveSchema";
+} from "../continuity/captureLifecycle.ts";
+import type { MessageRole } from "../continuity/archiveSchema.ts";
 
 import {
     type CapturedConversation,
+    type NormalizedCaptureMessage,
     type LifecyclePingResponse,
     PRIVACY_CUTOFF_SENTINEL,
-} from "../continuity/captureTypes";
+} from "../continuity/captureTypes.ts";
 import {
     saveActiveCaptureSession,
     getActiveCaptureSession,
     getConversations,
     ACTIVE_EPOCH_KEY,
-} from "../storage/conversationStorage";
+    getAuthorizedMessageIds,
+} from "../storage/conversationStorage.ts";
 import {
     ContentScriptLifecycle,
     isExtensionContextInvalidatedError,
     preservePendingSessionInDOM,
     recoverPendingSessionsFromDOM,
     CONTENT_SCRIPT_REINIT_EVENT,
-} from "../continuity/contentScriptLifecycle";
-import { extractVisibleConversationFromDOM } from "../connectors/domConversationExtractor";
+} from "../continuity/contentScriptLifecycle.ts";
+import { extractVisibleConversationFromDOM } from "../connectors/domConversationExtractor.ts";
 
 /**
  * ============================================================
@@ -108,7 +110,7 @@ interface LiveAssistantMessage {
 const liveAssistantMessages =
     new Map<string, LiveAssistantMessage>();
 
-const captureSessions =
+export const captureSessions =
     new Map<string, CapturedConversation>();
 
 function getOrCreateCaptureSession(conversationId: string): CapturedConversation {
@@ -120,11 +122,17 @@ function getOrCreateCaptureSession(conversationId: string): CapturedConversation
             window.location.href,
             conversationId
         );
+        if (activeObserverEpochId) {
+            session.epochId = activeObserverEpochId;
+        }
         captureSessions.set(conversationId, session);
     } else {
         session.url = window.location.href;
         if (document.title && document.title !== "ChatGPT" && (!session.title || session.title === "ChatGPT conversation")) {
             session.title = document.title;
+        }
+        if (activeObserverEpochId && !session.epochId) {
+            session.epochId = activeObserverEpochId;
         }
     }
     return session;
@@ -148,12 +156,14 @@ function notifyBackgroundCapture(session: CapturedConversation): void {
         captureMethod: "supported_connector",
         completeness: session.isComplete ? "complete" : "partial",
         capturedAt: session.capturedAt,
+        epochId: session.epochId || activeObserverEpochId || undefined,
         messages: session.messages.map((m) => ({
             id: m.id,
             role: m.role,
             content: m.content,
             timestamp: m.timestamp ?? undefined,
             sourceMessageId: m.sourceMessageId ?? undefined,
+            epochId: m.epochId || undefined,
         })),
     };
 
@@ -414,6 +424,7 @@ function startMemoryStateListener(): void {
          * interrupt in-progress streams, and close the eligible capture interval.
          */
         if (!memoryEnabled) {
+            disconnectActiveObserver("Memory turned OFF in storage");
             const now = Date.now();
             let intervalsChanged = false;
             for (const interval of captureEligibilityIntervals) {
@@ -531,7 +542,7 @@ function normalizeMessage(
         (raw["metadata"] &&
             typeof raw["metadata"] === "object" &&
             ((raw["metadata"] as Record<string, unknown>)["is_thought"] === true ||
-             (raw["metadata"] as Record<string, unknown>)["thought"] === true))
+                (raw["metadata"] as Record<string, unknown>)["thought"] === true))
     ) {
         return null;
     }
@@ -575,8 +586,8 @@ function normalizeMessage(
         typeof raw["id"] === "string" && raw["id"].length > 0
             ? raw["id"]
             : typeof raw["message_id"] === "string" && raw["message_id"].length > 0
-            ? raw["message_id"]
-            : generateMessageId(role as MessageRole, text, seq);
+                ? raw["message_id"]
+                : generateMessageId(role as MessageRole, text, seq);
 
     const createTime =
         raw["create_time"] ?? raw["timestamp"];
@@ -594,8 +605,8 @@ function normalizeMessage(
                     createTime * 1000
                 ).toISOString()
                 : typeof createTime === "string"
-                ? createTime
-                : undefined,
+                    ? createTime
+                    : undefined,
     };
 }
 
@@ -683,14 +694,15 @@ const PROVISIONAL_SESSION_ID = "provisional-tab";
  * Promotes a provisional or temporary session to an authoritative conversation UUID.
  * Preserves all buffered user messages and maintains strict chronological sequence.
  */
-function promoteProvisionalSession(newConvId: string): CapturedConversation | null {
-    if (!newConvId || newConvId === PROVISIONAL_SESSION_ID || newConvId === "new-chat") {
+export function promoteProvisionalSession(newConvId: string): CapturedConversation | null {
+    if (!newConvId || newConvId === PROVISIONAL_SESSION_ID || newConvId === "new-chat" || newConvId === "local-chatgpt") {
         return null;
     }
 
     const provisional =
         captureSessions.get(PROVISIONAL_SESSION_ID) ||
-        captureSessions.get("new-chat");
+        captureSessions.get("new-chat") ||
+        captureSessions.get("local-chatgpt");
 
     if (!provisional) {
         return null;
@@ -698,6 +710,7 @@ function promoteProvisionalSession(newConvId: string): CapturedConversation | nu
 
     captureSessions.delete(PROVISIONAL_SESSION_ID);
     captureSessions.delete("new-chat");
+    captureSessions.delete("local-chatgpt");
 
     let targetSession = captureSessions.get(newConvId);
     if (!targetSession) {
@@ -707,6 +720,9 @@ function promoteProvisionalSession(newConvId: string): CapturedConversation | nu
             window.location.href,
             newConvId
         );
+        targetSession.epochId = provisional.epochId || activeObserverEpochId || undefined;
+    } else if (!targetSession.epochId) {
+        targetSession.epochId = provisional.epochId || activeObserverEpochId || undefined;
     }
 
     // Merge provisional messages into target session maintaining chronological order and stable IDs
@@ -717,18 +733,53 @@ function promoteProvisionalSession(newConvId: string): CapturedConversation | nu
             content: msg.content,
             timestamp: msg.timestamp,
             sourceMessageId: msg.sourceMessageId || msg.id,
+            epochId: msg.epochId || provisional.epochId,
         });
     }
 
     // Defect A Fix: Migrate assistant message ID mapping from provisional keys to newConvId
     const provAssistantId =
         activeAssistantMessageIds.get(PROVISIONAL_SESSION_ID) ||
-        activeAssistantMessageIds.get("new-chat");
+        activeAssistantMessageIds.get("new-chat") ||
+        activeAssistantMessageIds.get("local-chatgpt");
     if (provAssistantId) {
         activeAssistantMessageIds.set(newConvId, provAssistantId);
         activeAssistantMessageIds.delete(PROVISIONAL_SESSION_ID);
         activeAssistantMessageIds.delete("new-chat");
+        activeAssistantMessageIds.delete("local-chatgpt");
         console.log(`[VZ-CAPTURE-DEBUG] Migrated active assistant message ID ${provAssistantId} to ${newConvId}`);
+    }
+
+    // Migrate unauthorized baseline keys from provisional to newConvId
+    const provUnauthorized =
+        unauthorizedMessageKeysByConv.get(PROVISIONAL_SESSION_ID) ||
+        unauthorizedMessageKeysByConv.get("new-chat") ||
+        unauthorizedMessageKeysByConv.get("local-chatgpt");
+    if (provUnauthorized && provUnauthorized.size > 0) {
+        let targetSet = unauthorizedMessageKeysByConv.get(newConvId);
+        if (!targetSet) {
+            targetSet = new Set<string>();
+            unauthorizedMessageKeysByConv.set(newConvId, targetSet);
+        }
+        for (const k of provUnauthorized) {
+            targetSet.add(k);
+        }
+    }
+    // Transfer baseline tracking so newConvId does not re-run baseline for this active epoch
+    for (const key of Array.from(epochBaselinesEstablished)) {
+        if (key.startsWith(`${PROVISIONAL_SESSION_ID}:::`) || key.startsWith("new-chat:::") || key.startsWith("local-chatgpt:::")) {
+            const epochPart = key.split(":::")[1];
+            epochBaselinesEstablished.add(getBaselineKey(newConvId, epochPart));
+        }
+    }
+    for (const [key, promise] of Array.from(baselinePromisesByConv.entries())) {
+        if (key.startsWith(`${PROVISIONAL_SESSION_ID}:::`) || key.startsWith("new-chat:::") || key.startsWith("local-chatgpt:::")) {
+            const epochPart = key.split(":::")[1];
+            const newKey = getBaselineKey(newConvId, epochPart);
+            if (!baselinePromisesByConv.has(newKey)) {
+                baselinePromisesByConv.set(newKey, promise);
+            }
+        }
     }
 
     if (provisional.state === "response_in_progress") {
@@ -1763,7 +1814,7 @@ async function handleConversationHistory(
     const conversationId =
         (payloadObject["conversationId"] as string) ||
         getConversationIdFromUrl(String(payloadObject["url"])) ||
-        ((data as Record<string, unknown>)?.[ "conversation_id" ] as string) ||
+        ((data as Record<string, unknown>)?.["conversation_id"] as string) ||
         (typeof window !== "undefined" && window.location?.pathname.match(/\/c\/([a-zA-Z0-9_-]+)/)?.[1]);
 
     console.log("[VZ-CAPTURE-DEBUG] Historical recovery processing", {
@@ -2036,7 +2087,7 @@ async function handleMessagesResponse(
  * ============================================================
  */
 
-function recoverVisibleConversationHistoryFromDOM(): void {
+async function recoverVisibleConversationHistoryFromDOM(): Promise<void> {
     if (!memoryEnabled || !lifecycle.isAlive()) {
         return;
     }
@@ -2047,67 +2098,98 @@ function recoverVisibleConversationHistoryFromDOM(): void {
             return;
         }
 
+        const currentTabMatch = typeof window !== "undefined" && window.location?.pathname
+            ? window.location.pathname.match(/\/c\/([a-zA-Z0-9_-]+)/)
+            : null;
+        const currentTabConvId = currentTabMatch ? currentTabMatch[1] : null;
+
+        if (currentTabConvId && captureSessions.has(PROVISIONAL_SESSION_ID)) {
+            promoteProvisionalSession(currentTabConvId);
+        }
+
         const convId =
             domResult.conversationId ||
-            (typeof window !== "undefined" && window.location?.pathname.match(/\/c\/([a-zA-Z0-9_-]+)/)?.[1]);
+            currentTabConvId ||
+            PROVISIONAL_SESSION_ID;
 
-        if (!convId) {
-            return;
+        if (activeObserverEpochId) {
+            await ensureConversationBaseline(convId, activeObserverEpochId);
+            if (!memoryEnabled) return;
+
+            const baselineKey = getBaselineKey(convId, activeObserverEpochId);
+            if (!populatedBaselinesEstablished.has(baselineKey)) {
+                await recordEpochObservationBaseline(convId, activeObserverEpochId);
+                if (!memoryEnabled) return;
+            }
         }
 
-        let session = getOrCreateCaptureSession(convId);
-        if (domResult.title && (!session.title || session.title === "ChatGPT conversation")) {
-            session.title = domResult.title;
-        }
+        // Load durable authorized IDs from storage. These survive page reload and handle the case where
+        // a DOM-extracted message ID doesn't exactly match the stored ID (e.g., content hash changed during
+        // streaming). Any message whose ID or sourceMessageId is in durableAuthorizedIds is treated as
+        // "previously persisted" and must not be re-assigned the current epoch.
+        const durableAuthorizedIds = await getAuthorizedMessageIds(convId);
 
-        const eligibilityContext: CaptureEligibilityContext = {
-            isCaptureCurrentlyEnabled: memoryEnabled,
-            intervals: captureEligibilityIntervals,
-            persistedMessageIds: new Set(session.messages.map((m) => m.id)),
-        };
+        if (!memoryEnabled || !lifecycle.isAlive()) return;
 
-        let newMessagesAdded = 0;
-        for (const domMsg of domResult.messages) {
-            if (!isMessageEligibleForCapture(domMsg, eligibilityContext)) {
-                console.log("[VZ-CAPTURE-DEBUG] DOM message excluded by privacy boundary", {
-                    id: domMsg.id,
-                    timestamp: domMsg.timestamp,
-                });
-                continue;
+        // Serialize with the MutationObserver queue for this conversation.
+        // This prevents a race where both the observer's initial callback and this function
+        // process the same DOM snapshot concurrently, producing duplicate notifyBackgroundCapture calls.
+        const captureEpochId = activeObserverEpochId;
+        const prevQueue = conversationMutationQueues.get(convId) || Promise.resolve();
+        const nextQueue = prevQueue.then(async () => {
+            if (!memoryEnabled || !lifecycle.isAlive()) return;
+            // Re-check: if epoch changed while waiting in queue, skip this stale recovery.
+            if (captureEpochId && activeObserverEpochId !== captureEpochId) return;
+
+            let session = getOrCreateCaptureSession(convId);
+            if (captureEpochId && !session.epochId) {
+                session.epochId = captureEpochId;
+            }
+            if (domResult.title && (!session.title || session.title === "ChatGPT conversation")) {
+                session.title = domResult.title;
             }
 
-            const alreadyExists = session.messages.some(
-                (m) =>
-                    m.id === domMsg.id ||
-                    (m.sourceMessageId && m.sourceMessageId === domMsg.id) ||
-                    (m.role === domMsg.role && m.content.trim() === domMsg.content.trim())
+            const unauthorizedKeys = unauthorizedMessageKeysByConv.get(convId);
+            const { filteredMessages, hasNewContent } = filterExtractedDomMessages(
+                convId,
+                domResult.messages,
+                session,
+                unauthorizedKeys,
+                captureEpochId || session.epochId || "unknown-epoch",
+                durableAuthorizedIds
             );
 
-            if (!alreadyExists) {
-                session = ingestMessage(session, {
-                    id: domMsg.id,
-                    role: domMsg.role,
-                    content: domMsg.content,
-                    timestamp: domMsg.timestamp,
-                    sourceMessageId: domMsg.sourceMessageId || domMsg.id,
+            // Also trigger a save when streaming completes (isInProgress: true → false).
+            // Without this, the stored assistant record stays isInProgress: true indefinitely.
+            const wasStreaming = session.messages.some((m) => m.isInProgress);
+            const isNowStreaming = filteredMessages.some((m) => m.isInProgress);
+            const streamingCompleted = wasStreaming && !isNowStreaming;
+
+            if (hasNewContent || streamingCompleted) {
+                session = mergeCapturedSessions(session, {
+                    ...session,
+                    messages: filteredMessages,
+                    epochId: captureEpochId || session.epochId,
                 });
-                newMessagesAdded++;
+                session.completenessStatus = "partial";
+                session.isComplete = false;
+                session = recordCheckpoint(session);
+                captureSessions.set(convId, session);
+                notifyBackgroundCapture(session);
+
+                console.log("[VZ-CAPTURE-DEBUG] Visible conversation history recovered from DOM", {
+                    conversationId: convId,
+                    totalSessionMessages: session.messages.length,
+                    streamingCompleted,
+                });
             }
-        }
+        }).catch((err) => {
+            console.warn("[VZ-CAPTURE-DEBUG] DOM history recovery notice", err);
+        });
+        conversationMutationQueues.set(convId, nextQueue);
 
-        if (newMessagesAdded > 0) {
-            session.completenessStatus = "partial";
-            session.isComplete = false;
-            session = recordCheckpoint(session);
-            captureSessions.set(convId, session);
-            notifyBackgroundCapture(session);
-
-            console.log("[VZ-CAPTURE-DEBUG] Visible conversation history recovered from DOM", {
-                conversationId: convId,
-                newMessagesAdded,
-                totalSessionMessages: session.messages.length,
-            });
-        }
+        // Await the queued work so callers can await this function.
+        await nextQueue;
     } catch (err) {
         console.warn("[VZ-CAPTURE-DEBUG] DOM history recovery notice", err);
     }
@@ -2245,6 +2327,323 @@ function startMessageListener(): void {
  * validating the new epoch and attaching a new observer.
  */
 
+/** Map of conversation ID -> Set of message identifiers that existed in DOM during OFF intervals without authorization. */
+export const unauthorizedMessageKeysByConv = new Map<string, Set<string>>();
+
+/** Track conversation IDs whose observation baseline has been established under the currently active observer epoch. */
+export const epochBaselinesEstablished = new Set<string>();
+
+/** Tracks (convId:::epochId) pairs whose baseline has successfully scanned a populated (non-empty) DOM. */
+export const populatedBaselinesEstablished = new Set<string>();
+
+/** Per-conversation baseline initialization promise to prevent concurrent race conditions during asynchronous storage reads. */
+export const baselinePromisesByConv = new Map<string, Promise<void>>();
+
+/** Per-conversation mutation processing queue to serialize DOM processing during baseline loading. */
+export const conversationMutationQueues = new Map<string, Promise<void>>();
+
+/**
+ * Checks whether a candidate message was observed in the DOM during an unauthorized interval (Memory OFF).
+ * Strictest security check: only stable primary ID and sourceMessageId are valid proof.
+ * Content-based comparison is NEVER used for authorization.
+ */
+export function isMessageUnauthorized(
+    convId: string,
+    msg: { id?: string; sourceMessageId?: string | null; role?: MessageRole; content?: string }
+): boolean {
+    const unauthorizedKeys = unauthorizedMessageKeysByConv.get(convId);
+    if (!unauthorizedKeys || unauthorizedKeys.size === 0) {
+        return false;
+    }
+    if (msg.id && unauthorizedKeys.has(msg.id)) return true;
+    if (msg.sourceMessageId && unauthorizedKeys.has(msg.sourceMessageId)) return true;
+    return false;
+}
+
+/**
+ * Establishes the observation baseline for a conversation at the moment an observer attaches
+ * or when a conversation is first encountered under an active epoch.
+ *
+ * Any messages already present in the DOM that are NOT in storage (session.messages) AND NOT
+ * in the durable authorizedMessageIds set were created outside authorization (while Memory was
+ * OFF or before capture was enabled). They are recorded as unauthorized and must NEVER be
+ * admitted into storage or assigned the active epoch.
+ *
+ * Strictly uses stable identity (primary message ID and sourceMessageId).
+ */
+export async function recordEpochObservationBaseline(convId: string, epochId: string): Promise<boolean> {
+    const existing = captureSessions.get(convId);
+    const persistedIds = new Set<string>();
+
+    if (existing && existing.messages) {
+        for (const m of existing.messages) {
+            if (m.id) persistedIds.add(m.id);
+            if (m.sourceMessageId) persistedIds.add(m.sourceMessageId);
+        }
+    }
+
+    // Stale epoch guard: If a newer epoch has already attached or if this epoch was superseded/disconnected,
+    // discard stale asynchronous baseline execution to prevent cross-epoch pollution.
+    if (
+        (activeObserverEpochId !== null && activeObserverEpochId !== epochId) ||
+        (lastDisconnectedEpochId === epochId && activeObserverEpochId !== epochId)
+    ) {
+        console.warn("[VZ-PRIVACY-GATE] Discarding stale baseline from superseded or disconnected epoch", {
+            staleEpochId: epochId,
+            currentActiveEpochId: activeObserverEpochId,
+            lastDisconnectedEpochId,
+            convId,
+        });
+        return false;
+    }
+
+    // Load durable authorized IDs from storage (survives page reload) in a single storage read
+    const queryConvIds = (convId !== PROVISIONAL_SESSION_ID && convId !== "new-chat" && convId !== "local-chatgpt")
+        ? [convId, PROVISIONAL_SESSION_ID, "new-chat", "local-chatgpt"]
+        : [convId];
+    const durableAuthorizedIds = await getAuthorizedMessageIds(queryConvIds);
+
+    for (const id of durableAuthorizedIds) {
+        persistedIds.add(id);
+    }
+
+    // RACE-CONDITION GUARD: Also include any messages already held in the in-memory capture
+    // session for this conversation. If the user sends a message right as Memory turns ON and
+    // the live-event ingest runs concurrently with baseline establishment, the message may be
+    // in the in-memory session but not yet committed to storage. Without this, the baseline
+    // would mark it unauthorized because durableAuthorizedIds has not yet been written.
+    const inMemorySession = captureSessions.get(convId);
+    if (inMemorySession) {
+        for (const m of inMemorySession.messages) {
+            if (m.id) persistedIds.add(m.id);
+            if (m.sourceMessageId) persistedIds.add(m.sourceMessageId);
+        }
+    }
+    // Also check all provisional aliases in case provisional session was not yet promoted
+    for (const provisionalId of [PROVISIONAL_SESSION_ID, "new-chat", "local-chatgpt"]) {
+        const provSession = captureSessions.get(provisionalId);
+        if (provSession) {
+            for (const m of provSession.messages) {
+                if (m.id) persistedIds.add(m.id);
+                if (m.sourceMessageId) persistedIds.add(m.sourceMessageId);
+            }
+        }
+    }
+
+    const domResult = extractVisibleConversationFromDOM();
+    const baselineKey = getBaselineKey(convId, epochId);
+    if (!domResult || domResult.messages.length === 0) {
+        return true;
+    }
+    populatedBaselinesEstablished.add(baselineKey);
+
+    let unauthorizedKeys = unauthorizedMessageKeysByConv.get(convId);
+    if (!unauthorizedKeys) {
+        unauthorizedKeys = new Set<string>();
+        unauthorizedMessageKeysByConv.set(convId, unauthorizedKeys);
+    }
+
+    for (const msg of domResult.messages) {
+        const isPersisted =
+            (msg.id && persistedIds.has(msg.id)) ||
+            (msg.sourceMessageId && persistedIds.has(msg.sourceMessageId));
+
+        if (!isPersisted) {
+            if (msg.id) unauthorizedKeys.add(msg.id);
+            if (msg.sourceMessageId) unauthorizedKeys.add(msg.sourceMessageId);
+            console.log("[VZ-PRIVACY-GATE] Recorded unauthorized OFF-period message baseline", {
+                convId,
+                epochId,
+                role: msg.role,
+                contentPreview: msg.content.slice(0, 40),
+            });
+        }
+    }
+    return true;
+}
+
+/**
+ * Scopes baseline tracking to both conversation ID and epoch ID.
+ * Guarantees a new epoch never reuses an earlier epoch's baseline.
+ */
+export function getBaselineKey(convId: string, epochId: string): string {
+    return `${convId}:::${epochId}`;
+}
+
+/**
+ * Checks whether the baseline for a specific (convId, epochId) pair has been established.
+ */
+export function isConversationBaselineEstablished(convId: string, epochId: string): boolean {
+    return epochBaselinesEstablished.has(getBaselineKey(convId, epochId));
+}
+
+/**
+ * Ensures baseline initialization has completed for a conversation under a specific epoch
+ * before any extracted DOM messages are evaluated or admitted. Deduplicates concurrent in-flight requests.
+ */
+export function ensureConversationBaseline(convId: string, epochId: string): Promise<void> {
+    const key = getBaselineKey(convId, epochId);
+    if (epochBaselinesEstablished.has(key)) {
+        return Promise.resolve();
+    }
+    let pending = baselinePromisesByConv.get(key);
+    if (!pending) {
+        pending = recordEpochObservationBaseline(convId, epochId).then((established) => {
+            // Only mark established if baseline was successfully recorded for this epoch
+            if (established && (
+                activeObserverEpochId === epochId ||
+                (activeObserverEpochId === null && lastDisconnectedEpochId !== epochId)
+            )) {
+                epochBaselinesEstablished.add(key);
+            } else {
+                // Baseline was not established (e.g. empty DOM on page reload before rendering).
+                // Allow retry on next mutation by clearing the pending promise.
+                baselinePromisesByConv.delete(key);
+            }
+        });
+        baselinePromisesByConv.set(key, pending);
+    }
+    return pending;
+}
+
+export interface DomMessageFilterResult {
+    filteredMessages: NormalizedCaptureMessage[];
+    hasNewContent: boolean;
+}
+
+/**
+ * Pure authorization filter: applies strict identity-based authorization rules to extracted DOM turns.
+ * 1. Previously persisted messages (matching id or sourceMessageId) retain their original epoch provenance.
+ *    This includes messages matched via durableAuthorizedIds from storage (survives page reload).
+ * 2. Messages observed in the baseline during an OFF interval are discarded.
+ * 3. Newly generated messages created after observer attachment are assigned activeEpochId.
+ * No content-matching is permitted for authorization decisions.
+ */
+export function filterExtractedDomMessages(
+    convId: string,
+    extractedMessages: Array<{
+        id: string;
+        role: MessageRole;
+        content: string;
+        sourceMessageId?: string | null;
+        timestamp?: string | null;
+        isInProgress?: boolean;
+    }>,
+    existingSession: CapturedConversation | undefined,
+    unauthorizedKeys: Set<string> | undefined,
+    activeEpochId: string,
+    durableAuthorizedIds?: Set<string>
+): DomMessageFilterResult {
+    void convId;
+    const persistedIds = new Set<string>();
+    // Include durable authorized IDs from storage so that messages whose DOM-assigned ID
+    // differs from the stored ID (e.g. due to streaming hash change) are still recognized
+    // as previously persisted on reload rather than treated as new Epoch B content.
+    if (durableAuthorizedIds) {
+        for (const id of durableAuthorizedIds) persistedIds.add(id);
+    }
+    if (existingSession && existingSession.messages) {
+        for (const m of existingSession.messages) {
+            if (m.id) persistedIds.add(m.id);
+            if (m.sourceMessageId) persistedIds.add(m.sourceMessageId);
+        }
+    }
+
+    const filteredMessages: NormalizedCaptureMessage[] = [];
+    let hasNewContent = false;
+    let lastUserTurnProvenance: "persisted" | "unauthorized" | "active_epoch" | null = null;
+
+    for (const domMsg of extractedMessages) {
+        const isPersisted =
+            (domMsg.id && persistedIds.has(domMsg.id)) ||
+            (domMsg.sourceMessageId && persistedIds.has(domMsg.sourceMessageId));
+
+        if (isPersisted) {
+            // Look up the original message to preserve its epoch provenance and stable identity.
+            const orig = existingSession?.messages.find(
+                (m) =>
+                    m.id === domMsg.id ||
+                    (m.sourceMessageId && m.sourceMessageId === domMsg.id) ||
+                    (domMsg.sourceMessageId && m.id === domMsg.sourceMessageId) ||
+                    (domMsg.sourceMessageId && m.sourceMessageId && m.sourceMessageId === domMsg.sourceMessageId)
+            );
+            if (domMsg.role === "user") {
+                const origEpochId = orig?.epochId;
+                if (origEpochId && origEpochId === activeEpochId) {
+                    lastUserTurnProvenance = "active_epoch";
+                } else {
+                    lastUserTurnProvenance = "persisted";
+                }
+            }
+            filteredMessages.push({
+                id: orig?.id || domMsg.id,
+                sequence: filteredMessages.length + 1,
+                role: domMsg.role,
+                content: domMsg.content,
+                timestamp: domMsg.timestamp ?? orig?.timestamp ?? null,
+                sourceMessageId: orig?.sourceMessageId || domMsg.sourceMessageId || domMsg.id,
+                isInProgress: Boolean(domMsg.isInProgress),
+                epochId: orig?.epochId || null,
+            });
+            continue;
+        }
+
+        const isUnauthorized = unauthorizedKeys
+            ? (Boolean(domMsg.id && unauthorizedKeys.has(domMsg.id)) ||
+                Boolean(domMsg.sourceMessageId && unauthorizedKeys.has(domMsg.sourceMessageId)))
+            : false;
+
+        if (isUnauthorized) {
+            if (domMsg.role === "user") {
+                lastUserTurnProvenance = "unauthorized";
+            }
+            console.log("[VZ-PRIVACY-GATE] Discarded unauthorized OFF-period message during DOM mutation", {
+                id: domMsg.id,
+                role: domMsg.role,
+                contentPreview: domMsg.content.slice(0, 40),
+            });
+            continue;
+        }
+
+        // Conversational Pairing Provenance:
+        // An assistant response cannot be admitted into activeEpochId unless the user prompt
+        // it responds to was also authorized under activeEpochId. If the preceding user prompt
+        // occurred during an OFF interval (unauthorized) or belonged to a prior epoch,
+        // the assistant response belongs to that interval/epoch and must not be admitted under activeEpochId.
+        if (domMsg.role === "assistant" && lastUserTurnProvenance !== "active_epoch") {
+            console.log("[VZ-PRIVACY-GATE] Discarded orphaned/OFF-period assistant response without active-epoch user turn", {
+                id: domMsg.id,
+                role: domMsg.role,
+                lastUserTurnProvenance,
+                contentPreview: domMsg.content.slice(0, 40),
+            });
+            if (unauthorizedKeys) {
+                if (domMsg.id) unauthorizedKeys.add(domMsg.id);
+                if (domMsg.sourceMessageId) unauthorizedKeys.add(domMsg.sourceMessageId);
+            }
+            continue;
+        }
+
+        // Genuine newly generated turn under active epoch
+        if (domMsg.role === "user") {
+            lastUserTurnProvenance = "active_epoch";
+        }
+        hasNewContent = true;
+        filteredMessages.push({
+            id: domMsg.id,
+            sequence: filteredMessages.length + 1,
+            role: domMsg.role,
+            content: domMsg.content,
+            timestamp: domMsg.timestamp ?? null,
+            sourceMessageId: domMsg.sourceMessageId || domMsg.id,
+            isInProgress: Boolean(domMsg.isInProgress),
+            epochId: activeEpochId,
+        });
+    }
+
+    return { filteredMessages, hasNewContent };
+}
+
 /** Currently active MutationObserver. null means observer is not attached. */
 let activeDOMObserver: MutationObserver | null = null;
 /** Epoch ID bound to the currently active observer. */
@@ -2271,51 +2670,145 @@ function disconnectActiveObserver(reason: string): void {
         activeDOMObserver = null;
         activeObserverEpochId = null;
     }
+    epochBaselinesEstablished.clear();
+    populatedBaselinesEstablished.clear();
+    baselinePromisesByConv.clear();
+    conversationMutationQueues.clear();
 }
 
 /**
  * Attach a new MutationObserver for the given epoch.
  * Single-Observer Invariant: disconnects any existing observer first.
- * Returns true if the observer was successfully attached.
+ * Returns a Promise that resolves to true if the observer was successfully attached.
+ * The promise resolves only after the initial baseline has been durably established.
  */
-function attachObserver(epochId: string): boolean {
+async function attachObserver(epochId: string): Promise<boolean> {
     // Step 1 of invariant: disconnect any existing observer unconditionally
     disconnectActiveObserver("replaced by new epoch " + epochId);
 
-    // Step 2: attach new observer
+    // Step 2: establish durable baseline for current conversation before attaching observer
+    const currentTabMatch = typeof window !== "undefined" && window.location?.pathname
+        ? window.location.pathname.match(/\/c\/([a-zA-Z0-9_-]+)/)
+        : null;
+    const currentTabConvId = currentTabMatch ? currentTabMatch[1] : PROVISIONAL_SESSION_ID;
+
+    await ensureConversationBaseline(currentTabConvId, epochId);
+
+    // Step 3: attach new observer
     try {
         const observer = new MutationObserver((_mutations) => {
             if (!memoryEnabled || activeObserverEpochId !== epochId) {
                 // Epoch mismatch — stale write guard
                 return;
             }
-            // DOM mutation handling — re-scan visible conversation
-            const extracted = extractVisibleConversationFromDOM();
-            if (extracted && extracted.messages.length > 0) {
-                const convId = extracted.conversationId || PROVISIONAL_SESSION_ID;
-                let existing = captureSessions.get(convId);
+
+            const currentTabMatch = typeof window !== "undefined" && window.location?.pathname
+                ? window.location.pathname.match(/\/c\/([a-zA-Z0-9_-]+)/)
+                : null;
+            const currentTabConvId = currentTabMatch ? currentTabMatch[1] : null;
+
+            if (currentTabConvId && captureSessions.has(PROVISIONAL_SESSION_ID)) {
+                promoteProvisionalSession(currentTabConvId);
+            }
+
+            const convId = currentTabConvId || PROVISIONAL_SESSION_ID;
+
+            // Enqueue processing for this conversation to prevent race conditions during baseline loading
+            const prevQueue = conversationMutationQueues.get(convId) || Promise.resolve();
+            const nextQueue = prevQueue.then(async () => {
+                if (!memoryEnabled || activeObserverEpochId !== epochId) return;
+
+                // Ensure baseline has been established before evaluating any DOM messages
+                await ensureConversationBaseline(convId, epochId);
+
+                if (!memoryEnabled || activeObserverEpochId !== epochId) return;
+
+                const baselineKey = getBaselineKey(convId, epochId);
+                if (!populatedBaselinesEstablished.has(baselineKey)) {
+                    await recordEpochObservationBaseline(convId, epochId);
+                    if (!memoryEnabled || activeObserverEpochId !== epochId) return;
+                }
+
+                const extracted = extractVisibleConversationFromDOM();
+                if (!extracted || extracted.messages.length === 0) return;
+
+                const targetConvId = extracted.conversationId || currentTabConvId || PROVISIONAL_SESSION_ID;
+                if (targetConvId !== convId) {
+                    await ensureConversationBaseline(targetConvId, epochId);
+                    if (!memoryEnabled || activeObserverEpochId !== epochId) return;
+
+                    const targetBaselineKey = getBaselineKey(targetConvId, epochId);
+                    if (!populatedBaselinesEstablished.has(targetBaselineKey)) {
+                        await recordEpochObservationBaseline(targetConvId, epochId);
+                        if (!memoryEnabled || activeObserverEpochId !== epochId) return;
+                    }
+                }
+
+                let existing = captureSessions.get(targetConvId);
                 if (!existing) {
                     existing = createCaptureSession(
                         "chatgpt",
                         extracted.title || document.title || "ChatGPT conversation",
                         window.location.href,
-                        convId
+                        targetConvId
                     );
+                    existing.epochId = epochId;
                 }
+
+                // Load durable authorized IDs from storage so that previously saved messages
+                // whose DOM-assigned ID doesn't match the stored ID are still recognized as
+                // persisted rather than admitted as new Epoch content.
+                const durableAuthorizedIds = await getAuthorizedMessageIds(targetConvId);
+
+                if (!memoryEnabled || activeObserverEpochId !== epochId) return;
+
+                const unauthorizedKeys = unauthorizedMessageKeysByConv.get(targetConvId);
+                const { filteredMessages, hasNewContent } = filterExtractedDomMessages(
+                    targetConvId,
+                    extracted.messages,
+                    existing,
+                    unauthorizedKeys,
+                    epochId,
+                    durableAuthorizedIds
+                );
+
+                if (filteredMessages.length === 0) return;
+
+                const isNowStreaming = filteredMessages.some((m) => m.isInProgress);
+                // Detect streaming-completion transition: an existing in-progress message has now finished.
+                // Even if hasNewContent is false, we must persist the completed state.
+                const wasStreaming = existing.messages.some((m) => m.isInProgress);
+                const streamingCompleted = wasStreaming && !isNowStreaming;
+
+                if (!hasNewContent && !isNowStreaming && !streamingCompleted && filteredMessages.length <= existing.messages.length) {
+                    return;
+                }
+
                 const merged = mergeCapturedSessions(existing, {
                     ...existing,
-                    messages: extracted.messages,
+                    messages: filteredMessages,
                     epochId,
                 });
-                captureSessions.set(convId, merged);
+                merged.epochId = epochId;
+                captureSessions.set(targetConvId, merged);
                 notifyBackgroundCapture(merged);
-            }
+            }).catch((err) => {
+                console.warn("[VZ-CAPTURE-DEBUG] Error processing DOM mutation queue", err);
+            });
+
+            conversationMutationQueues.set(convId, nextQueue);
         });
 
-        observer.observe(document.body, {
+        const rootNode = (typeof document !== "undefined" && (document.documentElement || document.body)) || null;
+        if (!rootNode) {
+            console.warn("[VZ-LIFECYCLE-CS] Neither documentElement nor body available to observe");
+            return false;
+        }
+
+        observer.observe(rootNode, {
             childList: true,
             subtree: true,
-            characterData: false,
+            characterData: true,
             attributes: false,
         });
 
@@ -2413,19 +2906,32 @@ function registerLifecycleIPCHandler(): void {
                                 return;
                             }
 
-                            // Single-Observer Invariant: disconnects existing observer inside attachObserver()
-                            const attached = attachObserver(epochId);
-                            if (!attached) {
-                                sendResponse({
-                                    success: false,
-                                    error: "Failed to attach MutationObserver",
-                                });
-                                return;
-                            }
+                            // Ensure storage is fully hydrated before attaching observer and establishing baseline
+                            ensureStorageHydrated()
+                                .then(() => {
+                                    // Single-Observer Invariant: disconnects existing observer inside attachObserver()
+                                    // attachObserver is async (establishes durable baseline from storage)
+                                    attachObserver(epochId)
+                                        .then((attached) => {
+                                            if (!attached) {
+                                                sendResponse({
+                                                    success: false,
+                                                    error: "Failed to attach MutationObserver",
+                                                });
+                                                return;
+                                            }
 
-                            memoryEnabled = true;
-                            syncCaptureStateToDOM(true);
-                            sendResponse({ success: true, epochId });
+                                            memoryEnabled = true;
+                                            syncCaptureStateToDOM(true);
+                                            sendResponse({ success: true, epochId });
+                                        })
+                                        .catch((err) => {
+                                            sendResponse({ success: false, error: String(err) });
+                                        });
+                                })
+                                .catch((err) => {
+                                    sendResponse({ success: false, error: String(err) });
+                                });
                         })
                         .catch((err) => {
                             sendResponse({ success: false, error: String(err) });
@@ -2581,8 +3087,10 @@ async function reattachObserverAfterReload(): Promise<void> {
             return;
         }
 
+        await ensureStorageHydrated();
+
         // Reattach exactly one observer for the authorized epoch
-        const attached = attachObserver(storedEpochId);
+        const attached = await attachObserver(storedEpochId);
         if (attached) {
             console.log("[VZ-LIFECYCLE-CS] Observer reattached after page reload", {
                 epochId: storedEpochId,
@@ -2761,12 +3269,27 @@ async function main(): Promise<void> {
     await reattachObserverAfterReload();
 
     // Initial recovery for visible DOM messages in existing conversation tabs
-    recoverVisibleConversationHistoryFromDOM();
+    await recoverVisibleConversationHistoryFromDOM();
+
+    if (typeof document !== "undefined" && document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+            recoverVisibleConversationHistoryFromDOM();
+        }, { once: true });
+    }
 
     // Listen for client-side navigation (popstate / route changes)
     const onRouteChanged = () => {
         storageHydrationPromise = null;
         void ensureStorageHydrated().then(() => {
+            const currentTabMatch = typeof window !== "undefined" && window.location?.pathname
+                ? window.location.pathname.match(/\/c\/([a-zA-Z0-9_-]+)/)
+                : null;
+            const currentTabConvId = currentTabMatch ? currentTabMatch[1] : null;
+
+            if (currentTabConvId && captureSessions.has(PROVISIONAL_SESSION_ID)) {
+                promoteProvisionalSession(currentTabConvId);
+            }
+
             recoverVisibleConversationHistoryFromDOM();
         });
     };
@@ -2810,4 +3333,6 @@ async function main(): Promise<void> {
     });
 }
 
-void main();
+if (typeof window !== "undefined" && typeof document !== "undefined" && window.location?.hostname === "chatgpt.com") {
+    void main();
+}

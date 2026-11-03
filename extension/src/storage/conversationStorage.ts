@@ -24,6 +24,13 @@ const ACTIVE_CAPTURE_SESSION_KEY = "activeCaptureSession";
 export const EPOCH_REGISTRY_KEY = "epochRegistry";
 export const PENDING_LIFECYCLE_TRANSITION_KEY = "pendingLifecycleTransition";
 export const ACTIVE_EPOCH_KEY = "activeEpoch";
+/**
+ * Storage key for durable per-conversation authorized message IDs.
+ * Survives page reload. Used to distinguish previously persisted messages
+ * from unknown historical DOM messages on observer reattachment.
+ * Shape: Record<conversationId, string[]>
+ */
+export const AUTHORIZED_MESSAGE_IDS_KEY = "authorizedMessageIds";
 
 export interface StorageSaveResult {
     success: boolean;
@@ -75,6 +82,79 @@ export async function getConversation(
                 conversation.id === conversationId
         ) ?? null
     );
+}
+
+/**
+ * Get the set of authorized message IDs for a conversation from durable storage.
+ * These IDs identify messages that were previously persisted under an authorized epoch.
+ * On page reload, any DOM message whose ID is NOT in this set AND is not newly observed
+ * after observer attachment must be treated as unauthorized.
+ */
+export async function getAuthorizedMessageIds(conversationId: string | string[]): Promise<Set<string>> {
+    if (!isExtensionContextValid()) return new Set();
+    try {
+        const result = await chrome.storage.local.get(AUTHORIZED_MESSAGE_IDS_KEY);
+        const allIds = result[AUTHORIZED_MESSAGE_IDS_KEY];
+        if (!allIds || typeof allIds !== "object" || Array.isArray(allIds)) return new Set();
+        const convIds = Array.isArray(conversationId) ? conversationId : [conversationId];
+        const combined = new Set<string>();
+        for (const cid of convIds) {
+            const list = (allIds as Record<string, unknown>)[cid];
+            if (Array.isArray(list)) {
+                for (const id of list) combined.add(id as string);
+            }
+        }
+        return combined;
+    } catch (error) {
+        if (isExtensionContextInvalidatedError(error)) {
+            console.warn("[VZ-CAPTURE-DEBUG] Extension context invalidated during getAuthorizedMessageIds");
+        }
+        return new Set();
+    }
+}
+
+/**
+ * Persist the set of authorized message IDs for a conversation to durable storage.
+ * Called during saveConversation so that reload recovery can distinguish previously
+ * persisted messages from unknown historical DOM content.
+ *
+ * Note: While operations within this extension context are serialized via storageLock,
+ * cross-context writes (e.g. concurrent writes across background and content scripts)
+ * rely on message delegation to background.ts rather than cross-process atomicity.
+ */
+export async function updateAuthorizedMessageIds(
+    conversationId: string,
+    messageIds: string[]
+): Promise<void> {
+    if (!isExtensionContextValid()) {
+        throw new Error("Extension context invalidated before updating authorizedMessageIds");
+    }
+    if (messageIds.length === 0) return;
+    try {
+        const result = await chrome.storage.local.get(AUTHORIZED_MESSAGE_IDS_KEY);
+        const allIds: Record<string, string[]> =
+            (result[AUTHORIZED_MESSAGE_IDS_KEY] &&
+                typeof result[AUTHORIZED_MESSAGE_IDS_KEY] === "object" &&
+                !Array.isArray(result[AUTHORIZED_MESSAGE_IDS_KEY]))
+                ? (result[AUTHORIZED_MESSAGE_IDS_KEY] as Record<string, string[]>)
+                : {};
+
+        // Merge new IDs with existing ones (union, no removals)
+        const existing = Array.isArray(allIds[conversationId]) ? allIds[conversationId] : [];
+        const merged = Array.from(new Set([...existing, ...messageIds]));
+        allIds[conversationId] = merged;
+        await chrome.storage.local.set({ [AUTHORIZED_MESSAGE_IDS_KEY]: allIds });
+    } catch (error) {
+        if (isExtensionContextInvalidatedError(error)) {
+            console.warn("[VZ-CAPTURE-DEBUG] Extension context invalidated during updateAuthorizedMessageIds");
+            throw new Error("Extension context invalidated", { cause: error });
+        }
+        console.error("[VZ-CAPTURE-DEBUG] Failed to update authorizedMessageIds", error);
+        throw new Error(
+            `Failed to update authorizedMessageIds: ${error instanceof Error ? error.message : "Storage error"}`,
+            { cause: error }
+        );
+    }
 }
 
 /**
@@ -135,7 +215,7 @@ export async function saveConversation(
         // Persistence boundary privacy validation:
         // Positive gate: memoryEnabled must be strictly true. === false passes on undefined (first install,
         // storage clear, quota eviction, migration) which is a privacy violation.
-        const memState = await chrome.storage.local.get(["memoryEnabled"]);
+        const memState = await chrome.storage.local.get(["memoryEnabled", ACTIVE_EPOCH_KEY, EPOCH_REGISTRY_KEY]);
         if (memState.memoryEnabled !== true) {
             console.warn("[VZ-CAPTURE-DEBUG] Storage persistence rejected at privacy boundary: capture is not strictly ON", {
                 conversationId: conversation.id,
@@ -148,18 +228,45 @@ export async function saveConversation(
             };
         }
 
+        // Epoch validation: if conversation.epochId is provided, reject if epoch is not active in epochRegistry
+        if (conversation.epochId) {
+            const rawRegistry = memState[EPOCH_REGISTRY_KEY];
+            if (rawRegistry && typeof rawRegistry === "object" && !Array.isArray(rawRegistry)) {
+                const rec = (rawRegistry as Record<string, unknown>)[conversation.epochId] as Record<string, unknown> | undefined;
+                if (rec && (rec.status !== "active" || rec.closedAt !== null || rec.invalidatedAt !== null)) {
+                    console.warn("[VZ-CAPTURE-DEBUG] Storage persistence rejected: epoch is closed or invalidated", {
+                        epochId: conversation.epochId,
+                        record: rec,
+                    });
+                    return {
+                        conversations: await getConversations(),
+                        newMessages: [],
+                        isNewConversation: false,
+                    };
+                }
+            }
+        }
+
         const conversations = await getConversations();
 
         // Clean up any earlier provisional conversation superseded by this permanent conversation
         let baseConversations = conversations;
-        if (conversation.id !== "provisional-tab" && conversation.id !== "new-chat") {
-            const provisionalIdx = conversations.findIndex(
+        const PROVISIONAL_IDS = ["provisional-tab", "new-chat", "local-chatgpt"];
+        if (!PROVISIONAL_IDS.includes(conversation.id) && !conversation.id.startsWith("temp-")) {
+            const provisionalIdx = baseConversations.findIndex(
                 (c) =>
-                    (c.id === "provisional-tab" || c.id === "new-chat") &&
-                    c.messages.some((pm) => conversation.messages.some((cm) => cm.id === pm.id))
+                    (PROVISIONAL_IDS.includes(c.id) || c.id.startsWith("temp-")) &&
+                    c.messages.some((pm) =>
+                        conversation.messages.some(
+                            (cm) =>
+                                cm.id === pm.id ||
+                                (cm.sourceMessageId && pm.sourceMessageId && cm.sourceMessageId === pm.sourceMessageId) ||
+                                (cm.role === pm.role && cm.content.trim() === pm.content.trim() && cm.content.trim().length > 0)
+                        )
+                    )
             );
             if (provisionalIdx >= 0) {
-                baseConversations = conversations.filter((_, idx) => idx !== provisionalIdx);
+                baseConversations = baseConversations.filter((_, idx) => idx !== provisionalIdx);
                 console.log("[VZ-CAPTURE-DEBUG] Reconciled provisional conversation to permanent ID", {
                     permanentId: conversation.id,
                 });
@@ -212,11 +319,19 @@ export async function saveConversation(
                 let targetId = msg.id;
                 if (!messageMap.has(msg.id)) {
                     for (const [existingId, em] of messageMap.entries()) {
-                        if (
+                        const idMatches =
                             (msg.sourceMessageId && em.sourceMessageId && msg.sourceMessageId === em.sourceMessageId) ||
                             (msg.sourceMessageId && em.id === msg.sourceMessageId) ||
-                            (em.sourceMessageId && em.sourceMessageId === msg.id)
-                        ) {
+                            (em.sourceMessageId && em.sourceMessageId === msg.id);
+
+                        const contentAndRoleMatches =
+                            em.role === msg.role &&
+                            typeof em.content === "string" &&
+                            typeof msg.content === "string" &&
+                            em.content.trim() === msg.content.trim() &&
+                            em.content.trim().length > 0;
+
+                        if (idMatches || contentAndRoleMatches) {
                             targetId = existingId;
                             break;
                         }
@@ -234,11 +349,13 @@ export async function saveConversation(
                         ...msg,
                         id: targetId,
                         content: existingMsg.content,
+                        epochId: existingMsg.epochId || msg.epochId,
                     });
                 } else {
                     messageMap.set(targetId, {
                         ...msg,
                         id: targetId,
+                        epochId: existingMsg?.epochId || msg.epochId,
                     });
                 }
             }
@@ -247,6 +364,7 @@ export async function saveConversation(
             const mergedConversation: Conversation = {
                 ...existingConversation,
                 ...conversation,
+                epochId: conversation.epochId || existingConversation.epochId,
                 messages: mergedMessages,
                 title: conversation.title || existingConversation.title,
                 url: conversation.url || existingConversation.url,
@@ -322,17 +440,57 @@ export async function saveConversation(
                     ? updatedConversations[existingIndex]
                     : conversation;
 
+            // Persist authorized message IDs atomically with the conversation snapshot.
+            // A message cannot be treated as durably authorized if its authorization record
+            // was not successfully persisted.
+            const authorizedIds = finalSavedConv.messages.map((m: { id: string; sourceMessageId?: string }) => m.id)
+                .concat(finalSavedConv.messages
+                    .filter((m: { sourceMessageId?: string }) => m.sourceMessageId)
+                    .map((m: { sourceMessageId?: string }) => m.sourceMessageId as string));
+
+            // Fetch current authorizedMessageIds record to prepare union write
+            const authRecordResult = await chrome.storage.local.get(AUTHORIZED_MESSAGE_IDS_KEY);
+            const allAuthRecord: Record<string, string[]> =
+                (authRecordResult[AUTHORIZED_MESSAGE_IDS_KEY] &&
+                    typeof authRecordResult[AUTHORIZED_MESSAGE_IDS_KEY] === "object" &&
+                    !Array.isArray(authRecordResult[AUTHORIZED_MESSAGE_IDS_KEY]))
+                    ? (authRecordResult[AUTHORIZED_MESSAGE_IDS_KEY] as Record<string, string[]>)
+                    : {};
+
+            const existingAuthForConv = Array.isArray(allAuthRecord[conversation.id])
+                ? allAuthRecord[conversation.id]
+                : [];
+            const provAuth = (conversation.id !== "provisional-tab" && Array.isArray(allAuthRecord["provisional-tab"]))
+                ? allAuthRecord["provisional-tab"]
+                : [];
+            const newChatAuth = (conversation.id !== "new-chat" && Array.isArray(allAuthRecord["new-chat"]))
+                ? allAuthRecord["new-chat"]
+                : [];
+            const localAuth = (conversation.id !== "local-chatgpt" && Array.isArray(allAuthRecord["local-chatgpt"]))
+                ? allAuthRecord["local-chatgpt"]
+                : [];
+            const mergedAuthIds = Array.from(new Set([...existingAuthForConv, ...provAuth, ...newChatAuth, ...localAuth, ...authorizedIds]));
+            allAuthRecord[conversation.id] = mergedAuthIds;
+            if (conversation.id !== "provisional-tab" && conversation.id !== "new-chat" && conversation.id !== "local-chatgpt") {
+                delete allAuthRecord["provisional-tab"];
+                delete allAuthRecord["new-chat"];
+                delete allAuthRecord["local-chatgpt"];
+            }
+
             await chrome.storage.local.set({
                 [CONVERSATIONS_KEY]: updatedConversations,
 
                 [LATEST_CONVERSATION_KEY]: finalSavedConv,
 
                 [LATEST_NEW_MESSAGES_KEY]: newMessages,
+
+                [AUTHORIZED_MESSAGE_IDS_KEY]: allAuthRecord,
             });
 
             console.log("[VZ-CAPTURE-DEBUG] Storage operation succeeded: saveConversation", {
                 conversationId: conversation.id,
                 totalStored: updatedConversations.length,
+                authorizedIdsCount: mergedAuthIds.length,
             });
         } catch (error) {
             if (isExtensionContextInvalidatedError(error)) {

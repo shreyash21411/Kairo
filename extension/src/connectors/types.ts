@@ -28,12 +28,16 @@ export interface ConversationMessage {
     timestamp?: string;
     capturedAt?: string;
     sourceMessageId?: string;
+    epochId?: string;
 }
 
 export interface Conversation {
     id: string;
 
     schemaVersion?: "1.0";
+
+    // Epoch that authorized this conversation capture
+    epochId?: string;
 
     // Project this conversation belongs to
     projectId?: string;

@@ -32,6 +32,7 @@ export interface CaptureEligibilityContext {
   isCaptureCurrentlyEnabled: boolean;
   intervals: CaptureEligibilityInterval[];
   persistedMessageIds?: Set<string>;
+  unauthorizedMessageIds?: Set<string>;
 }
 
 /**
@@ -54,6 +55,12 @@ export function isMessageEligibleForCapture(
   // Rule 1: Capture OFF immediately stops accepting new content
   if (!context.isCaptureCurrentlyEnabled) {
     return false;
+  }
+
+  // Rule 1.5: Explicitly unauthorized messages (e.g. observed during OFF interval) are always excluded
+  if (context.unauthorizedMessageIds) {
+    if (msg.id && context.unauthorizedMessageIds.has(msg.id)) return false;
+    if (msg.sourceMessageId && context.unauthorizedMessageIds.has(msg.sourceMessageId)) return false;
   }
 
   // Rule 2: Previously persisted messages remain intact
@@ -270,6 +277,7 @@ export function ingestMessage(
     content: string;
     timestamp?: string | null;
     sourceMessageId?: string | null;
+    epochId?: string | null;
   }
 ): CapturedConversation {
   const content = rawMessage.content ?? "";
@@ -377,6 +385,7 @@ export function ingestMessage(
     timestamp,
     isInProgress: false,
     sourceMessageId,
+    epochId: rawMessage.epochId || session.epochId || null,
   };
 
   const sorted = sortMessagesChronologically([...session.messages, newMessage]);
@@ -1056,12 +1065,24 @@ export function mergeCapturedSessions(
           Boolean(msg.sourceMessageId && existingMsg.id === msg.sourceMessageId) ||
           Boolean(existingMsg.sourceMessageId && existingMsg.sourceMessageId === msg.id);
 
-        const sameContentAndTime =
+        const contentAndRoleMatches =
           existingMsg.role === msg.role &&
+          typeof existingMsg.content === "string" &&
+          typeof msg.content === "string" &&
           existingMsg.content.trim() === msg.content.trim() &&
-          existingMsg.timestamp &&
-          msg.timestamp &&
-          Math.abs(Date.parse(existingMsg.timestamp) - Date.parse(msg.timestamp)) < 3000;
+          existingMsg.content.trim().length > 0;
+
+        let sameContentAndTime = false;
+        if (contentAndRoleMatches) {
+          if (existingMsg.timestamp && msg.timestamp) {
+            sameContentAndTime = Math.abs(Date.parse(existingMsg.timestamp) - Date.parse(msg.timestamp)) < 3000;
+          } else {
+            // At least one message lacks a timestamp (e.g., DOM-extracted turns where timestamp is null).
+            // Within the same conversational session, identical role and non-empty content
+            // represent the same logical turn across sequence index shifts.
+            sameContentAndTime = true;
+          }
+        }
 
         if (sameSource || sameContentAndTime) {
           matchedId = existingId;
@@ -1074,17 +1095,30 @@ export function mergeCapturedSessions(
       const existingMsg = messageMap.get(matchedId)!;
       const betterContent =
         existingMsg.content.length >= msg.content.length ? existingMsg.content : msg.content;
+      const updatedSourceId =
+        msg.sourceMessageId && existingMsg.sourceMessageId
+          ? (existingMsg.sourceMessageId.startsWith("dom-") && msg.sourceMessageId.startsWith("dom-")
+              ? msg.sourceMessageId
+              : existingMsg.sourceMessageId)
+          : (msg.sourceMessageId || existingMsg.sourceMessageId);
+
       messageMap.set(matchedId, {
         ...existingMsg,
         content: isExistingCutoff && !isIncomingCutoff ? existingMsg.content : betterContent,
         timestamp: existingMsg.timestamp || msg.timestamp,
-        sourceMessageId: existingMsg.sourceMessageId || msg.sourceMessageId,
+        sourceMessageId: updatedSourceId,
         isInProgress: isInterruptedResult ? false : (existingMsg.isInProgress && msg.isInProgress),
+        // CRITICAL: preserve the original authorization epoch on matched messages.
+        // Do NOT override with the incoming session epochId for messages that were
+        // already persisted under a prior epoch. DOM-extracted messages have no epochId,
+        // so existingMsg.epochId always takes priority here.
+        epochId: existingMsg.epochId || msg.epochId || null,
       });
     } else {
       if (!isExistingCutoff || isIncomingCutoff) {
         messageMap.set(msg.id, {
           ...msg,
+          epochId: msg.epochId || incoming.epochId || null,
           isInProgress: isInterruptedResult ? false : msg.isInProgress,
         });
       }
@@ -1158,12 +1192,14 @@ export function conversationToCapturedSession(
     url?: string;
     completeness?: string;
     capturedAt?: string;
+    epochId?: string;
     messages?: {
       id: string;
       role: MessageRole;
       content: string;
       timestamp?: string;
       sourceMessageId?: string;
+      epochId?: string;
     }[];
   }
 ): CapturedConversation {
@@ -1176,6 +1212,7 @@ export function conversationToCapturedSession(
     timestamp: m.timestamp ?? null,
     sourceMessageId: m.sourceMessageId ?? m.id,
     isInProgress: false,
+    epochId: m.epochId || conv.epochId || null,
   }));
 
   return {
@@ -1183,6 +1220,7 @@ export function conversationToCapturedSession(
     platform: conv.platform || "chatgpt",
     title: conv.title || "ChatGPT conversation",
     url: conv.url || null,
+    epochId: conv.epochId || null,
     messages,
     state: "completed",
     hasMoreHistory: false,

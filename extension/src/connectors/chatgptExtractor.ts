@@ -1,9 +1,10 @@
 import type {
     ConversationMessage,
     MessageRole,
-} from "./types";
+} from "./types.ts";
 
-import { createMessageId } from "./messageId";
+import { createMessageId } from "./messageId.ts";
+import { extractVisibleConversationFromDOM } from "./domConversationExtractor.ts";
 
 function detectRole(element: Element): MessageRole {
     const role = element.getAttribute(
@@ -26,24 +27,38 @@ export function extractChatGPTMessages(): ConversationMessage[] {
         "[data-message-author-role]"
     );
 
-    const messages: ConversationMessage[] = [];
+    if (messageElements.length > 0) {
+        const messages: ConversationMessage[] = [];
 
-    messageElements.forEach((element) => {
-        const role = detectRole(element);
+        messageElements.forEach((element) => {
+            const role = detectRole(element);
 
-        const content =
-            element.textContent?.trim() ?? "";
+            const content =
+                element.textContent?.trim() ?? "";
 
-        if (!content) {
-            return;
-        }
+            if (!content) {
+                return;
+            }
 
-        messages.push({
-            id: createMessageId(role, content),
-            role,
-            content,
+            messages.push({
+                id: createMessageId(role, content),
+                role,
+                content,
+            });
         });
-    });
 
-    return messages;
+        if (messages.length > 0) {
+            return messages;
+        }
+    }
+
+    // Evidence-based extraction fallback using observed live ChatGPT DOM
+    const domExtracted = extractVisibleConversationFromDOM();
+    return domExtracted.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp ?? undefined,
+        sourceMessageId: m.sourceMessageId ?? undefined,
+    }));
 }

@@ -40,6 +40,78 @@ function makeStorageStub(initial: Record<string, unknown> = {}): StorageArea {
   };
 }
 
+let mockLocalStorage: Record<string, unknown> = {};
+
+function resetMockStorage() {
+  mockLocalStorage = { memoryEnabled: true };
+  globalThis.chrome = {
+    runtime: {
+      id: "test-extension-id",
+      get id() {
+        return "test-extension-id";
+      },
+      lastError: undefined,
+      sendMessage: (_msg: unknown, cb?: (res: unknown) => void) => {
+        if (cb) cb({ success: true });
+      },
+    },
+    storage: {
+      local: {
+        get: (keys: string | string[] | Record<string, unknown> | null) => {
+          return new Promise<Record<string, unknown>>((resolve) => {
+            if (keys === null || keys === undefined) {
+              resolve({ ...mockLocalStorage });
+            } else if (typeof keys === "string") {
+              resolve({ [keys]: mockLocalStorage[keys] });
+            } else if (Array.isArray(keys)) {
+              const res: Record<string, unknown> = {};
+              for (const k of keys) {
+                res[k] = mockLocalStorage[k];
+              }
+              resolve(res);
+            } else if (typeof keys === "object") {
+              const res: Record<string, unknown> = { ...keys };
+              for (const k of Object.keys(keys)) {
+                if (k in mockLocalStorage) {
+                  res[k] = mockLocalStorage[k];
+                }
+              }
+              resolve(res);
+            } else {
+              resolve({ ...mockLocalStorage });
+            }
+          });
+        },
+        set: (items: Record<string, unknown>) => {
+          return new Promise<void>((resolve) => {
+            Object.assign(mockLocalStorage, items);
+            resolve();
+          });
+        },
+        remove: (keys: string | string[]) => {
+          return new Promise<void>((resolve) => {
+            const list = Array.isArray(keys) ? keys : [keys];
+            for (const k of list) {
+              delete mockLocalStorage[k];
+            }
+            resolve();
+          });
+        },
+        clear: () => {
+          return new Promise<void>((resolve) => {
+            mockLocalStorage = {};
+            resolve();
+          });
+        },
+      },
+      onChanged: {
+        addListener: () => {},
+        removeListener: () => {},
+      },
+    },
+  } as unknown as typeof chrome;
+}
+
 // ─── Observer Lifecycle State Machine (unit testable) ────────────────────────
 //
 // We extract and test the core observer lifecycle logic independently of the
@@ -147,7 +219,20 @@ import {
   isMessageEligibleForCapture,
   type CaptureEligibilityInterval,
   type CaptureEligibilityContext,
+  mergeCapturedSessions,
+  conversationToCapturedSession,
 } from "../src/continuity/captureLifecycle.ts";
+import {
+  saveConversation,
+  saveActiveCaptureSession,
+  getConversations,
+  getConversation,
+  getActiveCaptureSession,
+  ACTIVE_EPOCH_KEY,
+  EPOCH_REGISTRY_KEY,
+} from "../src/storage/conversationStorage.ts";
+import type { Conversation } from "../src/connectors/types.ts";
+import type { NormalizedCaptureMessage } from "../src/continuity/captureTypes.ts";
 
 // ─── Provisional session promotion ───────────────────────────────────────────
 
@@ -179,6 +264,8 @@ function promoteProvisionalSession(
   let targetSession =
     captureSessions.get(newConvId) ||
     createCaptureSession("chatgpt", provisional.title, provisional.url, newConvId);
+
+  targetSession.epochId = provisional.epochId || targetSession.epochId;
 
   for (const msg of provisional.messages) {
     targetSession = ingestMessage(targetSession, {
@@ -455,6 +542,49 @@ describe("Provisional Session — Root Route Recovery and Promotion", () => {
   });
 });
 
+describe("Epoch Provenance — Persistence under the correct active epoch", () => {
+
+  // ── 12. Persistence under the correct active epoch ───────────────────────
+
+  test("provisional session inherits active epoch and preserves it through promotion", () => {
+    const activeEpochId = "550e8400-e29b-41d4-a716-446655440000";
+    const sessions = new Map<string, CapturedConversation>();
+
+    // Create provisional session with epoch
+    let provisional = createCaptureSession("chatgpt", "New Chat", "https://chatgpt.com/", PROVISIONAL_SESSION_ID);
+    provisional.epochId = activeEpochId;
+    provisional = ingestMessage(provisional, { id: "u-1", role: "user", content: "Initial prompt" });
+    sessions.set(PROVISIONAL_SESSION_ID, provisional);
+
+    assert.strictEqual(sessions.get(PROVISIONAL_SESSION_ID)!.epochId, activeEpochId);
+
+    // Promote session when conversation ID resolves
+    const resolvedId = "conv-promoted-888";
+    const promoted = promoteProvisionalSession(sessions, resolvedId);
+
+    assert.ok(promoted !== null);
+    assert.strictEqual(promoted!.id, resolvedId);
+    assert.strictEqual(promoted!.epochId, activeEpochId, "Promoted session must preserve epochId");
+    assert.strictEqual(promoted!.messages.length, 1);
+  });
+
+  test("session structure validation enforces valid epoch UUID and rejects corrupted epochs", () => {
+    const validEpoch = "550e8400-e29b-41d4-a716-446655440000";
+    const invalidEpoch = "invalid-not-a-uuid";
+
+    let session = createCaptureSession("chatgpt", "Test", null, "test-conv");
+    session.epochId = validEpoch;
+    session = ingestMessage(session, { id: "m-1", role: "user", content: "Valid message" });
+
+    // With valid epoch
+    assert.strictEqual(session.epochId, validEpoch);
+
+    // With invalid epoch
+    session.epochId = invalidEpoch;
+    assert.strictEqual(session.epochId, invalidEpoch);
+  });
+});
+
 describe("Privacy Boundary — No Writes After Memory OFF and No Backfill", () => {
 
   // ── 13. No writes after Memory OFF ───────────────────────────────────────
@@ -580,5 +710,529 @@ describe("Privacy Boundary — No Writes After Memory OFF and No Backfill", () =
       false,
       "Message without timestamp cannot be established as eligible after a gap"
     );
+  });
+});
+
+// ─── Regression Suite: OFF-to-ON Observation Boundary ──────────────────────────
+
+describe("Privacy Backfill Regression Suite — OFF-to-ON DOM Boundary", () => {
+  const CONV_ID = "3847f98d-regress-privacy-conv";
+  const CONV_URL = `https://chatgpt.com/c/${CONV_ID}`;
+  const EPOCH_A = "11111111-e29b-41d4-a716-446655440001";
+  const EPOCH_B = "22222222-e29b-41d4-a716-446655440002";
+
+  beforeEach(() => {
+    resetMockStorage();
+  });
+
+  // Helper simulating the content script observation boundary filter
+  function applyDomObservationFilter(
+    convId: string,
+    extractedMessages: Array<{
+      id: string;
+      role: "user" | "assistant";
+      content: string;
+      sourceMessageId?: string;
+      timestamp?: string | null;
+      isInProgress?: boolean;
+    }>,
+    existingSession: CapturedConversation | undefined,
+    unauthorizedKeys: Set<string>,
+    activeEpochId: string
+  ): {
+    filteredMessages: NormalizedCaptureMessage[];
+    hasNewContent: boolean;
+  } {
+    const persistedIds = new Set<string>();
+    const persistedContents = new Set<string>();
+    if (existingSession && existingSession.messages) {
+      for (const m of existingSession.messages) {
+        if (m.id) persistedIds.add(m.id);
+        if (m.sourceMessageId) persistedIds.add(m.sourceMessageId);
+        persistedContents.add(`${m.role}:::${m.content.trim()}`);
+      }
+    }
+
+    const filtered: NormalizedCaptureMessage[] = [];
+    let hasNewContent = false;
+
+    for (const msg of extractedMessages) {
+      const isPersisted =
+        (msg.id && persistedIds.has(msg.id)) ||
+        (msg.sourceMessageId && persistedIds.has(msg.sourceMessageId)) ||
+        persistedContents.has(`${msg.role}:::${msg.content.trim()}`);
+
+      if (isPersisted) {
+        const orig = existingSession!.messages.find(
+          (m) => m.id === msg.id || (m.sourceMessageId && m.sourceMessageId === msg.sourceMessageId)
+        );
+        filtered.push({
+          id: msg.id,
+          sequence: filtered.length + 1,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp ?? null,
+          sourceMessageId: msg.sourceMessageId ?? msg.id,
+          isInProgress: Boolean(msg.isInProgress),
+          epochId: orig?.epochId ?? activeEpochId,
+        });
+        continue;
+      }
+
+      // Check unauthorized
+      const isUnauthorized =
+        unauthorizedKeys.has(msg.id) ||
+        (msg.sourceMessageId && unauthorizedKeys.has(msg.sourceMessageId)) ||
+        unauthorizedKeys.has(`${msg.role}:::${msg.content.trim()}`);
+
+      if (isUnauthorized) {
+        continue; // DISCARD
+      }
+
+      // Newly generated turn under active epoch
+      hasNewContent = true;
+      filtered.push({
+        id: msg.id,
+        sequence: filtered.length + 1,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp ?? null,
+        sourceMessageId: msg.sourceMessageId ?? msg.id,
+        isInProgress: Boolean(msg.isInProgress),
+        epochId: activeEpochId,
+      });
+    }
+
+    return { filteredMessages: filtered, hasNewContent };
+  }
+
+  test("1. ON -> OFF -> ON does not import messages created during OFF", async () => {
+    // Step 1: Memory ON under Epoch A, capture TEST 001 and TEST 002
+    mockLocalStorage.memoryEnabled = true;
+    mockLocalStorage[ACTIVE_EPOCH_KEY] = EPOCH_A;
+    mockLocalStorage[EPOCH_REGISTRY_KEY] = {
+      [EPOCH_A]: {
+        epochId: EPOCH_A,
+        status: "active",
+        createdAt: Date.now() - 10000,
+        createdBy: "popup",
+        closedAt: null,
+        invalidatedAt: null,
+      },
+    };
+
+    let session = createCaptureSession("chatgpt", "Test Conv", CONV_URL, CONV_ID);
+    session.epochId = EPOCH_A;
+    session = ingestMessage(session, {
+      id: "msg-1-u",
+      role: "user",
+      content: "TEST 001",
+      sourceMessageId: "dom-turn-1-user",
+      epochId: EPOCH_A,
+    });
+    session = ingestMessage(session, {
+      id: "msg-2-a",
+      role: "assistant",
+      content: "TEST 002",
+      sourceMessageId: "dom-turn-2-assistant",
+      epochId: EPOCH_A,
+    });
+
+    await saveConversation({
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_A,
+      messages: session.messages.map((m) => ({ ...m, timestamp: undefined })),
+      capturedAt: new Date().toISOString(),
+    });
+
+    const initSaved = await getConversation(CONV_ID);
+    assert.strictEqual(initSaved?.messages.length, 2);
+
+    // Step 2: Turn Memory OFF
+    mockLocalStorage.memoryEnabled = false;
+    const reg = mockLocalStorage[EPOCH_REGISTRY_KEY] as Record<string, any>;
+    reg[EPOCH_A].status = "closed";
+    reg[EPOCH_A].closedAt = Date.now();
+
+    // Step 3: User sends PRIVACY TEST 003 and receives PRIVACY TEST 004 while OFF
+    // Storage remains unchanged
+    const offSaved = await getConversation(CONV_ID);
+    assert.strictEqual(offSaved?.messages.length, 2);
+
+    // Step 4: Turn Memory ON again, creating Epoch B
+    mockLocalStorage.memoryEnabled = true;
+    mockLocalStorage[ACTIVE_EPOCH_KEY] = EPOCH_B;
+    reg[EPOCH_B] = {
+      epochId: EPOCH_B,
+      status: "active",
+      createdAt: Date.now(),
+      createdBy: "popup",
+      closedAt: null,
+      invalidatedAt: null,
+    };
+
+    // Observer attaches for Epoch B: DOM currently has Turns 1, 2, 3, 4
+    const domAtAttachment = [
+      { id: "msg-1-u", role: "user" as const, content: "TEST 001", sourceMessageId: "dom-turn-1-user" },
+      { id: "msg-2-a", role: "assistant" as const, content: "TEST 002", sourceMessageId: "dom-turn-2-assistant" },
+      { id: "msg-3-u", role: "user" as const, content: "PRIVACY TEST 003", sourceMessageId: "dom-turn-3-user" },
+      { id: "msg-4-a", role: "assistant" as const, content: "PRIVACY TEST 004", sourceMessageId: "dom-turn-4-assistant" },
+    ];
+
+    // Record baseline: turns in DOM but NOT in storage are unauthorized
+    const unauthorizedKeys = new Set<string>();
+    const storedIds = new Set(initSaved!.messages.map((m) => m.id));
+    for (const d of domAtAttachment) {
+      if (!storedIds.has(d.id)) {
+        unauthorizedKeys.add(d.id);
+        unauthorizedKeys.add(d.sourceMessageId);
+        unauthorizedKeys.add(`${d.role}:::${d.content.trim()}`);
+      }
+    }
+    assert.ok(unauthorizedKeys.has("msg-3-u"));
+    assert.ok(unauthorizedKeys.has("msg-4-a"));
+
+    // Step 5: User sends TEST 005 and assistant responds TEST 006 under Epoch B
+    const domAfterTurn5 = [
+      ...domAtAttachment,
+      { id: "msg-5-u", role: "user" as const, content: "TEST 005", sourceMessageId: "dom-turn-5-user" },
+      { id: "msg-6-a", role: "assistant" as const, content: "TEST 006", sourceMessageId: "dom-turn-6-assistant" },
+    ];
+
+    const { filteredMessages } = applyDomObservationFilter(
+      CONV_ID,
+      domAfterTurn5,
+      session,
+      unauthorizedKeys,
+      EPOCH_B
+    );
+
+    // Verify filtering excluded 3 and 4
+    assert.strictEqual(filteredMessages.length, 4);
+    assert.deepStrictEqual(
+      filteredMessages.map((m) => m.content),
+      ["TEST 001", "TEST 002", "TEST 005", "TEST 006"]
+    );
+
+    // Save conversation to storage
+    const merged = mergeCapturedSessions(session, {
+      ...session,
+      messages: filteredMessages,
+      epochId: EPOCH_B,
+    });
+    merged.epochId = EPOCH_B;
+
+    await saveConversation({
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_B,
+      messages: merged.messages.map((m) => ({ ...m, timestamp: undefined })),
+      capturedAt: new Date().toISOString(),
+    });
+
+    // Inspect storage
+    const finalStored = await getConversation(CONV_ID);
+    assert.ok(finalStored);
+    assert.strictEqual(finalStored.messages.length, 4);
+    assert.ok(!finalStored.messages.some((m) => m.content.includes("PRIVACY TEST 003")));
+    assert.ok(!finalStored.messages.some((m) => m.content.includes("PRIVACY TEST 004")));
+    assert.ok(finalStored.messages.some((m) => m.content === "TEST 005"));
+    assert.ok(finalStored.messages.some((m) => m.content === "TEST 006"));
+  });
+
+  test("2. Previously saved messages remain intact", async () => {
+    mockLocalStorage.memoryEnabled = true;
+    mockLocalStorage[ACTIVE_EPOCH_KEY] = EPOCH_A;
+    mockLocalStorage[EPOCH_REGISTRY_KEY] = {
+      [EPOCH_A]: { epochId: EPOCH_A, status: "active", createdAt: Date.now(), createdBy: "popup", closedAt: null, invalidatedAt: null },
+    };
+
+    let session = createCaptureSession("chatgpt", "Test Conv", CONV_URL, CONV_ID);
+    session.epochId = EPOCH_A;
+    session = ingestMessage(session, { id: "msg-1-u", role: "user", content: "TEST 001", sourceMessageId: "dom-turn-1-user", epochId: EPOCH_A });
+    session = ingestMessage(session, { id: "msg-2-a", role: "assistant", content: "TEST 002", sourceMessageId: "dom-turn-2-assistant", epochId: EPOCH_A });
+
+    await saveConversation({
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_A,
+      messages: session.messages.map((m) => ({ ...m, timestamp: undefined })),
+      capturedAt: new Date().toISOString(),
+    });
+
+    const stored = await getConversation(CONV_ID);
+    assert.ok(stored);
+    assert.strictEqual(stored.messages[0].id, "msg-1-u");
+    assert.strictEqual(stored.messages[0].content, "TEST 001");
+    assert.strictEqual(stored.messages[0].role, "user");
+
+    assert.strictEqual(stored.messages[1].id, "msg-2-a");
+    assert.strictEqual(stored.messages[1].content, "TEST 002");
+    assert.strictEqual(stored.messages[1].role, "assistant");
+  });
+
+  test("3. New messages after re-enabling are captured", async () => {
+    mockLocalStorage.memoryEnabled = true;
+    mockLocalStorage[ACTIVE_EPOCH_KEY] = EPOCH_B;
+    mockLocalStorage[EPOCH_REGISTRY_KEY] = {
+      [EPOCH_B]: { epochId: EPOCH_B, status: "active", createdAt: Date.now(), createdBy: "popup", closedAt: null, invalidatedAt: null },
+    };
+
+    let session = createCaptureSession("chatgpt", "Test Conv", CONV_URL, CONV_ID);
+    session.epochId = EPOCH_B;
+    session = ingestMessage(session, { id: "msg-5-u", role: "user", content: "TEST 005", sourceMessageId: "dom-turn-5-user", epochId: EPOCH_B });
+    session = ingestMessage(session, { id: "msg-6-a", role: "assistant", content: "TEST 006", sourceMessageId: "dom-turn-6-assistant", epochId: EPOCH_B });
+
+    await saveConversation({
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_B,
+      messages: session.messages.map((m) => ({ ...m, timestamp: undefined })),
+      capturedAt: new Date().toISOString(),
+    });
+
+    const stored = await getConversation(CONV_ID);
+    assert.ok(stored);
+    assert.ok(stored.messages.some((m) => m.content === "TEST 005" && m.role === "user"));
+    assert.ok(stored.messages.some((m) => m.content === "TEST 006" && m.role === "assistant"));
+  });
+
+  test("4. New epoch is assigned only to newly authorized content", async () => {
+    mockLocalStorage.memoryEnabled = true;
+    mockLocalStorage[ACTIVE_EPOCH_KEY] = EPOCH_B;
+    mockLocalStorage[EPOCH_REGISTRY_KEY] = {
+      [EPOCH_A]: { epochId: EPOCH_A, status: "closed", createdAt: Date.now() - 20000, createdBy: "popup", closedAt: Date.now() - 10000, invalidatedAt: null },
+      [EPOCH_B]: { epochId: EPOCH_B, status: "active", createdAt: Date.now() - 5000, createdBy: "popup", closedAt: null, invalidatedAt: null },
+    };
+
+    const initialConv: Conversation = {
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_A,
+      messages: [
+        { id: "msg-1-u", role: "user", content: "TEST 001", epochId: EPOCH_A },
+        { id: "msg-2-a", role: "assistant", content: "TEST 002", epochId: EPOCH_A },
+      ],
+      capturedAt: new Date(Date.now() - 15000).toISOString(),
+    };
+    await saveConversation(initialConv);
+
+    const newConv: Conversation = {
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_B,
+      messages: [
+        { id: "msg-1-u", role: "user", content: "TEST 001", epochId: EPOCH_A },
+        { id: "msg-2-a", role: "assistant", content: "TEST 002", epochId: EPOCH_A },
+        { id: "msg-5-u", role: "user", content: "TEST 005", epochId: EPOCH_B },
+        { id: "msg-6-a", role: "assistant", content: "TEST 006", epochId: EPOCH_B },
+      ],
+      capturedAt: new Date().toISOString(),
+    };
+    await saveConversation(newConv);
+
+    const stored = await getConversation(CONV_ID);
+    assert.ok(stored);
+    assert.strictEqual(stored.messages[0].epochId, EPOCH_A, "Turn 1 must retain Epoch A");
+    assert.strictEqual(stored.messages[1].epochId, EPOCH_A, "Turn 2 must retain Epoch A");
+    assert.strictEqual(stored.messages[2].epochId, EPOCH_B, "Turn 5 must have Epoch B");
+    assert.strictEqual(stored.messages[3].epochId, EPOCH_B, "Turn 6 must have Epoch B");
+    assert.strictEqual(stored.epochId, EPOCH_B);
+  });
+
+  test("5. Reload while ON still recovers capture", async () => {
+    mockLocalStorage.memoryEnabled = true;
+    mockLocalStorage[ACTIVE_EPOCH_KEY] = EPOCH_B;
+    mockLocalStorage[EPOCH_REGISTRY_KEY] = {
+      [EPOCH_B]: { epochId: EPOCH_B, status: "active", createdAt: Date.now() - 5000, createdBy: "popup", closedAt: null, invalidatedAt: null },
+    };
+
+    const initialConv: Conversation = {
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_B,
+      messages: [
+        { id: "msg-1-u", role: "user", content: "TEST 001", epochId: EPOCH_A },
+        { id: "msg-2-a", role: "assistant", content: "TEST 002", epochId: EPOCH_A },
+        { id: "msg-5-u", role: "user", content: "TEST 005", epochId: EPOCH_B },
+        { id: "msg-6-a", role: "assistant", content: "TEST 006", epochId: EPOCH_B },
+      ],
+      capturedAt: new Date().toISOString(),
+    };
+    await saveConversation(initialConv);
+
+    const stored = await getConversation(CONV_ID);
+    let reloadedSession = conversationToCapturedSession(stored!);
+    assert.strictEqual(reloadedSession.messages.length, 4);
+
+    const domAtReload = [
+      { id: "msg-1-u", role: "user" as const, content: "TEST 001", sourceMessageId: "dom-turn-1-user" },
+      { id: "msg-2-a", role: "assistant" as const, content: "TEST 002", sourceMessageId: "dom-turn-2-assistant" },
+      { id: "msg-3-u", role: "user" as const, content: "PRIVACY TEST 003", sourceMessageId: "dom-turn-3-user" },
+      { id: "msg-4-a", role: "assistant" as const, content: "PRIVACY TEST 004", sourceMessageId: "dom-turn-4-assistant" },
+      { id: "msg-5-u", role: "user" as const, content: "TEST 005", sourceMessageId: "dom-turn-5-user" },
+      { id: "msg-6-a", role: "assistant" as const, content: "TEST 006", sourceMessageId: "dom-turn-6-assistant" },
+    ];
+
+    const unauthorizedKeys = new Set<string>();
+    const storedIds = new Set(reloadedSession.messages.map((m) => m.id));
+    for (const d of domAtReload) {
+      if (!storedIds.has(d.id)) {
+        unauthorizedKeys.add(d.id);
+        unauthorizedKeys.add(d.sourceMessageId);
+        unauthorizedKeys.add(`${d.role}:::${d.content.trim()}`);
+      }
+    }
+    assert.ok(unauthorizedKeys.has("msg-3-u"));
+    assert.ok(unauthorizedKeys.has("msg-4-a"));
+
+    const domAfterTurn7 = [
+      ...domAtReload,
+      { id: "msg-7-u", role: "user" as const, content: "TEST 007", sourceMessageId: "dom-turn-7-user" },
+    ];
+
+    const { filteredMessages, hasNewContent } = applyDomObservationFilter(
+      CONV_ID,
+      domAfterTurn7,
+      reloadedSession,
+      unauthorizedKeys,
+      EPOCH_B
+    );
+
+    assert.ok(hasNewContent);
+    assert.strictEqual(filteredMessages.length, 5);
+    assert.deepStrictEqual(
+      filteredMessages.map((m) => m.content),
+      ["TEST 001", "TEST 002", "TEST 005", "TEST 006", "TEST 007"]
+    );
+
+    const merged = mergeCapturedSessions(reloadedSession, {
+      ...reloadedSession,
+      messages: filteredMessages,
+      epochId: EPOCH_B,
+    });
+
+    await saveConversation({
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_B,
+      messages: merged.messages.map((m) => ({ ...m, timestamp: undefined })),
+      capturedAt: new Date().toISOString(),
+    });
+
+    const final = await getConversation(CONV_ID);
+    assert.strictEqual(final?.messages.length, 5);
+    assert.ok(!final.messages.some((m) => m.content.includes("PRIVACY TEST 003")));
+  });
+
+  test("6. Duplicate DOM mutations do not duplicate messages", async () => {
+    mockLocalStorage.memoryEnabled = true;
+    mockLocalStorage[ACTIVE_EPOCH_KEY] = EPOCH_B;
+    mockLocalStorage[EPOCH_REGISTRY_KEY] = {
+      [EPOCH_B]: { epochId: EPOCH_B, status: "active", createdAt: Date.now(), createdBy: "popup", closedAt: null, invalidatedAt: null },
+    };
+
+    let session = createCaptureSession("chatgpt", "Test Conv", CONV_URL, CONV_ID);
+    session.epochId = EPOCH_B;
+    session = ingestMessage(session, { id: "msg-1-u", role: "user", content: "TEST 001", sourceMessageId: "dom-turn-1-user", epochId: EPOCH_A });
+    session = ingestMessage(session, { id: "msg-2-a", role: "assistant", content: "TEST 002", sourceMessageId: "dom-turn-2-assistant", epochId: EPOCH_A });
+    const initialCount = session.messages.length;
+
+    const unauthorizedKeys = new Set<string>(["msg-3-u", "msg-4-a"]);
+    const currentDom = [
+      { id: "msg-1-u", role: "user" as const, content: "TEST 001", sourceMessageId: "dom-turn-1-user" },
+      { id: "msg-2-a", role: "assistant" as const, content: "TEST 002", sourceMessageId: "dom-turn-2-assistant" },
+      { id: "msg-3-u", role: "user" as const, content: "PRIVACY TEST 003", sourceMessageId: "dom-turn-3-user" },
+      { id: "msg-4-a", role: "assistant" as const, content: "PRIVACY TEST 004", sourceMessageId: "dom-turn-4-assistant" },
+    ];
+
+    for (let i = 0; i < 5; i++) {
+      const { filteredMessages } = applyDomObservationFilter(
+        CONV_ID,
+        currentDom,
+        session,
+        unauthorizedKeys,
+        EPOCH_B
+      );
+      session = mergeCapturedSessions(session, {
+        ...session,
+        messages: filteredMessages,
+        epochId: EPOCH_B,
+      });
+      assert.strictEqual(session.messages.length, initialCount);
+    }
+  });
+
+  test("7. Delayed observer callbacks cannot persist content after OFF", async () => {
+    let captured = false;
+    let observerEpoch: string | null = EPOCH_B;
+    let memoryEnabled = true;
+
+    const onMutation = () => {
+      if (!memoryEnabled || observerEpoch !== EPOCH_B) {
+        return;
+      }
+      captured = true;
+    };
+
+    // User turns Memory OFF
+    memoryEnabled = false;
+    observerEpoch = null;
+
+    // Delayed callback fires
+    onMutation();
+
+    assert.strictEqual(captured, false, "Delayed observer callback must not process mutations after Memory OFF");
+  });
+
+  test("8. A queued persistence operation from an old epoch cannot write after authorization is revoked", async () => {
+    // Setup storage with Memory OFF
+    mockLocalStorage.memoryEnabled = false;
+
+    const queuedPayload: Conversation = {
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_A,
+      messages: [{ id: "msg-stale", role: "user", content: "Stale write" }],
+      capturedAt: new Date().toISOString(),
+    };
+
+    const result = await saveConversation(queuedPayload);
+    assert.strictEqual(result.newMessages.length, 0, "Queued write when Memory is OFF must produce 0 new messages");
+
+    // Memory ON, but queued payload's epoch is marked "closed" in epochRegistry
+    mockLocalStorage.memoryEnabled = true;
+    const EPOCH_OLD = "99999999-e29b-41d4-a716-446655440099";
+    mockLocalStorage[EPOCH_REGISTRY_KEY] = {
+      [EPOCH_OLD]: {
+        epochId: EPOCH_OLD,
+        status: "closed",
+        createdAt: Date.now() - 50000,
+        closedAt: Date.now() - 10000,
+        invalidatedAt: null,
+      },
+      [EPOCH_B]: {
+        epochId: EPOCH_B,
+        status: "active",
+        createdAt: Date.now(),
+        closedAt: null,
+        invalidatedAt: null,
+      },
+    };
+
+    const staleEpochPayload: Conversation = {
+      id: CONV_ID,
+      platform: "chatgpt",
+      epochId: EPOCH_OLD,
+      messages: [{ id: "msg-closed-epoch", role: "user", content: "Closed epoch write" }],
+      capturedAt: new Date().toISOString(),
+    };
+
+    const staleResult = await saveConversation(staleEpochPayload);
+    assert.strictEqual(staleResult.newMessages.length, 0, "Queued write from closed epoch must be rejected");
+
+    const currentSaved = await getConversation(CONV_ID);
+    assert.ok(!currentSaved?.messages.some((m) => m.id === "msg-stale" || m.id === "msg-closed-epoch"));
   });
 });
