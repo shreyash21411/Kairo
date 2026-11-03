@@ -63,6 +63,11 @@ export function injectPageScript(): void {
      * web_accessible_resources[].resources[].
      * ----------------------------------------------------------------
      */
+    // Fail-closed default: ensure dataset.vzCaptureActive defaults to 'false' if unset
+    if (typeof document !== "undefined" && document.documentElement && !document.documentElement.dataset.vzCaptureActive) {
+        document.documentElement.dataset.vzCaptureActive = "false";
+    }
+
     const scriptUrl = chrome.runtime.getURL(
         "assets/chatgptFetchInterceptor.js"
     );

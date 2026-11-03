@@ -13,7 +13,6 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   createCaptureSession,
-  startCapture,
   ingestMessage,
   startAssistantStream,
   appendAssistantChunk,
@@ -22,7 +21,6 @@ import {
   completeCapture,
   buildRawTranscriptFromMessages,
   computeConversationMetrics,
-  sortMessagesChronologically,
 } from "../src/continuity/captureLifecycle.ts";
 import {
   createArchiveFromCapturedConversation,

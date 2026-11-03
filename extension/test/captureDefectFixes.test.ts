@@ -153,7 +153,9 @@ describe("Task 1 — SSE Completion Signaling, Reader Termination & Idempotence"
 describe("Task 2 — Storage Concurrency & Queue Resilience", () => {
   beforeEach(() => {
     mockStorage.clear();
+    mockStorage.set("memoryEnabled", true);
   });
+
 
   test("concurrent saveConversation calls are serialized and all updates survive", async () => {
     const conv1: Conversation = {

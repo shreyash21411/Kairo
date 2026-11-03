@@ -8,6 +8,57 @@
 import type { MessageRole, CompletenessStatus } from "./archiveSchema.ts";
 
 /**
+ * Frozen sentinel string indicating an intentional user privacy cutoff snapshot.
+ * Must not be localized, shortened, or generalized.
+ */
+export const PRIVACY_CUTOFF_SENTINEL = "Capture was paused by user." as const;
+
+/**
+ * Status of an epoch in the authoritative epoch registry.
+ */
+export type EpochStatus = "active" | "closed" | "invalidated";
+
+/**
+ * Authoritative record of an epoch created by popup or recovery.
+ */
+export interface EpochRecord {
+  epochId: string;
+  status: EpochStatus;
+  createdAt: number;
+  createdBy: "popup" | "recovery";
+  closedAt?: number | null;
+  invalidatedAt?: number | null;
+  reason?: string | null;
+}
+
+/**
+ * Registry mapping epoch ID to its authoritative record.
+ */
+export type EpochRegistry = Record<string, EpochRecord>;
+
+/**
+ * Persistent pending lifecycle transition record stored in chrome.storage.local.
+ */
+export interface PendingLifecycleTransition {
+  readonly transitionId: string;
+  readonly type: "start_capture" | "stop_capture" | "emergency_seal";
+  readonly targetEpochId: string;
+  readonly initiatedAt: number;
+  readonly expiresAt: number;
+}
+
+/**
+ * Formal contract for LIFECYCLE_PING response from Content Script.
+ */
+export interface LifecyclePingResponse {
+  readonly alive: true;
+  readonly epochId: string | null;
+  readonly observerAttached: boolean;
+  readonly state: "idle" | "capturing" | "quiescent" | "error";
+  readonly lastDisconnectedEpochId: string | null;
+}
+
+/**
  * Lifecycle states of an active conversation capture session.
  */
 export type CaptureLifecycleState =
@@ -37,6 +88,8 @@ export interface NormalizedCaptureMessage {
   isInProgress?: boolean;
   /** Source-assigned message ID from the AI platform if known */
   sourceMessageId?: string | null;
+  /** Storage epoch ID under which this message was admitted */
+  epochId?: string | null;
 }
 
 /**
@@ -59,12 +112,22 @@ export interface CapturedConversation {
   hasMoreHistory: boolean;
   /** Whether the entire conversation history has been verified complete */
   isComplete: boolean;
+  /** Canonical completeness status matching archive schema ("complete" | "partial" | "unknown") */
+  completenessStatus?: CompletenessStatus;
   /** Timestamp when capture was initiated or last updated */
   capturedAt: string;
   /** Timestamp of the most recent saved checkpoint, if any */
   lastCheckpointAt: string | null;
   /** Error description if lifecycle is in "failed" or "interrupted" state */
   error?: string | null;
+  /** Storage epoch ID authorizing this capture session */
+  epochId?: string | null;
+  /** Optional schema version matching legacy Conversation contract (e.g. "1.0") */
+  schemaVersion?: "1.0" | string;
+  /** Explicit compatibility flag identifying genuine pre-epoch legacy sessions */
+  isLegacySession?: boolean;
+  /** Explicit compatibility mode identifying genuine pre-epoch legacy sessions */
+  legacyMode?: "pre_epoch" | string;
 }
 
 /**

@@ -11,8 +11,12 @@ import {
 import {
   getActiveCaptureSession,
   clearActiveCaptureSession,
+  getConversation,
 } from "../storage/conversationStorage.ts";
-import { computeConversationMetrics } from "./captureLifecycle.ts";
+import {
+  computeConversationMetrics,
+  isSessionMatchingActiveTab,
+} from "./captureLifecycle.ts";
 
 interface ContinuityProps {
   memoryEnabled?: boolean;
@@ -104,16 +108,56 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
     };
   }, []);
 
-  // Determine current active session strictly for the active tab (prevents stale conversation metrics)
-  const isCurrentTabSession = Boolean(
-    activeCapture &&
-      (!activeTabConvId ||
-        activeTabConvId === "new-chat" ||
-        activeCapture.id === activeTabConvId ||
-        (activeCapture.url && activeTabUrl && activeCapture.url === activeTabUrl))
+  // If the active tab has an authoritative conversation ID that does not match activeCapture,
+  // query stored conversations so historical chats can be viewed without leaking or cross-contaminating.
+  const [storedTabConversation, setStoredTabConversation] = useState<CapturedConversation | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (activeTabConvId && activeTabConvId !== "new-chat" && (!activeCapture || activeCapture.id !== activeTabConvId)) {
+      void getConversation(activeTabConvId).then((conv) => {
+        if (isMounted && conv) {
+          setStoredTabConversation({
+            id: conv.id,
+            platform: conv.platform || "chatgpt",
+            title: conv.title || "ChatGPT conversation",
+            url: conv.url || null,
+            messages: (conv.messages || []).map((m, idx) => ({
+              id: m.id,
+              sequence: idx + 1,
+              role: m.role,
+              content: m.content,
+              timestamp: m.timestamp ?? null,
+            })),
+            state: "completed",
+            hasMoreHistory: false,
+            isComplete: conv.completeness === "complete",
+            completenessStatus: conv.completeness === "complete" ? "complete" : "partial",
+            capturedAt: conv.capturedAt || new Date().toISOString(),
+            lastCheckpointAt: conv.capturedAt || null,
+          });
+        } else if (isMounted) {
+          setStoredTabConversation(null);
+        }
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTabConvId, activeCapture]);
+
+  // Determine current active session strictly for the active tab (prevents cross-conversation contamination)
+  const isCurrentTabSession = isSessionMatchingActiveTab(
+    activeCapture,
+    activeTabUrl,
+    activeTabConvId
   );
 
-  const establishedSession = isCurrentTabSession ? activeCapture : null;
+  const establishedSession = isCurrentTabSession
+    ? activeCapture
+    : (isSessionMatchingActiveTab(storedTabConversation, activeTabUrl, activeTabConvId)
+        ? storedTabConversation
+        : null);
   const metrics = computeConversationMetrics(establishedSession?.messages);
 
   // Copy Conversation ID action
@@ -155,8 +199,18 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
     setIsProcessing(true);
 
     try {
+      const sessionToArchive = {
+        ...establishedSession,
+        id:
+          establishedSession.id && establishedSession.id !== "new-chat"
+            ? establishedSession.id
+            : activeTabConvId && activeTabConvId !== "new-chat"
+            ? activeTabConvId
+            : establishedSession.id,
+      };
+
       const generated = await createArchiveFromCapturedConversation(
-        establishedSession,
+        sessionToArchive,
         {
           project: selectedProject
             ? { id: selectedProject, name: selectedProject }
@@ -304,7 +358,9 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
 
   // Display conversation ID
   const displayConvId = establishedSession
-    ? establishedSession.id
+    ? establishedSession.id === "provisional-tab" || establishedSession.id === "new-chat"
+      ? "Pending (Resolving ID...)"
+      : establishedSession.id
     : activeTabConvId && activeTabConvId !== "new-chat"
     ? activeTabConvId
     : "Unavailable";
@@ -335,6 +391,24 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
     ? "PARTIAL"
     : "UNKNOWN";
 
+  const sessionStatusLabel =
+    captureState === "checkpoint_available"
+      ? "SESSION READY"
+      : captureState === "response_in_progress"
+      ? "STREAMING"
+      : captureState === "interrupted"
+      ? "INTERRUPTED"
+      : "SESSION IDLE";
+
+  const sessionStatusTitle =
+    captureState === "checkpoint_available"
+      ? "Session checkpoint recorded and ready for archive"
+      : captureState === "response_in_progress"
+      ? "Assistant response is actively streaming"
+      : captureState === "interrupted"
+      ? "Capture stream was interrupted"
+      : "No messages captured for this conversation yet";
+
   const completenessReason = establishedSession?.isComplete
     ? "Platform connector verified full conversation history."
     : establishedSession?.state === "interrupted"
@@ -343,7 +417,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
     ? "Older conversation messages remain uncaptured on the platform."
     : establishedSession && establishedSession.messages.length > 0
     ? "Live session portion captured; full history boundaries unverified."
-    : "No messages recorded for this tab yet.";
+    : "Completeness unverified: awaiting conversation activity on this tab.";
 
   return (
     <div className="vz-continuity-container">
@@ -362,8 +436,9 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
                   ? "vz-badge-danger"
                   : "vz-badge-neutral"
               }`}
+              title={sessionStatusTitle}
             >
-              ● {captureState.toUpperCase().replace("_", " ")}
+              ● {sessionStatusLabel}
             </span>
           </div>
 
@@ -386,6 +461,12 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
           <span className="vz-label-muted">ID:</span>
           <code className="vz-code-inline">{displayConvId}</code>
         </div>
+
+        {(!establishedSession || establishedSession.messages.length === 0) && (
+          <div className="vz-session-hint">
+            Session idle · Send or receive a message in the chat tab to begin capture
+          </div>
+        )}
       </section>
 
       {/* 2. Message Metric Cards */}
@@ -452,6 +533,11 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             isProcessing ||
             !establishedSession ||
             establishedSession.messages.length === 0
+          }
+          title={
+            !establishedSession || establishedSession.messages.length === 0
+              ? "At least one message is required to generate a continuity archive"
+              : "Generate canonical archive from captured conversation"
           }
         >
           ⚡ Generate Continuity Archive
