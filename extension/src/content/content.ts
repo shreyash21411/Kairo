@@ -53,7 +53,7 @@ import {
     recoverPendingSessionsFromDOM,
     CONTENT_SCRIPT_REINIT_EVENT,
 } from "../continuity/contentScriptLifecycle.ts";
-import { extractVisibleConversationFromDOM } from "../connectors/domConversationExtractor.ts";
+import { extractVisibleConversationFromDOM, checkIsStreamingActive } from "../connectors/domConversationExtractor.ts";
 
 /**
  * ============================================================
@@ -699,6 +699,68 @@ export function promoteProvisionalSession(newConvId: string): CapturedConversati
         return null;
     }
 
+    // Defect A Fix: Migrate assistant message ID mapping from provisional keys to newConvId
+    const provAssistantId =
+        activeAssistantMessageIds.get(PROVISIONAL_SESSION_ID) ||
+        activeAssistantMessageIds.get("new-chat") ||
+        activeAssistantMessageIds.get("local-chatgpt");
+    if (provAssistantId) {
+        activeAssistantMessageIds.set(newConvId, provAssistantId);
+        activeAssistantMessageIds.delete(PROVISIONAL_SESSION_ID);
+        activeAssistantMessageIds.delete("new-chat");
+        activeAssistantMessageIds.delete("local-chatgpt");
+        console.log(`[VZ-CAPTURE-DEBUG] Migrated active assistant message ID ${provAssistantId} to ${newConvId}`);
+    }
+
+    // Migrate unauthorized baseline keys and counts from provisional to newConvId
+    for (const provId of [PROVISIONAL_SESSION_ID, "new-chat", "local-chatgpt"]) {
+        const provUnauthorized = unauthorizedMessageKeysByConv.get(provId);
+        if (provUnauthorized && provUnauthorized.size > 0) {
+            let targetSet = unauthorizedMessageKeysByConv.get(newConvId);
+            if (!targetSet) {
+                targetSet = new Set<string>();
+                unauthorizedMessageKeysByConv.set(newConvId, targetSet);
+            }
+            for (const k of provUnauthorized) {
+                targetSet.add(k);
+            }
+        }
+        const provCounts = unauthorizedMessageCountsByConv.get(provId);
+        if (provCounts && provCounts.size > 0) {
+            let targetCounts = unauthorizedMessageCountsByConv.get(newConvId);
+            if (!targetCounts) {
+                targetCounts = new Map<string, number>();
+                unauthorizedMessageCountsByConv.set(newConvId, targetCounts);
+            }
+            for (const [k, v] of provCounts) {
+                targetCounts.set(k, (targetCounts.get(k) || 0) + v);
+            }
+        }
+    }
+
+    // Transfer baseline tracking so newConvId does not re-run baseline for this active epoch
+    for (const key of Array.from(epochBaselinesEstablished)) {
+        if (key.startsWith(`${PROVISIONAL_SESSION_ID}:::`) || key.startsWith("new-chat:::") || key.startsWith("local-chatgpt:::")) {
+            const epochPart = key.split(":::")[1];
+            epochBaselinesEstablished.add(getBaselineKey(newConvId, epochPart));
+        }
+    }
+    for (const key of Array.from(populatedBaselinesEstablished)) {
+        if (key.startsWith(`${PROVISIONAL_SESSION_ID}:::`) || key.startsWith("new-chat:::") || key.startsWith("local-chatgpt:::")) {
+            const epochPart = key.split(":::")[1];
+            populatedBaselinesEstablished.add(getBaselineKey(newConvId, epochPart));
+        }
+    }
+    for (const [key, promise] of Array.from(baselinePromisesByConv.entries())) {
+        if (key.startsWith(`${PROVISIONAL_SESSION_ID}:::`) || key.startsWith("new-chat:::") || key.startsWith("local-chatgpt:::")) {
+            const epochPart = key.split(":::")[1];
+            const newKey = getBaselineKey(newConvId, epochPart);
+            if (!baselinePromisesByConv.has(newKey)) {
+                baselinePromisesByConv.set(newKey, promise);
+            }
+        }
+    }
+
     const provisional =
         captureSessions.get(PROVISIONAL_SESSION_ID) ||
         captureSessions.get("new-chat") ||
@@ -735,51 +797,6 @@ export function promoteProvisionalSession(newConvId: string): CapturedConversati
             sourceMessageId: msg.sourceMessageId || msg.id,
             epochId: msg.epochId || provisional.epochId,
         });
-    }
-
-    // Defect A Fix: Migrate assistant message ID mapping from provisional keys to newConvId
-    const provAssistantId =
-        activeAssistantMessageIds.get(PROVISIONAL_SESSION_ID) ||
-        activeAssistantMessageIds.get("new-chat") ||
-        activeAssistantMessageIds.get("local-chatgpt");
-    if (provAssistantId) {
-        activeAssistantMessageIds.set(newConvId, provAssistantId);
-        activeAssistantMessageIds.delete(PROVISIONAL_SESSION_ID);
-        activeAssistantMessageIds.delete("new-chat");
-        activeAssistantMessageIds.delete("local-chatgpt");
-        console.log(`[VZ-CAPTURE-DEBUG] Migrated active assistant message ID ${provAssistantId} to ${newConvId}`);
-    }
-
-    // Migrate unauthorized baseline keys from provisional to newConvId
-    const provUnauthorized =
-        unauthorizedMessageKeysByConv.get(PROVISIONAL_SESSION_ID) ||
-        unauthorizedMessageKeysByConv.get("new-chat") ||
-        unauthorizedMessageKeysByConv.get("local-chatgpt");
-    if (provUnauthorized && provUnauthorized.size > 0) {
-        let targetSet = unauthorizedMessageKeysByConv.get(newConvId);
-        if (!targetSet) {
-            targetSet = new Set<string>();
-            unauthorizedMessageKeysByConv.set(newConvId, targetSet);
-        }
-        for (const k of provUnauthorized) {
-            targetSet.add(k);
-        }
-    }
-    // Transfer baseline tracking so newConvId does not re-run baseline for this active epoch
-    for (const key of Array.from(epochBaselinesEstablished)) {
-        if (key.startsWith(`${PROVISIONAL_SESSION_ID}:::`) || key.startsWith("new-chat:::") || key.startsWith("local-chatgpt:::")) {
-            const epochPart = key.split(":::")[1];
-            epochBaselinesEstablished.add(getBaselineKey(newConvId, epochPart));
-        }
-    }
-    for (const [key, promise] of Array.from(baselinePromisesByConv.entries())) {
-        if (key.startsWith(`${PROVISIONAL_SESSION_ID}:::`) || key.startsWith("new-chat:::") || key.startsWith("local-chatgpt:::")) {
-            const epochPart = key.split(":::")[1];
-            const newKey = getBaselineKey(newConvId, epochPart);
-            if (!baselinePromisesByConv.has(newKey)) {
-                baselinePromisesByConv.set(newKey, promise);
-            }
-        }
     }
 
     if (provisional.state === "response_in_progress") {
@@ -2093,6 +2110,11 @@ async function recoverVisibleConversationHistoryFromDOM(): Promise<void> {
     }
 
     try {
+        await ensureStorageHydrated();
+        if (!memoryEnabled || !lifecycle.isAlive()) {
+            return;
+        }
+
         const domResult = extractVisibleConversationFromDOM(document);
         if (domResult.messages.length === 0) {
             return;
@@ -2112,15 +2134,17 @@ async function recoverVisibleConversationHistoryFromDOM(): Promise<void> {
             currentTabConvId ||
             PROVISIONAL_SESSION_ID;
 
-        if (activeObserverEpochId) {
-            await ensureConversationBaseline(convId, activeObserverEpochId);
-            if (!memoryEnabled) return;
+        if (!activeObserverEpochId) {
+            return;
+        }
 
-            const baselineKey = getBaselineKey(convId, activeObserverEpochId);
-            if (!populatedBaselinesEstablished.has(baselineKey)) {
-                await recordEpochObservationBaseline(convId, activeObserverEpochId);
-                if (!memoryEnabled) return;
-            }
+        await ensureConversationBaseline(convId, activeObserverEpochId);
+        if (!memoryEnabled) return;
+
+        const baselineKey = getBaselineKey(convId, activeObserverEpochId);
+        if (!populatedBaselinesEstablished.has(baselineKey)) {
+            await recordEpochObservationBaseline(convId, activeObserverEpochId);
+            if (!memoryEnabled) return;
         }
 
         // Load durable authorized IDs from storage. These survive page reload and handle the case where
@@ -2149,20 +2173,33 @@ async function recoverVisibleConversationHistoryFromDOM(): Promise<void> {
                 session.title = domResult.title;
             }
 
-            const unauthorizedKeys = unauthorizedMessageKeysByConv.get(convId);
+            const unauthorizedKeys =
+                unauthorizedMessageKeysByConv.get(convId) ||
+                unauthorizedMessageKeysByConv.get(PROVISIONAL_SESSION_ID) ||
+                unauthorizedMessageKeysByConv.get("new-chat") ||
+                unauthorizedMessageKeysByConv.get("local-chatgpt");
+            const unauthorizedCounts =
+                unauthorizedMessageCountsByConv.get(convId) ||
+                unauthorizedMessageCountsByConv.get(PROVISIONAL_SESSION_ID) ||
+                unauthorizedMessageCountsByConv.get("new-chat") ||
+                unauthorizedMessageCountsByConv.get("local-chatgpt");
             const { filteredMessages, hasNewContent } = filterExtractedDomMessages(
                 convId,
                 domResult.messages,
                 session,
                 unauthorizedKeys,
                 captureEpochId || session.epochId || "unknown-epoch",
-                durableAuthorizedIds
+                durableAuthorizedIds,
+                unauthorizedCounts
             );
 
             // Also trigger a save when streaming completes (isInProgress: true → false).
             // Without this, the stored assistant record stays isInProgress: true indefinitely.
             const wasStreaming = session.messages.some((m) => m.isInProgress);
             const isNowStreaming = filteredMessages.some((m) => m.isInProgress);
+            if (isNowStreaming && captureEpochId) {
+                scheduleStreamingCompletionCheck(convId, captureEpochId);
+            }
             const streamingCompleted = wasStreaming && !isNowStreaming;
 
             if (hasNewContent || streamingCompleted) {
@@ -2329,6 +2366,7 @@ function startMessageListener(): void {
 
 /** Map of conversation ID -> Set of message identifiers that existed in DOM during OFF intervals without authorization. */
 export const unauthorizedMessageKeysByConv = new Map<string, Set<string>>();
+export const unauthorizedMessageCountsByConv = new Map<string, Map<string, number>>();
 
 /** Track conversation IDs whose observation baseline has been established under the currently active observer epoch. */
 export const epochBaselinesEstablished = new Set<string>();
@@ -2357,6 +2395,10 @@ export function isMessageUnauthorized(
     }
     if (msg.id && unauthorizedKeys.has(msg.id)) return true;
     if (msg.sourceMessageId && unauthorizedKeys.has(msg.sourceMessageId)) return true;
+    if (msg.role && msg.content) {
+        const contentKey = `${msg.role}:::${msg.content.trim()}`;
+        if (unauthorizedKeys.has(contentKey)) return true;
+    }
     return false;
 }
 
@@ -2433,6 +2475,11 @@ export async function recordEpochObservationBaseline(convId: string, epochId: st
     const domResult = extractVisibleConversationFromDOM();
     const baselineKey = getBaselineKey(convId, epochId);
     if (!domResult || domResult.messages.length === 0) {
+        // If this is a provisional / new chat session, an empty DOM is normal and complete (no server hydration exists).
+        // Mark populated baseline as established immediately so new user prompts are not swallowed as unauthorized.
+        if (convId === PROVISIONAL_SESSION_ID || convId === "new-chat" || convId === "local-chatgpt") {
+            populatedBaselinesEstablished.add(baselineKey);
+        }
         return true;
     }
     populatedBaselinesEstablished.add(baselineKey);
@@ -2441,6 +2488,11 @@ export async function recordEpochObservationBaseline(convId: string, epochId: st
     if (!unauthorizedKeys) {
         unauthorizedKeys = new Set<string>();
         unauthorizedMessageKeysByConv.set(convId, unauthorizedKeys);
+    }
+    let unauthorizedCounts = unauthorizedMessageCountsByConv.get(convId);
+    if (!unauthorizedCounts) {
+        unauthorizedCounts = new Map<string, number>();
+        unauthorizedMessageCountsByConv.set(convId, unauthorizedCounts);
     }
 
     for (const msg of domResult.messages) {
@@ -2451,12 +2503,25 @@ export async function recordEpochObservationBaseline(convId: string, epochId: st
         if (!isPersisted) {
             if (msg.id) unauthorizedKeys.add(msg.id);
             if (msg.sourceMessageId) unauthorizedKeys.add(msg.sourceMessageId);
+            if (msg.role && msg.content) {
+                const contentKey = `${msg.role}:::${msg.content.trim()}`;
+                unauthorizedKeys.add(contentKey);
+                unauthorizedCounts.set(contentKey, (unauthorizedCounts.get(contentKey) || 0) + 1);
+            }
             console.log("[VZ-PRIVACY-GATE] Recorded unauthorized OFF-period message baseline", {
                 convId,
                 epochId,
                 role: msg.role,
                 contentPreview: msg.content.slice(0, 40),
             });
+        }
+    }
+    if (convId === PROVISIONAL_SESSION_ID || convId === "new-chat" || convId === "local-chatgpt") {
+        for (const alias of [PROVISIONAL_SESSION_ID, "new-chat", "local-chatgpt"]) {
+            if (alias !== convId) {
+                unauthorizedMessageKeysByConv.set(alias, unauthorizedKeys);
+                unauthorizedMessageCountsByConv.set(alias, unauthorizedCounts);
+            }
         }
     }
     return true;
@@ -2532,7 +2597,8 @@ export function filterExtractedDomMessages(
     existingSession: CapturedConversation | undefined,
     unauthorizedKeys: Set<string> | undefined,
     activeEpochId: string,
-    durableAuthorizedIds?: Set<string>
+    durableAuthorizedIds?: Set<string>,
+    unauthorizedCounts?: Map<string, number>
 ): DomMessageFilterResult {
     void convId;
     const persistedIds = new Set<string>();
@@ -2549,6 +2615,7 @@ export function filterExtractedDomMessages(
         }
     }
 
+    const remainingCounts = unauthorizedCounts ? new Map(unauthorizedCounts) : null;
     const filteredMessages: NormalizedCaptureMessage[] = [];
     let hasNewContent = false;
     let lastUserTurnProvenance: "persisted" | "unauthorized" | "active_epoch" | null = null;
@@ -2588,10 +2655,23 @@ export function filterExtractedDomMessages(
             continue;
         }
 
-        const isUnauthorized = unauthorizedKeys
-            ? (Boolean(domMsg.id && unauthorizedKeys.has(domMsg.id)) ||
-                Boolean(domMsg.sourceMessageId && unauthorizedKeys.has(domMsg.sourceMessageId)))
-            : false;
+        const contentKey = domMsg.role && domMsg.content ? `${domMsg.role}:::${domMsg.content.trim()}` : null;
+        let isUnauthorized = false;
+        if (unauthorizedKeys) {
+            if (domMsg.id && unauthorizedKeys.has(domMsg.id)) {
+                isUnauthorized = true;
+            } else if (domMsg.sourceMessageId && unauthorizedKeys.has(domMsg.sourceMessageId)) {
+                isUnauthorized = true;
+            } else if (contentKey && remainingCounts) {
+                const count = remainingCounts.get(contentKey) || 0;
+                if (count > 0) {
+                    isUnauthorized = true;
+                    remainingCounts.set(contentKey, count - 1);
+                }
+            } else if (contentKey && unauthorizedKeys.has(contentKey)) {
+                isUnauthorized = true;
+            }
+        }
 
         if (isUnauthorized) {
             if (domMsg.role === "user") {
@@ -2620,6 +2700,7 @@ export function filterExtractedDomMessages(
             if (unauthorizedKeys) {
                 if (domMsg.id) unauthorizedKeys.add(domMsg.id);
                 if (domMsg.sourceMessageId) unauthorizedKeys.add(domMsg.sourceMessageId);
+                if (contentKey) unauthorizedKeys.add(contentKey);
             }
             continue;
         }
@@ -2647,6 +2728,24 @@ export function filterExtractedDomMessages(
 /** Currently active MutationObserver. null means observer is not attached. */
 let activeDOMObserver: MutationObserver | null = null;
 /** Epoch ID bound to the currently active observer. */
+let streamingCheckTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export function scheduleStreamingCompletionCheck(convId: string, epochId: string): void {
+    if (streamingCheckTimeout) {
+        clearTimeout(streamingCheckTimeout);
+    }
+    streamingCheckTimeout = setTimeout(async () => {
+        streamingCheckTimeout = null;
+        if (!memoryEnabled || activeObserverEpochId !== epochId) return;
+        const currentDoc = typeof document !== "undefined" ? document : null;
+        if (!currentDoc) return;
+        if (!checkIsStreamingActive(currentDoc)) {
+            console.log("[VZ-CAPTURE-DEBUG] Streaming completion detected via trailing watcher", { convId, epochId });
+            await recoverVisibleConversationHistoryFromDOM();
+        }
+    }, 400);
+}
+
 let activeObserverEpochId: string | null = null;
 /** Epoch ID of the most recently disconnected observer (for LIFECYCLE_PING). */
 let lastDisconnectedEpochId: string | null = null;
@@ -2656,6 +2755,10 @@ let lastDisconnectedEpochId: string | null = null;
  * Safe to call when no observer is active.
  */
 function disconnectActiveObserver(reason: string): void {
+    if (streamingCheckTimeout) {
+        clearTimeout(streamingCheckTimeout);
+        streamingCheckTimeout = null;
+    }
     if (activeDOMObserver !== null) {
         try {
             activeDOMObserver.disconnect();
@@ -2674,6 +2777,8 @@ function disconnectActiveObserver(reason: string): void {
     populatedBaselinesEstablished.clear();
     baselinePromisesByConv.clear();
     conversationMutationQueues.clear();
+    unauthorizedMessageKeysByConv.clear();
+    unauthorizedMessageCountsByConv.clear();
 }
 
 /**
@@ -2762,14 +2867,26 @@ async function attachObserver(epochId: string): Promise<boolean> {
 
                 if (!memoryEnabled || activeObserverEpochId !== epochId) return;
 
-                const unauthorizedKeys = unauthorizedMessageKeysByConv.get(targetConvId);
+                const unauthorizedKeys =
+                    unauthorizedMessageKeysByConv.get(targetConvId) ||
+                    unauthorizedMessageKeysByConv.get(convId) ||
+                    unauthorizedMessageKeysByConv.get(PROVISIONAL_SESSION_ID) ||
+                    unauthorizedMessageKeysByConv.get("new-chat") ||
+                    unauthorizedMessageKeysByConv.get("local-chatgpt");
+                const unauthorizedCounts =
+                    unauthorizedMessageCountsByConv.get(targetConvId) ||
+                    unauthorizedMessageCountsByConv.get(convId) ||
+                    unauthorizedMessageCountsByConv.get(PROVISIONAL_SESSION_ID) ||
+                    unauthorizedMessageCountsByConv.get("new-chat") ||
+                    unauthorizedMessageCountsByConv.get("local-chatgpt");
                 const { filteredMessages, hasNewContent } = filterExtractedDomMessages(
                     targetConvId,
                     extracted.messages,
                     existing,
                     unauthorizedKeys,
                     epochId,
-                    durableAuthorizedIds
+                    durableAuthorizedIds,
+                    unauthorizedCounts
                 );
 
                 if (filteredMessages.length === 0) return;
@@ -2809,7 +2926,8 @@ async function attachObserver(epochId: string): Promise<boolean> {
             childList: true,
             subtree: true,
             characterData: true,
-            attributes: false,
+            attributes: true,
+            attributeFilter: ["data-testid", "aria-label", "class", "disabled"],
         });
 
         activeDOMObserver = observer;

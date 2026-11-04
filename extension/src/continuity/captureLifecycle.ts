@@ -1028,6 +1028,12 @@ export function mergeCapturedSessions(
     existing.state === "interrupted" &&
     existing.error === "Capture was paused by user.";
 
+  const hasInProgress =
+    incoming.messages.some((m) => m.isInProgress) ||
+    (incoming.state === "response_in_progress" || existing.state === "response_in_progress"
+      ? existing.messages.some((m) => m.isInProgress) && incoming.messages.every((m) => m.isInProgress !== false)
+      : false);
+
   const state = isIncomingCutoff
     ? "interrupted"
     : (isExistingCutoff && incoming.state === "response_in_progress"
@@ -1036,7 +1042,7 @@ export function mergeCapturedSessions(
         ? "interrupted"
         : (incoming.state === "response_in_progress"
           ? "response_in_progress"
-          : (existing.state === "response_in_progress"
+          : (existing.state === "response_in_progress" && hasInProgress
             ? "response_in_progress"
             : (incoming.state === "checkpoint_available" || existing.state === "checkpoint_available"
               ? "checkpoint_available"
@@ -1107,7 +1113,11 @@ export function mergeCapturedSessions(
         content: isExistingCutoff && !isIncomingCutoff ? existingMsg.content : betterContent,
         timestamp: existingMsg.timestamp || msg.timestamp,
         sourceMessageId: updatedSourceId,
-        isInProgress: isInterruptedResult ? false : (existingMsg.isInProgress && msg.isInProgress),
+        isInProgress: isInterruptedResult
+          ? false
+          : (typeof msg.isInProgress === "boolean"
+              ? msg.isInProgress
+              : Boolean(existingMsg.isInProgress)),
         // CRITICAL: preserve the original authorization epoch on matched messages.
         // Do NOT override with the incoming session epochId for messages that were
         // already persisted under a prior epoch. DOM-extracted messages have no epochId,

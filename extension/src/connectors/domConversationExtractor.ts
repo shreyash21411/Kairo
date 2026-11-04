@@ -88,13 +88,40 @@ export const USER_SELECTORS = [
  * 1. Stable semantic attributes
  * 2. Documented structural class prefixes observed in live ChatGPT DOM
  */
+export function safeMatches(el: HTMLElement | null | undefined, selector: string): boolean {
+  if (!el) return false;
+  if (typeof el.matches === "function") {
+    try {
+      return el.matches(selector);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+export function safeClosest(el: HTMLElement | null | undefined, selector: string): HTMLElement | null {
+  if (!el) return null;
+  if (typeof el.closest === "function") {
+    try {
+      return el.closest(selector);
+    } catch {
+      // Fall through to manual parent walking
+    }
+  }
+  let current: HTMLElement | null = el.parentElement;
+  while (current) {
+    if (safeMatches(current, selector)) return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
 export const ASSISTANT_SELECTORS = [
   '[data-message-author-role="assistant"]',
   '[data-testid*="bot-turn"]',
   '[data-testid*="assistant-turn"]',
   '[class*="DilResponseRoot"]',
-  '[class*="DilRenderer"]',
-  '[class*="MarkdownRoot"]',
 ] as const;
 
 /**
@@ -258,9 +285,11 @@ function extractEvidenceBased(
       candidate.querySelector(USER_BUBBLE_SELECTOR) ||
       candidate.querySelector(USER_WRAPPER_SELECTOR) ||
       candidate.querySelector('[data-message-author-role="user"]') ||
-      candidate.closest(USER_BUBBLE_SELECTOR) ||
-      candidate.closest(USER_WRAPPER_SELECTOR) ||
-      candidate.closest('[data-message-author-role="user"]')
+      candidate.querySelector('[data-testid*="user-turn"]') ||
+      safeClosest(candidate, USER_BUBBLE_SELECTOR) ||
+      safeClosest(candidate, USER_WRAPPER_SELECTOR) ||
+      safeClosest(candidate, '[data-message-author-role="user"]') ||
+      safeClosest(candidate, '[data-testid*="user-turn"]')
     ) {
       continue;
     }
@@ -274,17 +303,19 @@ function extractEvidenceBased(
       target.querySelector(USER_BUBBLE_SELECTOR) ||
       target.querySelector(USER_WRAPPER_SELECTOR) ||
       target.querySelector('[data-message-author-role="user"]') ||
-      target.closest(USER_BUBBLE_SELECTOR) ||
-      target.closest(USER_WRAPPER_SELECTOR) ||
-      target.closest('[data-message-author-role="user"]')
+      target.querySelector('[data-testid*="user-turn"]') ||
+      safeClosest(target, USER_BUBBLE_SELECTOR) ||
+      safeClosest(target, USER_WRAPPER_SELECTOR) ||
+      safeClosest(target, '[data-message-author-role="user"]') ||
+      safeClosest(target, '[data-testid*="user-turn"]')
     ) {
       // Fallback: use candidate itself if strictly safe
       if (
         !processedElements.has(candidate) &&
         !candidate.querySelector(USER_BUBBLE_SELECTOR) &&
         !candidate.querySelector(USER_WRAPPER_SELECTOR) &&
-        !candidate.closest(USER_BUBBLE_SELECTOR) &&
-        !candidate.closest(USER_WRAPPER_SELECTOR)
+        !safeClosest(candidate, USER_BUBBLE_SELECTOR) &&
+        !safeClosest(candidate, USER_WRAPPER_SELECTOR)
       ) {
         processedElements.add(candidate);
         entries.push({ el: candidate, role: "assistant" });
@@ -377,10 +408,10 @@ function findAssistantCandidateElements(doc: Document): HTMLElement[] {
     const elements = Array.from(doc.querySelectorAll<HTMLElement>(selector));
     for (const el of elements) {
       const isInsideUser = Boolean(
-        el.closest(USER_BUBBLE_SELECTOR) ||
-        el.closest(USER_WRAPPER_SELECTOR) ||
-        el.closest('[data-message-author-role="user"]') ||
-        el.closest('[data-testid*="user-turn"]')
+        safeClosest(el, USER_BUBBLE_SELECTOR) ||
+        safeClosest(el, USER_WRAPPER_SELECTOR) ||
+        safeClosest(el, '[data-message-author-role="user"]') ||
+        safeClosest(el, '[data-testid*="user-turn"]')
       );
       const containsUser = Boolean(
         el.querySelector(USER_BUBBLE_SELECTOR) ||
@@ -459,18 +490,22 @@ function findSafeAssistantBoundary(root: HTMLElement): HTMLElement | null {
       current.querySelector(USER_BUBBLE_SELECTOR) ||
       current.querySelector(USER_WRAPPER_SELECTOR) ||
       current.querySelector('[data-message-author-role="user"]') ||
-      current.querySelector('[data-testid*="user-turn"]')
+      current.querySelector('[data-testid*="user-turn"]') ||
+      safeClosest(current, USER_BUBBLE_SELECTOR) ||
+      safeClosest(current, USER_WRAPPER_SELECTOR)
     ) {
       return bestBoundary;
     }
 
-    // Check if this ancestor is a turn-level container
-    const className = current.className || "";
+    // Only accept an ancestor if it explicitly represents an assistant turn container
+    // Never expand into generic layout classes like "group" or "flex-col" which frequently wrap both turns.
+    const authorRole = current.getAttribute("data-message-author-role");
+    const testId = current.getAttribute("data-testid") || "";
     if (
-      typeof className === "string" &&
-      (className.includes("MarkdownRoot") ||
-        className.includes("group") ||
-        className.includes("flex-col"))
+      authorRole === "assistant" ||
+      testId.includes("assistant-turn") ||
+      testId.includes("bot-turn") ||
+      (tag === "article" && !current.querySelector(USER_BUBBLE_SELECTOR))
     ) {
       bestBoundary = current;
     }
@@ -544,7 +579,7 @@ export function extractCleanTextFromTurnElement(
     }
   } else {
     // User message: bubble element itself is the authoritative boundary
-    const bubbleEl = container.matches(USER_BUBBLE_SELECTOR)
+    const bubbleEl = safeMatches(container, USER_BUBBLE_SELECTOR)
       ? container
       : container.querySelector<HTMLElement>(USER_BUBBLE_SELECTOR);
     if (bubbleEl) {
@@ -566,6 +601,9 @@ export function extractCleanTextFromTurnElement(
     if (
       text === "Message received" ||
       text === "Message sent" ||
+      text === "Received" ||
+      text === "Thinking..." ||
+      text.startsWith("Thought for") ||
       text === "Copy code" ||
       text === "Read aloud" ||
       text === "Retry"
@@ -595,7 +633,16 @@ export function extractCleanTextFromTurnElement(
   }
 
   const raw = clone.innerText || clone.textContent || "";
-  return raw.trim();
+  const trimmed = raw.trim();
+  if (
+    trimmed === "Message received" ||
+    trimmed === "Received" ||
+    trimmed === "Thinking..." ||
+    trimmed.startsWith("Thought for")
+  ) {
+    return "";
+  }
+  return trimmed;
 }
 
 // ─── Legacy Turn Extraction (for backward compatibility) ──────────────────────
@@ -691,13 +738,16 @@ function extractMessageFromLegacyTurn(
  * Checks whether live ChatGPT DOM shows an active streaming response.
  * Looks for the "Stop generating" / "Stop streaming" button or streaming class.
  */
-function checkIsStreamingActive(doc: Document): boolean {
+export function checkIsStreamingActive(doc: Document): boolean {
   try {
     return Boolean(
       doc.querySelector('button[data-testid="stop-button"]') ||
+      doc.querySelector('button[aria-label*="Stop generating"]') ||
+      doc.querySelector('button[aria-label*="Stop streaming"]') ||
       doc.querySelector('button[aria-label*="Stop"]') ||
       doc.querySelector('button[aria-label*="stop"]') ||
-      doc.querySelector('[class*="result-streaming"]')
+      doc.querySelector('[class*="result-streaming"]') ||
+      doc.querySelector('[data-is-streaming="true"]')
     );
   } catch {
     return false;

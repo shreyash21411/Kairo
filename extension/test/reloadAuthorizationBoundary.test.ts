@@ -156,6 +156,15 @@ class MockElement extends MockNode {
     return childTexts.join(isBlock ? "\n" : " ");
   }
 
+  closest(selector: string): MockElement | null {
+    let current: MockElement | null = this;
+    while (current) {
+      if (current.matches(selector)) return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
   matches(selector: string): boolean {
     return matchesSelector(this, selector);
   }
