@@ -17,8 +17,10 @@ import {
   generateSafeRawExportFilename,
   serializeRawConversation,
   type RawConversationExport,
-} from "./rawConversationExport.ts";
-import type { CapturedConversation } from "./captureTypes.ts";
+} from "../export/rawConversationExport.ts";
+import type { CapturedConversation } from "../export/captureTypes.ts";
+
+export type { RawConversationExport };
 
 export type BeruCommandType =
   | "wake_word"
@@ -365,3 +367,4 @@ export async function executeTransferToClaude(
       "Opening a new Claude conversation. Your conversation transcript is prepared and copied to your clipboard so you can paste it directly.",
   };
 }
+

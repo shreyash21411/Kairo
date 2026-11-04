@@ -24,13 +24,13 @@ import {
   executeGetChatFile,
   executeTransferToClaude,
   CLAUDE_NEW_CHAT_URL,
-} from "../src/continuity/beruVoiceCommands.ts";
+} from "../src/commands/beruVoiceCommands.ts";
 import {
   RAW_CONVERSATION_FORMAT,
   RAW_CONVERSATION_VERSION,
   type RawConversationExport,
-} from "../src/continuity/rawConversationExport.ts";
-import type { CapturedConversation, NormalizedCaptureMessage } from "../src/continuity/captureTypes.ts";
+} from "../src/export/rawConversationExport.ts";
+import type { CapturedConversation, NormalizedCaptureMessage } from "../src/export/captureTypes.ts";
 
 function createMockSession(overrides: Partial<CapturedConversation> = {}): CapturedConversation {
   const messages: NormalizedCaptureMessage[] = [

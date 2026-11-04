@@ -4,12 +4,10 @@
  * TypeScript contracts matching the ASP.NET Core VoidzoneController endpoints:
  *   POST /api/voidzone/memory/extract
  *   POST /api/voidzone/continuity/generate
- *   POST /api/voidzone/beru/chat
  *
  * Sourced directly from backend DTOs:
  *   - Kairo.Application.DTOs.MetaMemoryDtos
  *   - Kairo.Application.DTOs.MetaContinuityDtos
- *   - Kairo.Application.DTOs.BeruDtos
  *   - Kairo.Application.Abstractions.Meta.MetaTokenUsage
  */
 
@@ -98,25 +96,6 @@ export interface MetaContinuityResponse {
   result: MetaContinuityResult;
 }
 
-// ── BERU Voice Agent Types ────────────────────────────────────────────────────
-
-export interface BeruMessageItem {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface BeruChatRequest {
-  message: string;
-  projectId?: string;
-  projectContext?: string;
-  history?: BeruMessageItem[];
-}
-
-export interface BeruChatResponse {
-  reply: string;
-  tokenUsage: MetaTokenUsage;
-  respondedAt: string;
-}
 
 // ── Backend Config ────────────────────────────────────────────────────────────
 

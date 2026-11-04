@@ -52,7 +52,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
   const [activeCapture, setActiveCapture] = useState<CapturedConversation | null>(null);
   const [activeTabConvId, setActiveTabConvId] = useState<string | null>(null);
   const [activeTabUrl, setActiveTabUrl] = useState<string | null>(null);
-  // Conversation ID visibility ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â hidden by default for privacy
+  // Conversation ID visibility — hidden by default for privacy
   const [showConvId, setShowConvId] = useState(false);
 
   // Output archive state
@@ -519,7 +519,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
     }
   };
 
-  // Export JSON file (Full Continuity Archive ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Mode A)
+  // Export JSON file (Full Continuity Archive — Mode A)
   const handleExport = () => {
     if (!archive) return;
     try {
@@ -548,7 +548,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
     }
   };
 
-  // Export Standalone Raw Conversation JSON (Mode B ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no AI or Continuity Engine data)
+  // Export Standalone Raw Conversation JSON (Mode B — no AI or Continuity Engine data)
   const handleExportRawConversation = () => {
     setError("");
     setStatus("");
@@ -747,9 +747,8 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
                   ? "vz-badge-danger"
                   : "vz-badge-neutral"
               }`}
-              title={sessionStatusTitle}
-            >
-              ÃƒÂ¢Ã¢â‚¬â€Ã‚Â {sessionStatusLabel}
+              title={sessionStatusTitle}>
+              ● {sessionStatusLabel}
             </span>
           </div>
 
@@ -760,7 +759,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             title="Copy Active Conversation ID"
             disabled={displayConvId === "Unavailable"}
           >
-            {copiedId ? "ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Copied" : "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ Copy ID"}
+            {copiedId ? "✓ Copied" : "📋 Copy ID"}
           </button>
         </div>
 
@@ -776,7 +775,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             <span className="vz-conv-id-masked">
               {displayConvId === "Unavailable" || displayConvId.startsWith("Pending")
                 ? displayConvId
-                : "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢"}
+                : "••••••••••••••••"}
             </span>
           )}
           <button
@@ -804,7 +803,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
 
         {(!establishedSession || establishedSession.messages.length === 0) && (
           <div className="vz-session-hint">
-            Session idle Ãƒâ€šÃ‚Â· Send or receive a message in the chat tab to begin capture
+            Session idle · Send or receive a message in the chat tab to begin capture
           </div>
         )}
       </section>
@@ -879,7 +878,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             }
             title="Extract structured decisions, requirements, tasks, and constraints using Meta AI"
           >
-            {isExtractingMemory ? "ÃƒÂ¢Ã‚ÂÃ‚Â³ Extracting Memory..." : "ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â  Extract Memory (Meta AI)"}
+            {isExtractingMemory ? "⏳ Extracting Memory..." : "🧠 Extract Memory (Meta AI)"}
           </button>
 
           <button
@@ -894,7 +893,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             }
             title="Synthesize project objective, blockers, and next action using Meta AI"
           >
-            {isGeneratingContinuity ? "ÃƒÂ¢Ã‚ÂÃ‚Â³ Generating State..." : "ÃƒÂ¢Ã…Â¡Ã‚Â¡ Continuity State (Meta AI)"}
+            {isGeneratingContinuity ? "⏳ Generating State..." : "⚡ Continuity State (Meta AI)"}
           </button>
         </div>
 
@@ -915,7 +914,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
               : "Generate canonical archive from captured conversation"
           }
         >
-          ÃƒÂ¢Ã…Â¡Ã‚Â¡ Generate Continuity Archive
+          ⚡ Generate Continuity Archive
         </button>
 
         <div className="vz-btn-row">
@@ -932,7 +931,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             onClick={() => fileInputRef.current?.click()}
             disabled={isProcessing}
           >
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¡ Import JSON
+            📂 Import JSON
           </button>
 
           <button
@@ -941,7 +940,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             onClick={handleExport}
             disabled={isProcessing || !archive}
           >
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¾ Export JSON
+            💾 Export JSON
           </button>
 
           <button
@@ -951,7 +950,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             disabled={isProcessing || !archive}
             title="Verify SHA-256 checksum against canonical fields"
           >
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂºÃ‚Â¡ÃƒÂ¯Ã‚Â¸Ã‚Â Verify
+            🛡️ Verify
           </button>
         </div>
 
@@ -975,7 +974,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             }
             title="Download conversation transcript as standalone JSON (no AI data)"
           >
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ Download Conversation JSON
+            📄 Download Conversation JSON
           </button>
         </div>
       </div>
@@ -984,7 +983,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
       {continuityResult && (
         <section className="vz-card vz-meta-result-card vz-meta-continuity-card">
           <div className="vz-card-header">
-            <span className="vz-label-bold">ÃƒÂ¢Ã…Â¡Ã‚Â¡ META AI CONTINUITY STATE</span>
+            <span className="vz-label-bold">⚡ META AI CONTINUITY STATE</span>
             <div className="vz-meta-card-actions">
               <button
                 type="button"
@@ -992,7 +991,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
                 onClick={() => setContinuityResult(null)}
                 title="Dismiss"
               >
-                ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
+                ✕
               </button>
             </div>
           </div>
@@ -1007,7 +1006,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             <div className="vz-meta-field">
               <span className="vz-meta-label">RECOMMENDED NEXT ACTION</span>
               <div className="vz-meta-val-next">
-                ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ¢â‚¬Â° {continuityResult.recommendedNextAction || "Continue active session"}
+                👉 {continuityResult.recommendedNextAction || "Continue active session"}
               </div>
             </div>
           </div>
@@ -1091,7 +1090,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
               className="vz-btn-secondary"
               onClick={handleCopyMetaPrompt}
             >
-              {copiedMetaPrompt ? "ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Copied Prompt" : "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ Copy Restore Prompt"}
+              {copiedMetaPrompt ? "✓ Copied Prompt" : "📋 Copy Restore Prompt"}
             </button>
             <button
               type="button"
@@ -1100,7 +1099,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
               disabled={isProcessing || !establishedSession || establishedSession.messages.length === 0}
               title="Apply synthesized state as the transfer prompt in the canonical archive"
             >
-              ÃƒÂ¢Ã…Â¡Ã‚Â¡ Apply to Archive
+              ⚡ Apply to Archive
             </button>
           </div>
         </section>
@@ -1110,7 +1109,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
       {memoryResult && (
         <section className="vz-card vz-meta-result-card vz-meta-memory-card">
           <div className="vz-card-header">
-            <span className="vz-label-bold">ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â  META AI PROJECT MEMORY</span>
+            <span className="vz-label-bold">🧠 META AI PROJECT MEMORY</span>
             <div className="vz-meta-card-actions">
               <button
                 type="button"
@@ -1118,7 +1117,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
                 onClick={() => setMemoryResult(null)}
                 title="Dismiss"
               >
-                ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
+                ✕
               </button>
             </div>
           </div>
@@ -1262,7 +1261,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
           className="vz-accordion-toggle"
           onClick={() => setShowManualInput(!showManualInput)}
         >
-          <span>{showManualInput ? "ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¼" : "ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¶"} Manual Input / Pasted Transcript</span>
+          <span>{showManualInput ? "▼" : "▶"} Manual Input / Pasted Transcript</span>
           <span className="vz-label-muted">Phase 1 Fallback</span>
         </button>
 
@@ -1381,7 +1380,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
                 className="vz-btn-icon-subtle"
                 onClick={handleCopyPrompt}
               >
-                {copiedPrompt ? "ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Copied" : "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ Copy Prompt"}
+                {copiedPrompt ? "✓ Copied" : "📋 Copy Prompt"}
               </button>
             </div>
             <pre className="vz-prompt-box">

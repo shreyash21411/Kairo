@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import MemoryToggle from "./components/MemoryToggle";
 import ThemeToggle from "./components/ThemeToggle";
 import Continuity from "./continuity/Continuity";
-import Beru from "./continuity/Beru";
 import BackendSettingsModal from "./components/BackendSettingsModal";
 import "./App.css";
 import {
@@ -213,8 +212,6 @@ async function recoverPendingTransition(
 function App() {
   const [lifecycleState, setLifecycleState] = useState<LifecycleState>("OFF");
   const [selectedProject, setSelectedProject] = useState("");
-  // Feature-flag: enabled via backend Beru:Enabled config (defaults false)
-  const [beruEnabled] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -627,13 +624,6 @@ function App() {
         />
       </main>
 
-      {/* BERU Voice Agent Section */}
-      <section className="vz-beru-section">
-        <Beru
-          beruEnabled={beruEnabled}
-          selectedProject={selectedProject || undefined}
-        />
-      </section>
 
       {/* 9. Product Footer */}
       <footer className="vz-footer">

@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "BERU — Voice Transfer Assistant",
+  "version": "0.1.0",
+  "description": "Voice-controlled AI session handoff between ChatGPT and Claude.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "BERU — Voice Assistant"
+  },
+  "options_ui": {
+    "page": "permission.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "src/background/background.ts"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "src/content/beruFloatingOrb.ts"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "activate-beru": {
+      "suggested_key": {
+        "default": "Alt+Shift+B",
+        "mac": "Alt+Shift+B"
+      },
+      "description": "Toggle BERU Voice Assistant"
+    }
+  }
+}
+

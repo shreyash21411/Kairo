@@ -1,0 +1,41 @@
+{
+  "name": "BERU Voice Assistant Extension",
+  "version": "0.1.0",
+  "manifestVersion": 3,
+  "status": "Available",
+  "browser": "Google Chrome",
+  "targetPlatforms": [
+    "ChatGPT",
+    "Claude"
+  ],
+  "filename": "beru-extension-v0.1.0.zip",
+  "downloadUrl": "/downloads/beru-extension-v0.1.0.zip",
+  "latestDownloadUrl": "/downloads/beru-extension-latest.zip",
+  "sha256": "f8e7af89f029c8b0ea2fd5e7b00862e482495ebdc4901ca3643e8a48b50a1aa8",
+  "sizeBytes": 73041,
+  "sizeKb": "71.3 KB",
+  "releaseDate": "2026-11-04",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab"
+  ],
+  "hostPermissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*"
+  ],
+  "filesIncluded": [
+    "assets/background.ts--5GExmsu.js",
+    "assets/beruFloatingOrb.ts-CilIh_xe.js",
+    "assets/modulepreload-polyfill-P2Xu9kJm.js",
+    "assets/permission-BMMkoPyF.js",
+    "assets/permission.html-B5ZNBLG1.js",
+    "assets/popup-CYlEDo3C.css",
+    "assets/popup-DiUc9Ep-.js",
+    "assets/popup.html-DmVkh0I4.js",
+    "manifest.json",
+    "permission.html",
+    "popup.html",
+    "service-worker-loader.js"
+  ]
+}
