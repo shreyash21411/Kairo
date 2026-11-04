@@ -5,7 +5,7 @@
  * Compatible with the canonical archive model (archiveSchema.ts).
  */
 
-import type { MessageRole, CompletenessStatus } from "./archiveSchema.ts";
+import type { MessageRole, CompletenessStatus, DerivedProjectState } from "./archiveSchema.ts";
 
 /**
  * Frozen sentinel string indicating an intentional user privacy cutoff snapshot.
@@ -145,4 +145,6 @@ export interface CaptureToArchiveOptions {
   completenessStatus?: CompletenessStatus;
   /** Custom continuation prompt overriding default generation */
   customTransferPrompt?: string;
+  derivedProjectState?: DerivedProjectState | null;
 }
+

@@ -40,9 +40,8 @@ public class MetaAIOptions
     /// Maximum completion tokens sent as max_completion_tokens in every request.
     /// Enforced by the Meta API — the model stops generating before this limit.
     /// </summary>
-    public int MaxCompletionTokens { get; set; } = 1000;
+    public int MaxCompletionTokens { get; set; } = 2000;
 
     /// <summary>HTTP request timeout in seconds for Meta API calls.</summary>
     public int TimeoutSeconds { get; set; } = 30;
 }
-

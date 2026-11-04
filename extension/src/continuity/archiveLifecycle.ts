@@ -208,7 +208,7 @@ export async function createArchiveFromInput(
         transferPrompt,
         isEdited: Boolean(options.customTransferPrompt),
       },
-      derivedProjectState: null,
+      derivedProjectState: options.derivedProjectState ?? null,
       reviewStatus: "unreviewed",
     },
   };
@@ -324,7 +324,7 @@ export async function createArchiveFromCapturedConversation(
         transferPrompt,
         isEdited: Boolean(options.customTransferPrompt),
       },
-      derivedProjectState: null,
+      derivedProjectState: options.derivedProjectState ?? null,
       reviewStatus: "unreviewed",
     },
   };

@@ -78,9 +78,29 @@ export interface ArchiveInstructions {
   isEdited: boolean;
 }
 
+export interface DerivedProjectState {
+  projectName?: string;
+  projectPurpose?: string;
+  currentObjective?: string;
+  importantDecisions?: string[];
+  proposedDecisions?: string[];
+  openQuestions?: string[];
+  confirmedRequirements?: string[];
+  hardConstraints?: string[];
+  technicalContext?: string;
+  techStack?: string[];
+  completedWork?: string[];
+  currentProgress?: string;
+  outstandingTasks?: string[];
+  knownBlockers?: string[];
+  dependencies?: string[];
+  recommendedNextAction?: string;
+  extractedAt?: string;
+}
+
 export interface ArchiveVoidzoneExtension {
   instructions: ArchiveInstructions;
-  derivedProjectState: null;
+  derivedProjectState: DerivedProjectState | null;
   reviewStatus: ReviewStatus;
 }
 
@@ -123,5 +143,5 @@ export interface CreateArchiveOptions {
   targetPlatform?: string;
   customTransferPrompt?: string;
   project?: ArchiveProject;
+  derivedProjectState?: DerivedProjectState | null;
 }
-

@@ -80,7 +80,7 @@ public class MetaAIClient : IMetaAIClient
         // ── Build messages ─────────────────────────────────────────────────────
         var messages = new System.Collections.Generic.List<object>();
         if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
-            messages.Add(new { role = "developer", content = request.SystemPrompt });
+            messages.Add(new { role = "system", content = request.SystemPrompt });
         messages.Add(new { role = "user", content = request.UserPrompt });
 
         // ── Build response_format ──────────────────────────────────────────────
@@ -100,7 +100,7 @@ public class MetaAIClient : IMetaAIClient
             : new { type = "json_object" };
 
         var model = !string.IsNullOrWhiteSpace(_options.Model) ? _options.Model : "muse-spark-1.3";
-        var maxCompletionTokens = _options.MaxCompletionTokens > 0 ? _options.MaxCompletionTokens : 1000;
+        var maxCompletionTokens = _options.MaxCompletionTokens > 0 ? _options.MaxCompletionTokens : 2000;
 
         var requestBody = new
         {
@@ -216,4 +216,3 @@ public class MetaAIClient : IMetaAIClient
         }
     }
 }
-

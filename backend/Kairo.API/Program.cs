@@ -215,6 +215,10 @@ builder.Services.AddHttpClient<IMetaAIClient, MetaAIClient>();
 builder.Services.AddScoped<IMetaMemoryService, MetaMemoryService>();
 builder.Services.AddScoped<IMetaContinuityService, MetaContinuityService>();
 
+// -- BERU Voice Agent (Isolated Feature Flag: Beru:Enabled) ---------------------
+builder.Services.Configure<BeruOptions>(builder.Configuration.GetSection(BeruOptions.SectionName));
+builder.Services.AddScoped<IBeruService, BeruService>();
+
 // High-level service adapters delegating to providers (explicit factories prevent DI constructor ambiguity)
 builder.Services.AddScoped<IEmbeddingGenerator>(sp => new MistralEmbeddingGenerator(sp.GetRequiredService<IEmbeddingProvider>()));
 builder.Services.AddScoped<IMemoryExtractor>(sp => new MistralMemoryExtractor(sp.GetRequiredService<ILlmProvider>()));
@@ -483,3 +487,4 @@ app.Run();
 // This is a standard .NET convention for top-level statement programs — it adds
 // zero runtime behaviour and is only compiled away in non-test builds.
 public partial class Program { }
+

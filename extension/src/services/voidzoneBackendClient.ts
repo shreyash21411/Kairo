@@ -1,4 +1,4 @@
-/**
+﻿/**
  * voidzoneBackendClient.ts
  *
  * Dedicated HTTP client for connecting the VOIDZONE Chrome Extension
@@ -23,6 +23,8 @@ import {
   type MetaMemoryResponse,
   type ContinuityGenerateRequest,
   type MetaContinuityResponse,
+  type BeruChatRequest,
+  type BeruChatResponse,
   type VoidzoneErrorCode,
   VoidzoneApiError,
 } from "./voidzoneTypes.ts";
@@ -209,6 +211,39 @@ export async function generateContinuity(
   );
 }
 
+/**
+ * Call POST /api/voidzone/beru/chat to send a message to the BERU voice agent.
+ * Returns 503 when BERU is disabled on the backend.
+ */
+export async function beruChat(
+  request: BeruChatRequest,
+  configOverride?: Partial<BackendConfig>
+): Promise<BeruChatResponse> {
+  if (!request || !request.message || !request.message.trim()) {
+    throw new VoidzoneApiError(
+      "Message is required for BERU chat.",
+      400,
+      "raw_transcript_required"
+    );
+  }
+
+  const config = await resolveConfig(configOverride);
+  if (!config.backendBaseUrl) {
+    throw new VoidzoneApiError(
+      "Official VOIDZONE backend is pending deployment. Please check back soon.",
+      503,
+      "meta_ai_disabled"
+    );
+  }
+
+  const targetUrl = `${config.backendBaseUrl}/api/voidzone/beru/chat`;
+
+  return executeVoidzonePost<BeruChatResponse>(
+    targetUrl,
+    request,
+    config.kairoApiKey
+  );
+}
 // ── Internal Helpers ─────────────────────────────────────────────────────────
 
 async function resolveConfig(

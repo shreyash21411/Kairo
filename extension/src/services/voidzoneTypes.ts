@@ -4,10 +4,12 @@
  * TypeScript contracts matching the ASP.NET Core VoidzoneController endpoints:
  *   POST /api/voidzone/memory/extract
  *   POST /api/voidzone/continuity/generate
+ *   POST /api/voidzone/beru/chat
  *
  * Sourced directly from backend DTOs:
  *   - Kairo.Application.DTOs.MetaMemoryDtos
  *   - Kairo.Application.DTOs.MetaContinuityDtos
+ *   - Kairo.Application.DTOs.BeruDtos
  *   - Kairo.Application.Abstractions.Meta.MetaTokenUsage
  */
 
@@ -28,13 +30,31 @@ export interface MemoryExtractRequest {
 }
 
 export interface MetaMemoryResult {
-  decisions: string[];
-  requirements: string[];
-  constraints: string[];
+  // Core project identity
+  projectName: string;
+  projectPurpose: string;
+  projectDescription: string;
+  // Structured knowledge
   goals: string[];
-  technicalContext: string;
+  requirements: string[];
+  decisions: string[];
+  constraints: string[];
+  techStack: string[];
+  architecture: string;
+  // Work state
+  completedWork: string[];
+  currentProgress: string;
   pendingTasks: string[];
+  blockers: string[];
+  dependencies: string[];
+  nextActions: string[];
+  // Open questions and entities
+  openQuestions: string[];
+  entities: string[];
+  // Legacy / general
+  technicalContext: string;
   projectFacts: string[];
+  // Metadata
   tokenUsage: MetaTokenUsage;
   extractedAt: string;
 }
@@ -53,14 +73,21 @@ export interface ContinuityGenerateRequest {
 
 export interface MetaContinuityResult {
   projectName: string;
+  projectPurpose: string;
   currentObjective: string;
   importantDecisions: string[];
+  proposedDecisions: string[];
+  openQuestions: string[];
+  confirmedRequirements: string[];
   constraints: string[];
   completedWork: string[];
+  currentProgress: string;
   outstandingTasks: string[];
   blockers: string[];
+  dependencies: string[];
   recommendedNextAction: string;
   technicalContext: string;
+  conversationContext: string;
   tokenUsage: MetaTokenUsage;
   generatedAt: string;
 }
@@ -70,6 +97,28 @@ export interface MetaContinuityResponse {
   projectId: number;
   result: MetaContinuityResult;
 }
+
+// ── BERU Voice Agent Types ────────────────────────────────────────────────────
+
+export interface BeruMessageItem {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface BeruChatRequest {
+  message: string;
+  projectId?: string;
+  projectContext?: string;
+  history?: BeruMessageItem[];
+}
+
+export interface BeruChatResponse {
+  reply: string;
+  tokenUsage: MetaTokenUsage;
+  respondedAt: string;
+}
+
+// ── Backend Config ────────────────────────────────────────────────────────────
 
 export interface BackendConfig {
   backendBaseUrl: string;
@@ -108,4 +157,3 @@ export class VoidzoneApiError extends Error {
     this.maxTokens = details?.maxTokens;
   }
 }
-
