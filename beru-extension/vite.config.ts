@@ -15,6 +15,7 @@ export default defineConfig({
       input: {
         popup: "popup.html",
         permission: "permission.html",
+        offscreen: "offscreen.html",
       },
     },
   },

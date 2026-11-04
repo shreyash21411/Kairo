@@ -1,42 +1,47 @@
 :root {
-  --vz-bg: #0b0c10;
-  --vz-surface: #141722;
-  --vz-surface-hover: #1c2130;
-  --vz-border: #23283b;
-  --vz-text: #f3f4f6;
-  --vz-text-muted: #9ca3af;
-  --vz-cyan: #38bdf8;
-  --vz-indigo: #818cf8;
-  --vz-pink: #f472b6;
-  --vz-emerald: #34d399;
-  --vz-amber: #fbbf24;
-  --vz-rose: #f87171;
+  --bg: #08090d;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-focus: rgba(56, 189, 248, 0.4);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --cyan: #38bdf8;
+  --violet: #818cf8;
+  --pink: #f472b6;
+  --emerald: #34d399;
+  --amber: #fbbf24;
+  --rose: #f87171;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
-  width: 340px;
+  width: 320px;
   max-width: 100vw;
-  min-height: 420px;
-  background-color: var(--vz-bg);
-  color: var(--vz-text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 13px;
+  min-height: 410px;
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   overflow-x: hidden;
   margin: 0;
   padding: 0;
+  user-select: none;
 }
 
-.beru-popup-container {
-  padding: 16px;
+.beru-app {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  min-height: 410px;
+  padding: 18px 20px 16px 20px;
+  position: relative;
+  background: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.04) 0%, transparent 70%);
 }
 
 /* Header */
@@ -44,239 +49,410 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--vz-border);
+  position: relative;
+  z-index: 10;
 }
 
 .beru-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.beru-logo-orb {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, var(--vz-cyan), var(--vz-indigo) 55%, var(--vz-pink) 95%);
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
-  animation: beru-pulse 3s ease-in-out infinite alternate;
-}
-
-@keyframes beru-pulse {
-  from { transform: scale(0.96); box-shadow: 0 0 8px rgba(56, 189, 248, 0.3); }
-  to { transform: scale(1.04); box-shadow: 0 0 16px rgba(244, 114, 182, 0.5); }
-}
-
-.beru-brand-text h1 {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: #fff;
-  line-height: 1.1;
-}
-
-.beru-brand-text span {
-  font-size: 11px;
-  color: var(--vz-cyan);
-  font-weight: 500;
-}
-
-.beru-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(52, 211, 153, 0.15);
-  color: var(--vz-emerald);
-  border: 1px solid rgba(52, 211, 153, 0.3);
-}
-
-/* Status Cards */
-.beru-card {
-  background: var(--vz-surface);
-  border: 1px solid var(--vz-border);
-  border-radius: 10px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.beru-card-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.beru-card-label {
-  font-size: 12px;
-  color: var(--vz-text-muted);
+.beru-brand-orb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, var(--cyan), var(--violet) 60%, var(--pink));
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
 }
 
-.beru-status-val {
-  font-size: 12px;
-  font-weight: 600;
+.beru-brand-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.beru-version-badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+}
+
+.beru-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  transition: all 0.15s ease;
 }
 
-.status-ok {
-  color: var(--vz-emerald);
+.beru-icon-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
 }
 
-.status-warn {
-  color: var(--vz-amber);
+/* Main Display Area */
+.beru-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0 24px 0;
+  position: relative;
 }
 
-/* Toggle Switch */
-.switch-label {
+/* Central Glowing Orb */
+.beru-orb-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.beru-central-orb {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* State-specific Orb Gradients & Glows */
+.orb-sleeping {
+  background: radial-gradient(circle at 35% 35%, #2a334a 0%, #171c2b 55%, #0e121d 100%);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 16px rgba(129, 140, 248, 0.15);
+  animation: orb-gentle-breathe 4s infinite alternate ease-in-out;
+}
+
+.orb-listening {
+  background: radial-gradient(circle at 35% 35%, #38bdf8 0%, #6366f1 45%, #ec4899 75%, #0f172a 100%);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.5), 0 0 24px rgba(56, 189, 248, 0.6);
+  animation: orb-listening-pulse 2.2s infinite alternate ease-in-out;
+}
+
+.orb-processing {
+  background: radial-gradient(circle at 35% 35%, #fbbf24 0%, #d97706 50%, #78350f 100%);
+  box-shadow: 0 8px 30px rgba(251, 191, 36, 0.45), 0 0 20px rgba(217, 119, 6, 0.5);
+  animation: orb-processing-pulse 1.4s infinite alternate ease-in-out;
+}
+
+.orb-speaking {
+  background: radial-gradient(circle at 35% 35%, #c084fc 0%, #818cf8 45%, #e879f9 80%, #1e1b4b 100%);
+  box-shadow: 0 8px 32px rgba(192, 132, 252, 0.5), 0 0 24px rgba(129, 140, 248, 0.6);
+  animation: orb-speaking-ripple 1.6s infinite ease-in-out;
+}
+
+.orb-permission {
+  background: radial-gradient(circle at 35% 35%, #f87171 0%, #b91c1c 55%, #450a0a 100%);
+  box-shadow: 0 6px 20px rgba(248, 113, 113, 0.3), 0 0 16px rgba(185, 28, 28, 0.4);
+}
+
+.orb-completed {
+  background: radial-gradient(circle at 35% 35%, #34d399 0%, #059669 55%, #064e3b 100%);
+  box-shadow: 0 6px 24px rgba(52, 211, 153, 0.4), 0 0 18px rgba(5, 150, 105, 0.5);
+}
+
+/* Dynamic Aura Rings */
+.orb-aura-listening {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--cyan), var(--violet), var(--pink), var(--cyan));
+  opacity: 0.5;
+  filter: blur(6px);
+  animation: orb-spin 3s linear infinite;
+  z-index: 1;
+}
+
+.orb-aura-processing {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--amber), #f59e0b, #b45309, var(--amber));
+  opacity: 0.55;
+  filter: blur(6px);
+  animation: orb-spin 1.8s linear infinite;
+  z-index: 1;
+}
+
+@keyframes orb-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orb-gentle-breathe {
+  0% { transform: scale(0.98); }
+  100% { transform: scale(1.02); }
+}
+
+@keyframes orb-listening-pulse {
+  0% {
+    transform: scale(0.96);
+    box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4), 0 0 16px rgba(56, 189, 248, 0.4);
+  }
+  100% {
+    transform: scale(1.04);
+    box-shadow: 0 10px 36px rgba(99, 102, 241, 0.65), 0 0 28px rgba(244, 114, 182, 0.7);
+  }
+}
+
+@keyframes orb-processing-pulse {
+  0% { transform: scale(0.96); }
+  100% { transform: scale(1.03); }
+}
+
+@keyframes orb-speaking-ripple {
+  0%, 100% { transform: scale(0.97); }
+  50% { transform: scale(1.04); }
+}
+
+/* Status Text Display */
+.beru-status-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.beru-status-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  min-height: 16px;
+}
+
+/* Controls Section */
+.beru-controls {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Permission Action Button */
+.beru-btn-auth {
+  width: 100%;
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--violet) 60%, var(--pink) 100%);
+  color: #08090d;
+  font-size: 13px;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.25);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.beru-btn-auth:hover {
+  opacity: 0.94;
+  transform: translateY(-1px);
+}
+
+/* Toggle Switch Bar */
+.beru-toggle-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  width: 100%;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.switch-input {
+.beru-toggle-bar:hover {
+  background: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.beru-toggle-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.beru-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.beru-toggle-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* macOS/iOS Style Switch */
+.beru-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+}
+
+.beru-switch input {
   opacity: 0;
   width: 0;
   height: 0;
 }
 
-.switch-slider {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  background-color: #2b3044;
-  border-radius: 20px;
-  transition: 0.25s;
+.beru-switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #272c3d;
+  transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 24px;
 }
 
-.switch-slider:before {
+.beru-switch-slider:before {
   position: absolute;
   content: "";
-  height: 14px;
-  width: 14px;
+  height: 18px;
+  width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: white;
+  background-color: #ffffff;
+  transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   border-radius: 50%;
-  transition: 0.25s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-.switch-input:checked + .switch-slider {
-  background: linear-gradient(90deg, var(--vz-cyan), var(--vz-indigo));
+.beru-switch input:checked + .beru-switch-slider {
+  background: linear-gradient(90deg, var(--cyan), var(--violet));
 }
 
-.switch-input:checked + .switch-slider:before {
-  transform: translateX(16px);
+.beru-switch input:checked + .beru-switch-slider:before {
+  transform: translateX(18px);
 }
 
-/* Buttons */
-.beru-btn-primary {
-  width: 100%;
-  padding: 10px 14px;
-  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #f472b6 100%);
-  color: #080a10;
-  border: none;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
+/* Settings Popover Overlay */
+.beru-popover {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 9, 13, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 50;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+  animation: popover-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popover-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.beru-popover-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: opacity 0.15s, transform 0.1s;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
-.beru-btn-primary:hover {
-  opacity: 0.92;
-  transform: translateY(-1px);
+.beru-popover-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
 }
 
-.beru-btn-secondary {
-  width: 100%;
-  padding: 9px 12px;
-  background: var(--vz-surface);
-  border: 1px solid var(--vz-border);
-  color: var(--vz-text);
-  border-radius: 8px;
+.beru-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.beru-menu-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.beru-btn-secondary:hover {
-  background: var(--vz-surface-hover);
-  border-color: #3b425b;
-}
-
-.beru-btn-warning {
-  padding: 5px 10px;
-  background: rgba(251, 191, 36, 0.15);
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  color: var(--vz-amber);
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
+  justify-content: space-between;
   cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+  text-align: left;
 }
 
-.beru-btn-warning:hover {
-  background: rgba(251, 191, 36, 0.25);
+.beru-menu-item:hover {
+  background: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
-/* Actions Strip */
-.beru-actions-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-/* Hint */
-.beru-hotkey-bar {
+.beru-menu-item-content {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--vz-text-muted);
-  background: rgba(255, 255, 255, 0.02);
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  gap: 10px;
 }
 
-kbd {
+.beru-kbd-badge {
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--vz-border);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: var(--cyan);
+}
+
+/* Footer Hotkey Info */
+.beru-footer-bar {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.beru-footer-bar kbd {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 5px;
   font-family: inherit;
   font-size: 10px;
-  color: var(--vz-cyan);
+  color: var(--text-secondary);
 }
-
-.beru-status-msg {
-  font-size: 11px;
-  text-align: center;
-  min-height: 16px;
-  color: var(--vz-emerald);
-}
-
-.beru-footer {
-  text-align: center;
-  font-size: 10px;
-  color: #64748b;
-  padding-top: 4px;
-}
-

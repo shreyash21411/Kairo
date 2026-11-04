@@ -157,12 +157,19 @@ export function parseBeruVoiceCommand(speechText: string): BeruVoiceIntent {
     "download chat file",
     "download this chat",
     "download conversation",
+    "download the conversation",
     "download this conversation",
+    "download my conversation",
     "get conversation file",
+    "get the conversation file",
     "get conversation",
+    "get the conversation",
+    "get this conversation",
     "export chat file",
     "export conversation",
+    "export the conversation",
     "save chat file",
+    "save conversation",
   ];
 
   const matchesGetFile = getFilePatterns.some(

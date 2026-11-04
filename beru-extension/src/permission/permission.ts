@@ -32,7 +32,14 @@ document.addEventListener("DOMContentLoaded", () => {
       stream.getTracks().forEach((track) => track.stop());
 
       if (typeof chrome !== "undefined" && chrome.storage?.local) {
-        chrome.storage.local.set({ beruMicAuthorized: true, beruContinuousListening: true });
+        await chrome.storage.local.set({
+          beruMicAuthorized: true,
+          beruAssistantState: "idle",
+          beruLastError: null,
+        });
+
+        // Trigger background listening activation
+        chrome.runtime.sendMessage({ action: "SET_LISTENING", enabled: true }).catch(() => {});
       }
 
       statusMsg.textContent = "Microphone access granted successfully! BERU is ready.";
@@ -53,4 +60,3 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
-
