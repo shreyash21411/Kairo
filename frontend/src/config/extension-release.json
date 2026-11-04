@@ -1,0 +1,38 @@
+{
+  "name": "VOIDZONE Browser Extension",
+  "version": "0.1.0",
+  "manifestVersion": 3,
+  "status": "Available",
+  "browser": "Google Chrome",
+  "targetPlatform": "ChatGPT",
+  "filename": "voidzone-browser-extension-v0.1.0.zip",
+  "downloadUrl": "/downloads/voidzone-browser-extension-v0.1.0.zip",
+  "latestDownloadUrl": "/downloads/voidzone-browser-extension-latest.zip",
+  "sha256": "4b602c6950094cfa5d76bf0c39d819f351e38adb257f78dddf814dfebdd3e20f",
+  "sizeBytes": 112768,
+  "sizeKb": "110.1 KB",
+  "releaseDate": "2026-11-04",
+  "permissions": [
+    "storage"
+  ],
+  "hostPermissions": [
+    "https://chatgpt.com/*",
+    "https://voidzone-staging-api.onrender.com/*"
+  ],
+  "filesIncluded": [
+    "assets/background.ts-Dx_-skI7.js",
+    "assets/chatgptFetchInterceptor.js",
+    "assets/content.ts-BjzE2Q7h.js",
+    "assets/content.ts-loader-Blh_cT7q.js",
+    "assets/conversationStorage-D-5AxTW4.js",
+    "assets/favicon.svg",
+    "assets/icons.svg",
+    "assets/index-DpMExZyg.css",
+    "assets/index.html-BDt78cNM.js",
+    "favicon.svg",
+    "icons.svg",
+    "index.html",
+    "manifest.json",
+    "service-worker-loader.js"
+  ]
+}
