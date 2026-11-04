@@ -1624,3 +1624,239 @@ body {
 [data-theme="light"] .vz-raw-export-desc {
   color: #4b5563;
 }
+
+
+/* ==========================================================================
+   BERU — VOICE-CONTROLLED CHAT TRANSFER & ASSISTANT STYLES
+   ========================================================================== */
+
+.vz-beru-section {
+  margin: 12px 14px 4px;
+}
+
+.vz-beru-card {
+  background: var(--vz-bg-card);
+  border: 1px solid var(--vz-border);
+  border-radius: var(--vz-radius-lg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--vz-shadow-card);
+  transition: border-color 0.2s ease;
+}
+
+.vz-beru-card:hover {
+  border-color: rgba(59, 91, 245, 0.35);
+}
+
+.vz-beru-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vz-beru-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--vz-text-muted);
+  transition: all 0.25s ease;
+}
+
+.vz-beru-status-idle {
+  background: var(--vz-text-muted);
+}
+
+.vz-beru-status-listening {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+  animation: vz-pulse 1.2s infinite;
+}
+
+.vz-beru-status-processing {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+  animation: vz-pulse 1.0s infinite;
+}
+
+.vz-beru-status-speaking {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+  animation: vz-pulse 0.9s infinite;
+}
+
+.vz-beru-status-error {
+  background: #ef4444;
+}
+
+@keyframes vz-pulse {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.8; }
+}
+
+.vz-beru-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.vz-btn-xs {
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: var(--vz-radius-sm);
+}
+
+.vz-beru-status-row {
+  padding: 6px 10px;
+  border-radius: var(--vz-radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.vz-status-listening {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.vz-status-speaking {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+.vz-beru-listening-indicator {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vz-beru-speaking-indicator {
+  font-weight: 600;
+}
+
+.vz-beru-status-message {
+  font-size: 11px;
+  color: var(--vz-accent-hover);
+  padding: 2px 4px;
+}
+
+.vz-beru-file-card {
+  background: rgba(59, 91, 245, 0.05);
+  border: 1px solid rgba(59, 91, 245, 0.25);
+  border-radius: var(--vz-radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vz-beru-file-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vz-beru-transfer-card {
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--vz-radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vz-beru-transfer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vz-beru-transcript {
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--vz-accent);
+  padding: 6px 10px;
+  border-radius: 0 var(--vz-radius-sm) var(--vz-radius-sm) 0;
+}
+
+.vz-beru-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.vz-beru-msg {
+  padding: 6px 8px;
+  border-radius: var(--vz-radius-sm);
+  font-size: 11px;
+}
+
+.vz-beru-msg-user {
+  background: rgba(59, 91, 245, 0.08);
+  border-left: 2px solid var(--vz-accent);
+}
+
+.vz-beru-msg-assistant {
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--vz-success);
+}
+
+.vz-beru-msg-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--vz-text-muted);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.vz-beru-msg-content {
+  margin: 0;
+  line-height: 1.35;
+  color: var(--vz-text-primary);
+}
+
+.vz-beru-controls {
+  margin-top: 2px;
+}
+
+.vz-beru-speak-btn {
+  flex: 1;
+}
+
+.vz-beru-stop-btn {
+  flex: 1;
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+
+.vz-beru-text-row {
+  display: flex;
+  gap: 6px;
+}
+
+.vz-beru-text-input {
+  flex: 1;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
+.vz-beru-disclosure {
+  font-size: 9.5px;
+  color: var(--vz-text-muted);
+  line-height: 1.35;
+  margin: 0;
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
