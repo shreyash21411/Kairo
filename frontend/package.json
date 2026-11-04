@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
+    "package:extension": "node ../scripts/package-extension.mjs",
     "start": "next start",
     "lint": "eslint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/**/*.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",

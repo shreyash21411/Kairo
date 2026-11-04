@@ -11,7 +11,8 @@ const NAV_ITEMS = [
   { label: "Product", href: "#remembers" },
   { label: "Recall", href: "#ask-naturally" },
   { label: "Developers", href: "#developers" },
-  { label: "Use Cases", href: "#use-cases" },
+  { label: "Resources", href: "#use-cases" },
+  { label: "Cross-Platform", href: "/cross-platform" },
 ] as const
 
 export function Navbar() {

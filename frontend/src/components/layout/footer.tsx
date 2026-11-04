@@ -25,6 +25,7 @@ const FOOTER_GROUPS = [
     title: "Platform",
     links: [
       { label: "Actor Isolation", href: "#isolation" },
+      { label: "Cross-Platform", href: "/cross-platform" },
       { label: "Use Cases", href: "#use-cases" },
       { label: "Architecture FAQ", href: "#faq" },
       { label: "Dashboard", href: "/dashboard" },

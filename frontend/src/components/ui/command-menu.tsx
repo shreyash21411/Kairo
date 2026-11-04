@@ -18,6 +18,9 @@ import {
   Moon,
   Laptop,
   ArrowRight,
+  Puzzle,
+  Blocks,
+  Mic,
 } from "lucide-react"
 
 interface CommandMenuProps {
@@ -107,6 +110,30 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         subtitle: "Authoritative developer documentation",
         icon: BookOpen,
         onSelect: () => router.push("/dashboard/docs"),
+      },
+      {
+        category: "Cross-Platform",
+        id: "nav-extension",
+        title: "Browser Extension",
+        subtitle: "Download and configure ChatGPT browser extension",
+        icon: Puzzle,
+        onSelect: () => router.push("/dashboard/extension"),
+      },
+      {
+        category: "Cross-Platform",
+        id: "nav-plugins",
+        title: "Plugins (Coming Soon)",
+        subtitle: "Cross-platform IDE and workflow plugins",
+        icon: Blocks,
+        onSelect: () => router.push("/dashboard/plugins"),
+      },
+      {
+        category: "Cross-Platform",
+        id: "nav-beru",
+        title: "Beru Voice Agent (Coming Soon)",
+        subtitle: "Voice-first persistent memory interaction",
+        icon: Mic,
+        onSelect: () => router.push("/dashboard/beru"),
       },
     ]
 

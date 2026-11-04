@@ -13,6 +13,8 @@
  * - Never logs or exposes API keys in exceptions, console messages, or errors.
  * - Single request per invocation — no automatic retries that could consume credits.
  * - Does not interact with or expose Meta API keys (those remain backend-only).
+ * - Backend URL is centralized in backendConfig.ts and NOT user-configurable.
+ * - Supports programmatic override strictly for isolated automated unit tests.
  */
 
 import {
@@ -24,70 +26,89 @@ import {
   type VoidzoneErrorCode,
   VoidzoneApiError,
 } from "./voidzoneTypes.ts";
+import { BACKEND_BASE_URL } from "../config/backendConfig.ts";
 
-export const DEFAULT_BACKEND_URL = "http://localhost:5171";
-export const BACKEND_BASE_URL_KEY = "backendBaseUrl";
+/** Storage key for the Kairo API key (user-provided, authentication only). */
 export const KAIRO_API_KEY_KEY = "kairoApiKey";
 
+/** Legacy storage key for the custom backend URL (for migration/cleanup only). */
+export const BACKEND_BASE_URL_KEY = "backendBaseUrl";
+
+/** Centralized default backend URL */
+export const DEFAULT_BACKEND_URL = BACKEND_BASE_URL;
+
 /**
- * Retrieve the configured backend URL and Kairo API key from chrome.storage.local.
- * Defaults to DEFAULT_BACKEND_URL if not set.
+ * Retrieve the Kairo API key from chrome.storage.local.
+ * The backend URL is centralized in backendConfig.ts and never read from user storage.
+ * If legacy backendBaseUrl is present in storage from older versions, it is cleaned up.
  */
 export async function getBackendConfig(): Promise<BackendConfig> {
+  let kairoApiKey = "";
   if (typeof chrome !== "undefined" && chrome.storage?.local) {
     try {
       const result = await chrome.storage.local.get([
-        BACKEND_BASE_URL_KEY,
         KAIRO_API_KEY_KEY,
+        BACKEND_BASE_URL_KEY,
       ]);
-      return {
-        backendBaseUrl:
-          typeof result[BACKEND_BASE_URL_KEY] === "string" &&
-          result[BACKEND_BASE_URL_KEY].trim().length > 0
-            ? result[BACKEND_BASE_URL_KEY].trim().replace(/\/+$/, "")
-            : DEFAULT_BACKEND_URL,
-        kairoApiKey:
-          typeof result[KAIRO_API_KEY_KEY] === "string"
-            ? result[KAIRO_API_KEY_KEY].trim()
-            : "",
-      };
+      if (typeof result[KAIRO_API_KEY_KEY] === "string") {
+        kairoApiKey = result[KAIRO_API_KEY_KEY].trim();
+      }
+      // Migrate older installations: clean up obsolete custom URL without touching other data
+      if (result[BACKEND_BASE_URL_KEY] !== undefined) {
+        await chrome.storage.local.remove(BACKEND_BASE_URL_KEY);
+      }
     } catch {
-      // Fall through to defaults if storage read fails
+      // Storage read failure fallback
     }
   }
   return {
-    backendBaseUrl: DEFAULT_BACKEND_URL,
-    kairoApiKey: "",
+    backendBaseUrl: BACKEND_BASE_URL,
+    kairoApiKey,
   };
 }
 
 /**
- * Persist updated backend URL and/or Kairo API key to chrome.storage.local.
+ * Persist the Kairo API key to chrome.storage.local.
+ * Only the API key is stored. The backend URL is NOT stored or user-configurable.
+ * Any legacy custom backend URL is cleanly removed.
  */
 export async function saveBackendConfig(
   config: Partial<BackendConfig>
 ): Promise<void> {
   if (typeof chrome !== "undefined" && chrome.storage?.local) {
     const toStore: Record<string, string> = {};
-    if (typeof config.backendBaseUrl === "string") {
-      toStore[BACKEND_BASE_URL_KEY] = config.backendBaseUrl.trim().replace(/\/+$/, "");
-    }
     if (typeof config.kairoApiKey === "string") {
       toStore[KAIRO_API_KEY_KEY] = config.kairoApiKey.trim();
     }
-    await chrome.storage.local.set(toStore);
+    // Ensure legacy custom URL is stripped on save
+    await chrome.storage.local.remove(BACKEND_BASE_URL_KEY);
+    if (Object.keys(toStore).length > 0) {
+      await chrome.storage.local.set(toStore);
+    }
   }
 }
 
 /**
  * Performs a lightweight liveness check against GET /health/live.
- * This endpoint is anonymous, does not query the database, and confirms
- * that the backend server is reachable.
+ * Uses centralized BACKEND_BASE_URL by default; supports programmatic override for tests.
  */
 export async function checkLiveness(
   baseUrlOverride?: string
 ): Promise<{ success: boolean; message: string; statusCode?: number }> {
-  const baseUrl = (baseUrlOverride || (await getBackendConfig()).backendBaseUrl).replace(/\/+$/, "");
+  const baseUrl = (
+    baseUrlOverride ||
+    BACKEND_BASE_URL ||
+    (await getBackendConfig()).backendBaseUrl
+  )?.replace(/\/+$/, "");
+
+  if (!baseUrl) {
+    return {
+      success: false,
+      message:
+        "Production backend deployment is pending. Official cloud endpoint not yet configured.",
+    };
+  }
+
   const targetUrl = `${baseUrl}/health/live`;
 
   try {
@@ -114,7 +135,10 @@ export async function checkLiveness(
   } catch (err) {
     return {
       success: false,
-      message: err instanceof Error ? err.message : "Failed to connect to backend server.",
+      message:
+        err instanceof Error
+          ? err.message
+          : "Failed to connect to backend server.",
     };
   }
 }
@@ -135,9 +159,21 @@ export async function extractMemory(
   }
 
   const config = await resolveConfig(configOverride);
+  if (!config.backendBaseUrl) {
+    throw new VoidzoneApiError(
+      "Official VOIDZONE backend is pending deployment. Please check back soon.",
+      503,
+      "meta_ai_disabled"
+    );
+  }
+
   const targetUrl = `${config.backendBaseUrl}/api/voidzone/memory/extract`;
 
-  return executeVoidzonePost<MetaMemoryResponse>(targetUrl, request, config.kairoApiKey);
+  return executeVoidzonePost<MetaMemoryResponse>(
+    targetUrl,
+    request,
+    config.kairoApiKey
+  );
 }
 
 /**
@@ -156,18 +192,39 @@ export async function generateContinuity(
   }
 
   const config = await resolveConfig(configOverride);
+  if (!config.backendBaseUrl) {
+    throw new VoidzoneApiError(
+      "Official VOIDZONE backend is pending deployment. Please check back soon.",
+      503,
+      "meta_ai_disabled"
+    );
+  }
+
   const targetUrl = `${config.backendBaseUrl}/api/voidzone/continuity/generate`;
 
-  return executeVoidzonePost<MetaContinuityResponse>(targetUrl, request, config.kairoApiKey);
+  return executeVoidzonePost<MetaContinuityResponse>(
+    targetUrl,
+    request,
+    config.kairoApiKey
+  );
 }
 
 // ── Internal Helpers ─────────────────────────────────────────────────────────
 
-async function resolveConfig(override?: Partial<BackendConfig>): Promise<BackendConfig> {
+async function resolveConfig(
+  override?: Partial<BackendConfig>
+): Promise<BackendConfig> {
   const stored = await getBackendConfig();
   return {
-    backendBaseUrl: (override?.backendBaseUrl || stored.backendBaseUrl).replace(/\/+$/, ""),
-    kairoApiKey: override?.kairoApiKey !== undefined ? override.kairoApiKey : stored.kairoApiKey,
+    backendBaseUrl: (
+      override?.backendBaseUrl ||
+      stored.backendBaseUrl ||
+      BACKEND_BASE_URL
+    ).replace(/\/+$/, ""),
+    kairoApiKey:
+      override?.kairoApiKey !== undefined
+        ? override.kairoApiKey
+        : stored.kairoApiKey,
   };
 }
 
@@ -222,7 +279,9 @@ async function executeVoidzonePost<T>(
   }
 
   const statusCode = response.status;
-  const errorCode = (typeof errorJson?.error === "string" ? errorJson.error : "") as VoidzoneErrorCode;
+  const errorCode = (
+    typeof errorJson?.error === "string" ? errorJson.error : ""
+  ) as VoidzoneErrorCode;
 
   if (statusCode === 503 || errorCode === "meta_ai_disabled") {
     throw new VoidzoneApiError(
@@ -241,8 +300,14 @@ async function executeVoidzonePost<T>(
   }
 
   if (statusCode === 413 || errorCode === "input_too_large") {
-    const est = typeof errorJson?.estimatedTokens === "number" ? errorJson.estimatedTokens : undefined;
-    const max = typeof errorJson?.maxTokens === "number" ? errorJson.maxTokens : undefined;
+    const est =
+      typeof errorJson?.estimatedTokens === "number"
+        ? errorJson.estimatedTokens
+        : undefined;
+    const max =
+      typeof errorJson?.maxTokens === "number"
+        ? errorJson.maxTokens
+        : undefined;
     throw new VoidzoneApiError(
       `Transcript is too large for Meta AI (${est ?? "unknown"} estimated tokens; maximum is ${max ?? "unknown"}). Trim the conversation and retry.`,
       413,
@@ -275,11 +340,11 @@ async function executeVoidzonePost<T>(
     );
   }
 
-  const rawMessage = typeof errorJson?.message === "string" ? errorJson.message : undefined;
+  const rawMessage =
+    typeof errorJson?.message === "string" ? errorJson.message : undefined;
   throw new VoidzoneApiError(
     rawMessage || `Backend returned error (HTTP ${statusCode}).`,
     statusCode,
     errorCode || "unknown"
   );
 }
-

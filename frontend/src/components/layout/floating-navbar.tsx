@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/providers/auth-provider"
 import { Menu, X, ArrowRight, ChevronDown } from "lucide-react"
 
-// Information Architecture — 4 top-level items on desktop:
-// Product (5 items) · Developers (4 items) · Resources (3 items) · Company (1 item)
-// Mobile: grouped accordion drawer
+// Information Architecture:
+// Product · Developers · Resources · Cross-Platform
+// Mobile: grouped accordion drawer + cross-platform
 
 const PRODUCT_ITEMS = [
   { label: "It Remembers",     href: "#remembers",       description: "Conversational ingestion & auto-extraction" },
@@ -159,11 +159,17 @@ export function FloatingNavbar() {
             </span>
           </Link>
 
-          {/* Desktop nav — 3 dropdowns */}
+          {/* Desktop nav — Dropdowns + Cross-Platform beside Resources */}
           <nav className="hidden items-center gap-5 lg:flex" aria-label="Main navigation">
             <NavDropdown label="Product"    items={PRODUCT_ITEMS}   />
             <NavDropdown label="Developers" items={DEVELOPER_ITEMS} />
             <NavDropdown label="Resources"  items={RESOURCES_ITEMS} />
+            <Link
+              href="/cross-platform"
+              className="text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-pointer select-none"
+            >
+              Cross-Platform
+            </Link>
           </nav>
 
           {/* Right action cluster */}
@@ -278,6 +284,19 @@ export function FloatingNavbar() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div className="border-t border-border/40 mx-2" />
+
+              {/* Cross-Platform */}
+              <div>
+                <Link
+                  href="/cross-platform"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex w-full items-center justify-between px-2 py-2.5 text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer focus-visible:outline-none"
+                >
+                  Cross-Platform
+                </Link>
               </div>
 
               {/* CTA */}

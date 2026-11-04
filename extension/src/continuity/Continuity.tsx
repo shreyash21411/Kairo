@@ -27,6 +27,13 @@ import {
   type MetaContinuityResult,
   VoidzoneApiError,
 } from "../services/voidzoneTypes.ts";
+import {
+  createRawConversationFromCaptured,
+  createRawConversationFromTranscript,
+  generateSafeRawExportFilename,
+  serializeRawConversation,
+  type RawConversationExport,
+} from "./rawConversationExport.ts";
 
 interface ContinuityProps {
   memoryEnabled?: boolean;
@@ -45,6 +52,8 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
   const [activeCapture, setActiveCapture] = useState<CapturedConversation | null>(null);
   const [activeTabConvId, setActiveTabConvId] = useState<string | null>(null);
   const [activeTabUrl, setActiveTabUrl] = useState<string | null>(null);
+  // Conversation ID visibility — hidden by default for privacy
+  const [showConvId, setShowConvId] = useState(false);
 
   // Output archive state
   const [archive, setArchive] = useState<ContinuityArchive | null>(null);
@@ -472,7 +481,7 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
     }
   };
 
-  // Export JSON file
+  // Export JSON file (Full Continuity Archive — Mode A)
   const handleExport = () => {
     if (!archive) return;
     try {
@@ -484,11 +493,73 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
       a.download = `voidzone-continuity-${archive.archiveId.slice(0, 8)}.json`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Safe download lifecycle: allow browser download manager to initiate before revoking
+      setTimeout(() => {
+        try {
+          if (a.parentNode) {
+            document.body.removeChild(a);
+          }
+          URL.revokeObjectURL(url);
+        } catch {
+          // Tolerate cleanup errors
+        }
+      }, 1000);
       setStatus("Archive exported successfully as JSON.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to export archive.");
+    }
+  };
+
+  // Export Standalone Raw Conversation JSON (Mode B — no AI or Continuity Engine data)
+  const handleExportRawConversation = () => {
+    setError("");
+    setStatus("");
+
+    try {
+      let rawExport: RawConversationExport;
+
+      if (establishedSession && establishedSession.messages.length > 0) {
+        rawExport = createRawConversationFromCaptured(establishedSession);
+      } else if (transcript.trim()) {
+        rawExport = createRawConversationFromTranscript(transcript, {
+          platform,
+          title: title.trim() || undefined,
+          completeness,
+        });
+      } else {
+        setError("No conversation messages available to export.");
+        return;
+      }
+
+      const jsonString = serializeRawConversation(rawExport);
+      const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = generateSafeRawExportFilename(
+        rawExport.conversationTitle,
+        rawExport.conversationId
+      );
+      document.body.appendChild(a);
+      a.click();
+      // Safe download lifecycle: allow browser download manager to initiate before revoking
+      setTimeout(() => {
+        try {
+          if (a.parentNode) {
+            document.body.removeChild(a);
+          }
+          URL.revokeObjectURL(url);
+        } catch {
+          // Tolerate cleanup errors
+        }
+      }, 1000);
+      setStatus(
+        `Conversation exported successfully as raw JSON (${rawExport.messageCount} messages).`
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to export raw conversation JSON."
+      );
     }
   };
 
@@ -661,7 +732,36 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
 
         <div className="vz-conv-id-row">
           <span className="vz-label-muted">ID:</span>
-          <code className="vz-code-inline">{displayConvId}</code>
+          {showConvId ? (
+            <code className="vz-code-inline">{displayConvId}</code>
+          ) : (
+            <span className="vz-conv-id-masked">
+              {displayConvId === "Unavailable" || displayConvId.startsWith("Pending")
+                ? displayConvId
+                : "••••••••••••••••"}
+            </span>
+          )}
+          <button
+            type="button"
+            className="vz-btn-eye"
+            onClick={() => setShowConvId((v) => !v)}
+            title={showConvId ? "Hide conversation ID" : "Reveal conversation ID"}
+            aria-label={showConvId ? "Hide conversation ID" : "Reveal conversation ID"}
+            aria-pressed={showConvId}
+            disabled={displayConvId === "Unavailable" || displayConvId.startsWith("Pending")}
+          >
+            {showConvId ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            )}
+          </button>
         </div>
 
         {(!establishedSession || establishedSession.messages.length === 0) && (
@@ -814,6 +914,30 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
             title="Verify SHA-256 checksum against canonical fields"
           >
             🛡️ Verify
+          </button>
+        </div>
+
+        {/* Standalone Raw Conversation JSON Export (Mode B) */}
+        <div className="vz-raw-export-card">
+          <div className="vz-raw-export-header">
+            <span className="vz-label-bold">STANDALONE TRANSCRIPT EXPORT</span>
+          </div>
+          <p className="vz-raw-export-desc">
+            Download only your conversation transcript as JSON. No AI-generated memory or continuity data is included.
+          </p>
+          <button
+            type="button"
+            className="vz-btn-secondary vz-btn-raw-export"
+            onClick={handleExportRawConversation}
+            disabled={
+              isProcessing ||
+              isExtractingMemory ||
+              isGeneratingContinuity ||
+              (!establishedSession?.messages.length && !transcript.trim())
+            }
+            title="Download conversation transcript as standalone JSON (no AI data)"
+          >
+            📄 Download Conversation JSON
           </button>
         </div>
       </div>

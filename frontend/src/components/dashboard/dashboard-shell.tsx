@@ -25,6 +25,9 @@ import {
   Key,
   Edit2,
   Check,
+  Puzzle,
+  Blocks,
+  Mic,
 } from "lucide-react";
 
 interface NavLink {
@@ -44,6 +47,12 @@ const DEVELOP_NAV: NavLink[] = [
   { name: "API Keys", href: "/dashboard/api-keys", icon: KeyRound },
   { name: "Chat Pipeline", href: "/dashboard/chat", icon: MessageSquareCode },
   { name: "API Reference", href: "/dashboard/docs", icon: BookOpen },
+];
+
+const CROSS_PLATFORM_NAV: NavLink[] = [
+  { name: "Browser Extension", href: "/dashboard/extension", icon: Puzzle },
+  { name: "Plugins", href: "/dashboard/plugins", icon: Blocks },
+  { name: "Beru Voice Agent", href: "/dashboard/beru", icon: Mic },
 ];
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -95,6 +104,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     if (pathname === "/dashboard/api-keys") return "API Keys";
     if (pathname === "/dashboard/chat") return "Chat Pipeline";
     if (pathname === "/dashboard/docs") return "Documentation";
+    if (pathname === "/dashboard/extension") return "Browser Extension";
+    if (pathname === "/dashboard/plugins") return "Plugins";
+    if (pathname === "/dashboard/beru") return "Beru Voice Agent";
     return "Workspace";
   };
 
@@ -231,6 +243,32 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               Develop
             </div>
             {DEVELOP_NAV.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-[5px] text-xs transition-colors ${
+                    isActive
+                      ? "bg-primary text-primary-foreground font-medium shadow-2xs"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{item.name}</span>
+                </Link>
+              );
+            })}
+          </div>
+          {/* Cross-Platform Section */}
+          <div className="space-y-0.5">
+            <div className="px-2 pb-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70">
+              Cross-Platform
+            </div>
+            {CROSS_PLATFORM_NAV.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
 

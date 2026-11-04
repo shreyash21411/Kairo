@@ -5,23 +5,24 @@
 
 :root {
   --vz-bg-app: #08090d;
-  --vz-bg-card: #0d0e13;
-  --vz-bg-card-hover: #101116;
-  --vz-bg-surface: #171820;
-  --vz-bg-input: #08090d;
+  --vz-bg-card: #0d0e14;
+  --vz-bg-card-hover: #111218;
+  --vz-bg-surface: #15161e;
+  --vz-bg-input: #0a0b0f;
+  --vz-bg-card-subtle: #0b0c10;
 
-  --vz-border: #252630;
+  --vz-border: #1f2030;
   --vz-border-focus: rgba(59, 91, 245, 0.6);
-  --vz-border-hover: rgba(255, 255, 255, 0.16);
+  --vz-border-hover: rgba(255, 255, 255, 0.14);
 
   --vz-accent: #3b5bf5;
   --vz-accent-hover: hsl(226, 70%, 64%);
   --vz-accent-glow: rgba(59, 91, 245, 0.18);
   --vz-accent-muted: rgba(59, 91, 245, 0.1);
 
-  --vz-text-primary: #f3f3f8;
+  --vz-text-primary: #f0f0f6;
   --vz-text-secondary: #9ca3af;
-  --vz-text-muted: #6b7280;
+  --vz-text-muted: #5c6370;
 
   --vz-success: #10b981;
   --vz-success-bg: rgba(16, 185, 129, 0.12);
@@ -35,24 +36,30 @@
   --vz-danger-bg: rgba(239, 68, 68, 0.12);
   --vz-danger-border: rgba(239, 68, 68, 0.25);
 
-  --vz-radius-sm: 4px;
-  --vz-radius-md: 7px;
-  --vz-radius-lg: 10px;
+  --vz-radius-sm: 5px;
+  --vz-radius-md: 8px;
+  --vz-radius-lg: 12px;
+  --vz-radius-xl: 16px;
+
+  --vz-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --vz-shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.3);
+  --vz-shadow-accent: 0 2px 10px rgba(59, 91, 245, 0.28);
 
   --vz-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --vz-font-mono: ui-monospace, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 [data-theme="light"] {
-  --vz-bg-app: #f5f6f8;
+  --vz-bg-app: #f4f5f8;
   --vz-bg-card: #ffffff;
-  --vz-bg-card-hover: #f0f2f5;
-  --vz-bg-surface: #e8ebf0;
+  --vz-bg-card-hover: #f0f2f7;
+  --vz-bg-surface: #e8ebf2;
   --vz-bg-input: #ffffff;
+  --vz-bg-card-subtle: #f9fafc;
 
   --vz-border: #d1d5db;
   --vz-border-focus: rgba(37, 81, 236, 0.6);
-  --vz-border-hover: rgba(0, 0, 0, 0.18);
+  --vz-border-hover: rgba(0, 0, 0, 0.16);
 
   --vz-accent: #2551ec;
   --vz-accent-hover: hsl(226, 70%, 44%);
@@ -74,6 +81,10 @@
   --vz-danger: #dc2626;
   --vz-danger-bg: rgba(220, 38, 38, 0.1);
   --vz-danger-border: rgba(220, 38, 38, 0.3);
+
+  --vz-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --vz-shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  --vz-shadow-accent: 0 2px 10px rgba(37, 81, 236, 0.18);
 }
 
 [data-theme="light"] .vz-badge-platform {
@@ -193,11 +204,58 @@
   border-color: #9ca3af;
 }
 
+[data-theme="light"] .vz-controls-bar {
+  background: #ffffff;
+  border-color: #d8dce6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .vz-btn-meta {
+  background: #f4f5f8;
+  border-color: #d1d5db;
+  color: #1e293b;
+}
+
+[data-theme="light"] .vz-manual-accordion {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: #d1d5db;
+}
+
+[data-theme="light"] .vz-session-hint {
+  background: #f4f5f8;
+  border-color: #d1d5db;
+  color: #6b7280;
+}
+
+/* ==========================================================================
+   Global Scrollbar Invisibility — Preserve Full Native Scrolling
+   ========================================================================== */
+
+html,
+body,
+.vz-app,
+.scrollbar-hidden,
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.vz-app::-webkit-scrollbar,
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
 body {
   margin: 0;
-  width: 400px;
-  min-width: 400px;
-  min-height: 500px;
+  width: 420px;
+  min-width: 420px;
+  min-height: 520px;
   background-color: var(--vz-bg-app);
   color: var(--vz-text-primary);
   font-family: var(--vz-font-sans);
@@ -215,9 +273,10 @@ body {
 .vz-app {
   display: flex;
   flex-direction: column;
-  padding: 14px 16px;
-  gap: 12px;
+  padding: 14px 16px 12px;
+  gap: 11px;
   background-color: var(--vz-bg-app);
+  min-height: 520px;
 }
 
 /* ==========================================================================
@@ -228,35 +287,42 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 10px;
+  padding-bottom: 11px;
   border-bottom: 1px solid var(--vz-border);
+}
+
+.vz-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .vz-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
 }
 
 .vz-logo-mark {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--vz-accent), #1e3a8a);
-  border-radius: var(--vz-radius-sm);
+  background: linear-gradient(140deg, var(--vz-accent) 0%, #1a2f9e 100%);
+  border-radius: var(--vz-radius-md);
   color: #fff;
   font-weight: 800;
   font-size: 13px;
   font-family: var(--vz-font-mono);
-  box-shadow: 0 0 10px rgba(59, 91, 245, 0.3);
+  box-shadow: var(--vz-shadow-accent);
+  letter-spacing: -0.02em;
 }
 
 .vz-brand-text {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 7px;
 }
 
 .vz-wordmark {
@@ -268,14 +334,14 @@ body {
 }
 
 .vz-tagline {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   color: var(--vz-accent);
   background: var(--vz-accent-muted);
-  border: 1px solid rgba(59, 91, 245, 0.25);
-  border-radius: 3px;
-  padding: 1px 4px;
+  border: 1px solid rgba(59, 91, 245, 0.22);
+  border-radius: 4px;
+  padding: 2px 5px;
 }
 
 .vz-status-pill {
@@ -285,14 +351,16 @@ body {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
-  padding: 3px 8px;
-  border-radius: 12px;
+  padding: 4px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
 }
 
 .vz-status-live {
   background: var(--vz-success-bg);
   color: var(--vz-success);
   border: 1px solid var(--vz-success-border);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
 }
 
 .vz-status-standby {
@@ -301,11 +369,28 @@ body {
   border: 1px solid var(--vz-border);
 }
 
+.vz-status-unavailable {
+  background: var(--vz-warning-bg);
+  color: var(--vz-warning);
+  border: 1px solid var(--vz-warning-border);
+}
+
 .vz-status-dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background-color: currentColor;
+  flex-shrink: 0;
+}
+
+/* Animated dot for live state */
+.vz-status-live .vz-status-dot {
+  animation: vz-pulse 2s ease-in-out infinite;
+}
+
+@keyframes vz-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* ==========================================================================
@@ -317,10 +402,11 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 7px 11px;
   background: var(--vz-bg-card);
   border: 1px solid var(--vz-border);
-  border-radius: var(--vz-radius-md);
+  border-radius: var(--vz-radius-lg);
+  box-shadow: var(--vz-shadow-card);
   box-sizing: border-box;
 }
 
@@ -336,8 +422,8 @@ body {
 }
 
 .vz-control-project .vz-select {
-  width: 90px;
-  max-width: 100px;
+  width: 92px;
+  max-width: 104px;
 }
 
 .vz-control-theme {
@@ -353,11 +439,11 @@ body {
 }
 
 .vz-control-label {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
-  color: var(--vz-text-secondary);
+  color: var(--vz-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -367,7 +453,7 @@ body {
   color: var(--vz-text-primary);
   border: 1px solid var(--vz-border);
   border-radius: var(--vz-radius-sm);
-  padding: 3px 6px;
+  padding: 4px 6px;
   font-size: 10.5px;
   font-family: inherit;
   outline: none;
@@ -414,7 +500,7 @@ body {
   transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
   z-index: 1;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .vz-theme-indicator.is-dark {
@@ -486,7 +572,7 @@ body {
   background: var(--vz-bg-card-subtle);
   border: 1px dashed var(--vz-border);
   border-radius: var(--vz-radius-sm);
-  padding: 3px 8px;
+  padding: 4px 8px;
   margin-top: 4px;
   line-height: 1.35;
 }
@@ -504,16 +590,18 @@ body {
 .vz-card {
   background: var(--vz-bg-card);
   border: 1px solid var(--vz-border);
-  border-radius: var(--vz-radius-md);
-  padding: 10px 12px;
+  border-radius: var(--vz-radius-lg);
+  padding: 11px 13px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transition: border-color 0.15s ease;
+  gap: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: var(--vz-shadow-card);
 }
 
 .vz-card:hover {
   border-color: var(--vz-border-hover);
+  box-shadow: var(--vz-shadow-elevated);
 }
 
 .vz-card-header {
@@ -622,12 +710,13 @@ body {
   background: var(--vz-bg-card);
   border: 1px solid var(--vz-border);
   border-radius: var(--vz-radius-md);
-  padding: 8px 10px;
+  padding: 9px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
+  box-shadow: var(--vz-shadow-card);
 }
 
 .vz-metric-label {
@@ -635,11 +724,12 @@ body {
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--vz-text-secondary);
+  text-transform: uppercase;
 }
 
 .vz-metric-value {
   font-family: var(--vz-font-mono);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 800;
   color: var(--vz-text-primary);
   line-height: 1.1;
@@ -691,7 +781,7 @@ body {
   color: #ffffff;
   border: none;
   border-radius: var(--vz-radius-md);
-  padding: 9px 14px;
+  padding: 10px 14px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -701,16 +791,18 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: background-color 0.15s ease, transform 0.1s ease;
-  box-shadow: 0 2px 8px rgba(59, 91, 245, 0.25);
+  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  box-shadow: var(--vz-shadow-accent);
 }
 
 .vz-btn-primary:hover:not(:disabled) {
   background: var(--vz-accent-hover);
+  box-shadow: 0 4px 14px rgba(59, 91, 245, 0.38);
 }
 
 .vz-btn-primary:active:not(:disabled) {
   transform: translateY(1px);
+  box-shadow: 0 1px 6px rgba(59, 91, 245, 0.25);
 }
 
 .vz-btn-primary:disabled {
@@ -730,7 +822,7 @@ body {
   color: var(--vz-text-primary);
   border: 1px solid var(--vz-border);
   border-radius: var(--vz-radius-sm);
-  padding: 6px 8px;
+  padding: 7px 8px;
   font-size: 11px;
   font-weight: 600;
   font-family: inherit;
@@ -743,7 +835,7 @@ body {
 }
 
 .vz-btn-secondary:hover:not(:disabled) {
-  background: #252c3a;
+  background: #1e2232;
   border-color: var(--vz-border-hover);
 }
 
@@ -756,12 +848,16 @@ body {
   background: transparent;
   border: 1px solid var(--vz-border);
   color: var(--vz-text-secondary);
-  border-radius: 3px;
-  padding: 2px 6px;
-  font-size: 10px;
+  border-radius: var(--vz-radius-sm);
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1;
   cursor: pointer;
   font-family: inherit;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .vz-btn-icon-subtle:hover:not(:disabled) {
@@ -802,7 +898,7 @@ body {
 
 .vz-accordion-toggle {
   width: 100%;
-  padding: 8px 10px;
+  padding: 9px 11px;
   background: transparent;
   border: none;
   color: var(--vz-text-secondary);
@@ -821,7 +917,7 @@ body {
 }
 
 .vz-manual-content {
-  padding: 10px;
+  padding: 10px 11px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -839,6 +935,7 @@ body {
   font-weight: 600;
   color: var(--vz-text-muted);
   text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .vz-input, .vz-textarea {
@@ -850,6 +947,7 @@ body {
   font-size: 11px;
   font-family: inherit;
   outline: none;
+  transition: border-color 0.15s ease;
 }
 
 .vz-input:focus, .vz-textarea:focus {
@@ -868,8 +966,8 @@ body {
    ========================================================================== */
 
 .vz-banner {
-  padding: 8px 10px;
-  border-radius: var(--vz-radius-sm);
+  padding: 9px 11px;
+  border-radius: var(--vz-radius-md);
   font-size: 11px;
   line-height: 1.4;
 }
@@ -885,6 +983,18 @@ body {
   border: 1px solid var(--vz-danger-border);
   color: #fca5a5;
   white-space: pre-line;
+}
+
+/* UNAVAILABLE Warning Banner */
+.vz-unavailable-banner {
+  background: var(--vz-warning-bg);
+  border: 1px solid var(--vz-warning-border);
+  border-radius: var(--vz-radius-md);
+  color: var(--vz-warning);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 9px 12px;
 }
 
 /* ==========================================================================
@@ -922,7 +1032,7 @@ body {
 .vz-prompt-box {
   margin: 0;
   padding: 8px;
-  background: #080a0d;
+  background: #060709;
   border: 1px solid var(--vz-border);
   border-radius: var(--vz-radius-sm);
   color: #e5e7eb;
@@ -1020,14 +1130,14 @@ body {
 }
 
 .halo-toggle-track {
-  width: 32px;
-  height: 18px;
-  background-color: #262c38;
-  border-radius: 9px;
+  width: 34px;
+  height: 19px;
+  background-color: #1d2235;
+  border-radius: 10px;
   position: relative;
   display: block;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background-color 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
   box-sizing: border-box;
   flex-shrink: 0;
 }
@@ -1035,22 +1145,23 @@ body {
 .halo-toggle.is-on .halo-toggle-track {
   background-color: var(--vz-accent);
   border-color: var(--vz-accent);
+  box-shadow: 0 0 8px rgba(59, 91, 245, 0.35);
 }
 
 .halo-toggle-knob {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   background-color: #ffffff;
   border-radius: 50%;
   position: absolute;
   top: 1px;
   left: 2px;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
 .halo-toggle.is-on .halo-toggle-knob {
-  transform: translateX(13px);
+  transform: translateX(14px);
 }
 
 /* ==========================================================================
@@ -1061,9 +1172,9 @@ body {
   display: flex;
   justify-content: center;
   font-size: 9px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--vz-text-muted);
-  padding-top: 6px;
+  padding-top: 8px;
   border-top: 1px solid var(--vz-border);
 }
 
@@ -1100,8 +1211,8 @@ body {
 .vz-modal-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(2px);
+  background-color: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1112,20 +1223,26 @@ body {
 .vz-modal-card {
   background: var(--vz-bg-card);
   border: 1px solid var(--vz-border);
-  border-radius: var(--vz-radius-lg);
+  border-radius: var(--vz-radius-xl);
   width: 100%;
-  max-width: 360px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  max-width: 368px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.04);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: vz-modal-in 0.18s ease-out;
+}
+
+@keyframes vz-modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .vz-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--vz-border);
 }
 
@@ -1137,7 +1254,7 @@ body {
 }
 
 .vz-modal-body {
-  padding: 14px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1206,6 +1323,7 @@ body {
   padding: 6px 10px;
   font-size: 11px;
   cursor: pointer;
+  font-family: inherit;
 }
 
 .vz-btn-subtle:hover {
@@ -1213,16 +1331,104 @@ body {
   color: var(--vz-text-primary);
 }
 
-/* Meta AI Actions Strip */
+/* ==========================================================================
+   Settings Modal — Status Row & Eye Button
+   ========================================================================== */
+
+.vz-settings-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--vz-bg-surface);
+  border: 1px solid var(--vz-border);
+  border-radius: var(--vz-radius-md);
+}
+
+.vz-settings-status-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.vz-settings-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.vz-settings-status-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vz-text-primary);
+}
+
+.vz-settings-status-deploy {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--vz-text-muted);
+  font-family: var(--vz-font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* Eye toggle button for API key / conversation ID visibility */
+.vz-btn-eye {
+  background: transparent;
+  border: 1px solid var(--vz-border);
+  color: var(--vz-text-secondary);
+  border-radius: var(--vz-radius-sm);
+  padding: 3px 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.vz-btn-eye:hover {
+  color: var(--vz-text-primary);
+  border-color: var(--vz-border-hover);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="light"] .vz-btn-eye {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+[data-theme="light"] .vz-btn-eye:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+/* Masked conversation ID */
+.vz-conv-id-masked {
+  font-family: var(--vz-font-mono);
+  font-size: 11px;
+  color: var(--vz-text-muted);
+  letter-spacing: 0.08em;
+  user-select: none;
+}
+
+/* ==========================================================================
+   Meta AI Actions Strip */
 .vz-meta-actions-strip {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 7px;
   margin-bottom: 2px;
 }
 
 .vz-btn-meta {
-  padding: 8px 10px;
+  padding: 9px 10px;
   border-radius: var(--vz-radius-md);
   font-size: 11px;
   font-weight: 600;
@@ -1233,7 +1439,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   transition: all 0.15s ease;
+  font-family: inherit;
 }
 
 .vz-btn-meta-memory:hover:not(:disabled) {
@@ -1294,6 +1502,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--vz-text-muted);
+  text-transform: uppercase;
 }
 
 .vz-meta-val-emphasis {
@@ -1358,4 +1567,60 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   Raw Conversation JSON Export Card
+   ========================================================================== */
+
+.vz-raw-export-card {
+  background: var(--vz-bg-surface);
+  border: 1px solid var(--vz-border);
+  border-radius: var(--vz-radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  margin-top: 4px;
+}
+
+.vz-raw-export-card:hover {
+  border-color: var(--vz-border-hover);
+}
+
+.vz-raw-export-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vz-raw-export-desc {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--vz-text-secondary);
+  line-height: 1.4;
+}
+
+.vz-btn-raw-export {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 3px;
+  gap: 5px;
+}
+
+.vz-btn-raw-export:hover:not(:disabled) {
+  border-color: var(--vz-accent);
+  color: #ffffff;
+}
+
+[data-theme="light"] .vz-raw-export-card {
+  background: #f8fafc;
+  border-color: #d1d5db;
+}
+
+[data-theme="light"] .vz-raw-export-desc {
+  color: #4b5563;
 }
