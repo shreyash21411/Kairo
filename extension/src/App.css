@@ -1,6 +1,6 @@
 /* ==========================================================================
    VOIDZONE CONTINUITY — DEVELOPER TOOL EXTENSION POPUP STYLES
-   Aesthetic: Dark Graphite / Charcoal Surfaces with Restrained Violet Accents
+   Aesthetic: Dark Graphite / Charcoal Surfaces with Precision Cobalt Accents
    ========================================================================== */
 
 :root {
@@ -11,13 +11,13 @@
   --vz-bg-input: #08090d;
 
   --vz-border: #252630;
-  --vz-border-focus: rgba(139, 92, 246, 0.6);
+  --vz-border-focus: rgba(59, 91, 245, 0.6);
   --vz-border-hover: rgba(255, 255, 255, 0.16);
 
-  --vz-accent: #8b5cf6;
-  --vz-accent-hover: #7c3aed;
-  --vz-accent-glow: rgba(139, 92, 246, 0.18);
-  --vz-accent-muted: rgba(139, 92, 246, 0.1);
+  --vz-accent: #3b5bf5;
+  --vz-accent-hover: hsl(226, 70%, 64%);
+  --vz-accent-glow: rgba(59, 91, 245, 0.18);
+  --vz-accent-muted: rgba(59, 91, 245, 0.1);
 
   --vz-text-primary: #f3f3f8;
   --vz-text-secondary: #9ca3af;
@@ -51,13 +51,13 @@
   --vz-bg-input: #ffffff;
 
   --vz-border: #d1d5db;
-  --vz-border-focus: rgba(124, 58, 237, 0.6);
+  --vz-border-focus: rgba(37, 81, 236, 0.6);
   --vz-border-hover: rgba(0, 0, 0, 0.18);
 
-  --vz-accent: #7c3aed;
-  --vz-accent-hover: #6d28d9;
-  --vz-accent-glow: rgba(124, 58, 237, 0.15);
-  --vz-accent-muted: rgba(124, 58, 237, 0.08);
+  --vz-accent: #2551ec;
+  --vz-accent-hover: hsl(226, 70%, 44%);
+  --vz-accent-glow: rgba(37, 81, 236, 0.15);
+  --vz-accent-muted: rgba(37, 81, 236, 0.08);
 
   --vz-text-primary: #111827;
   --vz-text-secondary: #4b5563;
@@ -77,9 +77,9 @@
 }
 
 [data-theme="light"] .vz-badge-platform {
-  background: rgba(124, 58, 237, 0.1);
-  color: #6d28d9;
-  border-color: rgba(124, 58, 237, 0.3);
+  background: rgba(37, 81, 236, 0.1);
+  color: #1d4ed8;
+  border-color: rgba(37, 81, 236, 0.3);
 }
 
 [data-theme="light"] .vz-badge-neutral {
@@ -126,9 +126,9 @@
 }
 
 [data-theme="light"] .vz-role-assistant {
-  background: rgba(124, 58, 237, 0.1);
-  color: #6d28d9;
-  border-color: rgba(124, 58, 237, 0.25);
+  background: rgba(37, 81, 236, 0.1);
+  color: #1d4ed8;
+  border-color: rgba(37, 81, 236, 0.25);
 }
 
 [data-theme="light"] .vz-role-system {
@@ -138,7 +138,7 @@
 
 [data-theme="light"] .vz-btn-primary:disabled {
   opacity: 0.45;
-  background: #a78bfa;
+  background: #93c5fd;
 }
 
 [data-theme="light"] .vz-btn-secondary {
@@ -244,13 +244,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--vz-accent), #4c1d95);
+  background: linear-gradient(135deg, var(--vz-accent), #1e3a8a);
   border-radius: var(--vz-radius-sm);
   color: #fff;
   font-weight: 800;
   font-size: 13px;
   font-family: var(--vz-font-mono);
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 0 10px rgba(59, 91, 245, 0.3);
 }
 
 .vz-brand-text {
@@ -273,7 +273,7 @@ body {
   letter-spacing: 0.08em;
   color: var(--vz-accent);
   background: var(--vz-accent-muted);
-  border: 1px solid rgba(139, 92, 246, 0.25);
+  border: 1px solid rgba(59, 91, 245, 0.25);
   border-radius: 3px;
   padding: 1px 4px;
 }
@@ -579,9 +579,9 @@ body {
 }
 
 .vz-badge-platform {
-  background: rgba(139, 92, 246, 0.12);
-  color: #c4b5fd;
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(59, 91, 245, 0.12);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 91, 245, 0.3);
 }
 
 .vz-badge-success {
@@ -702,7 +702,7 @@ body {
   justify-content: center;
   gap: 6px;
   transition: background-color 0.15s ease, transform 0.1s ease;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  box-shadow: 0 2px 8px rgba(59, 91, 245, 0.25);
 }
 
 .vz-btn-primary:hover:not(:disabled) {
@@ -976,8 +976,8 @@ body {
 
 .vz-role-assistant {
   background: var(--vz-accent-muted);
-  color: #c4b5fd;
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 91, 245, 0.3);
 }
 
 .vz-role-system {
@@ -1090,4 +1090,272 @@ body {
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--vz-text-muted);
+}
+
+/* ==========================================================================
+   BACKEND SETTINGS MODAL & META MODEL API ENGINES
+   ========================================================================== */
+
+/* Settings Modal */
+.vz-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  z-index: 1000;
+}
+
+.vz-modal-card {
+  background: var(--vz-bg-card);
+  border: 1px solid var(--vz-border);
+  border-radius: var(--vz-radius-lg);
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vz-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vz-border);
+}
+
+.vz-modal-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vz-text-primary);
+}
+
+.vz-modal-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vz-modal-description {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--vz-text-secondary);
+}
+
+.vz-modal-description code {
+  color: var(--vz-accent);
+}
+
+.vz-label-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vz-btn-link-sm {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--vz-accent);
+  font-size: 10px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.vz-input-mono {
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.vz-input-hint {
+  font-size: 9.5px;
+  color: var(--vz-text-muted);
+}
+
+.vz-input-hint code {
+  color: var(--vz-text-secondary);
+}
+
+.vz-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vz-border);
+}
+
+.vz-btn-group-right {
+  display: flex;
+  gap: 6px;
+}
+
+.vz-btn-subtle {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--vz-text-secondary);
+  border-radius: var(--vz-radius-md);
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.vz-btn-subtle:hover {
+  background: var(--vz-bg-surface);
+  color: var(--vz-text-primary);
+}
+
+/* Meta AI Actions Strip */
+.vz-meta-actions-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.vz-btn-meta {
+  padding: 8px 10px;
+  border-radius: var(--vz-radius-md);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--vz-border);
+  background: var(--vz-bg-surface);
+  color: var(--vz-text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.vz-btn-meta-memory:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+}
+
+.vz-btn-meta-continuity:hover:not(:disabled) {
+  border-color: var(--vz-border-focus);
+  background: var(--vz-accent-muted);
+  box-shadow: 0 0 10px var(--vz-accent-glow);
+}
+
+.vz-btn-meta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Meta AI Result Cards */
+.vz-meta-result-card {
+  border-color: rgba(59, 91, 245, 0.3);
+  background: linear-gradient(180deg, #10121a 0%, #0d0e13 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.vz-meta-memory-card {
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.vz-meta-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vz-meta-highlight-box {
+  background: var(--vz-bg-surface);
+  border: 1px solid var(--vz-border);
+  border-radius: var(--vz-radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vz-meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vz-meta-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--vz-text-muted);
+}
+
+.vz-meta-val-emphasis {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vz-text-primary);
+  line-height: 1.4;
+}
+
+.vz-meta-val-next {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #38bdf8;
+  line-height: 1.4;
+}
+
+.vz-meta-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vz-meta-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: var(--vz-text-secondary);
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vz-meta-list li {
+  word-break: break-word;
+}
+
+.vz-meta-constraints li {
+  color: #fbbf24;
+}
+
+.vz-meta-blockers li {
+  color: #f87171;
+}
+
+.vz-meta-text {
+  margin: 0;
+  font-size: 11px;
+  color: var(--vz-text-secondary);
+  line-height: 1.4;
+  background: var(--vz-bg-surface);
+  padding: 6px 8px;
+  border-radius: var(--vz-radius-sm);
+}
+
+.vz-meta-action-row {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vz-border);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
 }

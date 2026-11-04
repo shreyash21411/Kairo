@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import MemoryToggle from "./components/MemoryToggle";
 import ThemeToggle from "./components/ThemeToggle";
 import Continuity from "./continuity/Continuity";
+import BackendSettingsModal from "./components/BackendSettingsModal";
 import "./App.css";
 import {
   EPOCH_REGISTRY_KEY,
@@ -212,6 +213,7 @@ function App() {
   const [lifecycleState, setLifecycleState] = useState<LifecycleState>("OFF");
   const [selectedProject, setSelectedProject] = useState("");
   const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Prevent concurrent lifecycle operations
   const lifecycleBusyRef = useRef(false);
@@ -550,6 +552,15 @@ function App() {
         </div>
 
         <div className="vz-header-actions">
+          <button
+            type="button"
+            className="vz-btn-icon-subtle"
+            onClick={() => setIsSettingsOpen(true)}
+            title="Backend Settings"
+            aria-label="Open Backend Settings"
+          >
+            ⚙️
+          </button>
           <span
             className={`vz-status-pill ${statusClass}`}
             title={statusTitle}
@@ -615,6 +626,12 @@ function App() {
       <footer className="vz-footer">
         <span>VOIDZONE · CONTINUITY</span>
       </footer>
+
+      {/* Backend Settings Dialog */}
+      <BackendSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   );
 }

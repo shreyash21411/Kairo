@@ -25,6 +25,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Kairo.API.Configuration;
 using Kairo.API.Middleware; // Phase 5.8
+using Kairo.Application.Abstractions.Meta;
+using Kairo.Infrastructure.Meta;
 using System.Diagnostics.Metrics; // Phase 5.8.4
 using Kairo.API.Health;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -195,13 +197,23 @@ builder.Services.Configure<MistralOptions>(
 builder.Services.Configure<MistralEmbeddingOptions>(
     builder.Configuration.GetSection("MistralEmbedding"));
 
+
 // Concrete HTTP provider registrations
 builder.Services.AddHttpClient<MistralLlmProvider>();
 builder.Services.AddHttpClient<MistralEmbeddingProvider>();
 
 // Active provider abstraction bindings (validated upfront by ProviderConfigurationValidator)
+// Mistral remains the default ILlmProvider for the existing memory-extraction pipeline.
 builder.Services.AddScoped<ILlmProvider>(sp => sp.GetRequiredService<MistralLlmProvider>());
 builder.Services.AddScoped<IEmbeddingProvider>(sp => sp.GetRequiredService<MistralEmbeddingProvider>());
+
+// -- VOIDZONE Meta AI: Memory Engine + Continuity Engine -----------------------------------------------------------------------
+// Enabled defaults to false. Both endpoints reject requests when Enabled = false.
+// Key sourced from User Secrets (MetaAI:ApiKey) -- never from appsettings.json.
+builder.Services.Configure<MetaAIOptions>(builder.Configuration.GetSection(MetaAIOptions.SectionName));
+builder.Services.AddHttpClient<IMetaAIClient, MetaAIClient>();
+builder.Services.AddScoped<IMetaMemoryService, MetaMemoryService>();
+builder.Services.AddScoped<IMetaContinuityService, MetaContinuityService>();
 
 // High-level service adapters delegating to providers (explicit factories prevent DI constructor ambiguity)
 builder.Services.AddScoped<IEmbeddingGenerator>(sp => new MistralEmbeddingGenerator(sp.GetRequiredService<IEmbeddingProvider>()));

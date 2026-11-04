@@ -16,7 +16,17 @@ import {
 import {
   computeConversationMetrics,
   isSessionMatchingActiveTab,
+  buildRawTranscriptFromMessages,
 } from "./captureLifecycle.ts";
+import {
+  extractMemory,
+  generateContinuity,
+} from "../services/voidzoneBackendClient.ts";
+import {
+  type MetaMemoryResult,
+  type MetaContinuityResult,
+  VoidzoneApiError,
+} from "../services/voidzoneTypes.ts";
 
 interface ContinuityProps {
   memoryEnabled?: boolean;
@@ -44,6 +54,13 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  // Meta Model API state
+  const [isExtractingMemory, setIsExtractingMemory] = useState(false);
+  const [isGeneratingContinuity, setIsGeneratingContinuity] = useState(false);
+  const [memoryResult, setMemoryResult] = useState<MetaMemoryResult | null>(null);
+  const [continuityResult, setContinuityResult] = useState<MetaContinuityResult | null>(null);
+  const [copiedMetaPrompt, setCopiedMetaPrompt] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -264,6 +281,191 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
         cause instanceof Error
           ? cause.message
           : "Failed to generate continuity archive."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Meta AI Memory Engine Extraction
+  const handleExtractMemory = async () => {
+    const hasCaptured = establishedSession && establishedSession.messages.length > 0;
+    const hasManual = transcript.trim().length > 0;
+
+    if (!hasCaptured && !hasManual) {
+      setError("At least one conversation message or manual transcript is required for memory extraction.");
+      return;
+    }
+
+    setError("");
+    setImportError("");
+    setStatus("");
+    setIsExtractingMemory(true);
+
+    try {
+      const rawTranscript = hasCaptured
+        ? buildRawTranscriptFromMessages(establishedSession!.messages, establishedSession!.platform)
+        : transcript;
+
+      const messages = hasCaptured
+        ? establishedSession!.messages.map((m) => ({ role: m.role, content: m.content }))
+        : undefined;
+
+      const response = await extractMemory({
+        rawTranscript,
+        messages,
+      });
+
+      setMemoryResult(response.result);
+      setStatus(
+        `Extracted project memory via Meta AI (${response.result.decisions.length} decisions, ${response.result.requirements.length} requirements).`
+      );
+    } catch (cause) {
+      if (cause instanceof VoidzoneApiError) {
+        setError(cause.message);
+      } else {
+        setError(cause instanceof Error ? cause.message : "Failed to extract project memory.");
+      }
+    } finally {
+      setIsExtractingMemory(false);
+    }
+  };
+
+  // Meta AI Continuity Engine State Generation
+  const handleGenerateMetaContinuity = async () => {
+    const hasCaptured = establishedSession && establishedSession.messages.length > 0;
+    const hasManual = transcript.trim().length > 0;
+
+    if (!hasCaptured && !hasManual) {
+      setError("At least one conversation message or manual transcript is required for continuity generation.");
+      return;
+    }
+
+    setError("");
+    setImportError("");
+    setStatus("");
+    setIsGeneratingContinuity(true);
+
+    try {
+      const rawTranscript = hasCaptured
+        ? buildRawTranscriptFromMessages(establishedSession!.messages, establishedSession!.platform)
+        : transcript;
+
+      const sourcePlatform = establishedSession?.platform || platform || "chatgpt";
+      const sourceTitle = establishedSession?.title || title || "Untitled conversation";
+
+      const response = await generateContinuity({
+        rawTranscript,
+        platform: sourcePlatform,
+        title: sourceTitle,
+      });
+
+      setContinuityResult(response.result);
+      setStatus(
+        `Generated continuity state via Meta AI for: "${response.result.currentObjective || response.result.projectName}".`
+      );
+    } catch (cause) {
+      if (cause instanceof VoidzoneApiError) {
+        setError(cause.message);
+      } else {
+        setError(cause instanceof Error ? cause.message : "Failed to generate continuity state.");
+      }
+    } finally {
+      setIsGeneratingContinuity(false);
+    }
+  };
+
+  const buildEnrichedContinuityPrompt = (res: MetaContinuityResult, rawTx: string) => {
+    return [
+      "Continue the following work using the supplied project continuity state and conversation context.",
+      "",
+      "=== META AI CONTINUITY STATE ===",
+      `Project: ${res.projectName || "Default"}`,
+      `Current Objective: ${res.currentObjective || "In progress"}`,
+      `Recommended Next Action: ${res.recommendedNextAction || "Review outstanding tasks"}`,
+      "",
+      "Important Decisions:",
+      ...(res.importantDecisions.length > 0
+        ? res.importantDecisions.map((d) => `- ${d}`)
+        : ["- (None explicitly noted)"]),
+      "",
+      "Hard Constraints:",
+      ...(res.constraints.length > 0
+        ? res.constraints.map((c) => `- ${c}`)
+        : ["- (None explicitly noted)"]),
+      "",
+      "Known Blockers:",
+      ...(res.blockers.length > 0
+        ? res.blockers.map((b) => `- ${b}`)
+        : ["- None"]),
+      "",
+      "Technical Context:",
+      res.technicalContext || "(Standard development environment)",
+      "",
+      "SOURCE TRANSCRIPT",
+      "-----------------",
+      rawTx,
+    ].join("\n");
+  };
+
+  const handleCopyMetaPrompt = async () => {
+    if (!continuityResult) return;
+    const hasCaptured = establishedSession && establishedSession.messages.length > 0;
+    const rawTx = hasCaptured
+      ? buildRawTranscriptFromMessages(establishedSession!.messages, establishedSession!.platform)
+      : transcript;
+
+    const enriched = buildEnrichedContinuityPrompt(continuityResult, rawTx);
+    try {
+      await navigator.clipboard.writeText(enriched);
+      setCopiedMetaPrompt(true);
+      setTimeout(() => setCopiedMetaPrompt(false), 2000);
+    } catch {
+      // Ignore clipboard error
+    }
+  };
+
+  const handleApplyContinuityToArchive = async () => {
+    if (!continuityResult) return;
+    if (!establishedSession || establishedSession.messages.length === 0) {
+      setError("Active conversation session required to generate canonical archive.");
+      return;
+    }
+
+    const rawTx = buildRawTranscriptFromMessages(establishedSession.messages, establishedSession.platform);
+    const enriched = buildEnrichedContinuityPrompt(continuityResult, rawTx);
+
+    setIsProcessing(true);
+    setError("");
+    setStatus("");
+
+    try {
+      const sessionToArchive = {
+        ...establishedSession,
+        id:
+          establishedSession.id && establishedSession.id !== "new-chat"
+            ? establishedSession.id
+            : activeTabConvId && activeTabConvId !== "new-chat"
+            ? activeTabConvId
+            : establishedSession.id,
+      };
+
+      const generated = await createArchiveFromCapturedConversation(
+        sessionToArchive,
+        {
+          customTransferPrompt: enriched,
+          project: selectedProject
+            ? { id: selectedProject, name: selectedProject }
+            : undefined,
+        }
+      );
+      setArchive(generated);
+      setStatus("Archive transfer prompt enriched with Meta AI Continuity State (Schema 1.0 verified).");
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to create archive with enriched continuity prompt."
       );
     } finally {
       setIsProcessing(false);
@@ -525,12 +727,47 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
 
       {/* 4. Primary Actions */}
       <div className="vz-actions-group">
+        {/* Meta Model API Operations */}
+        <div className="vz-meta-actions-strip">
+          <button
+            type="button"
+            className="vz-btn-meta vz-btn-meta-memory"
+            onClick={handleExtractMemory}
+            disabled={
+              isExtractingMemory ||
+              isGeneratingContinuity ||
+              isProcessing ||
+              (!establishedSession?.messages.length && !transcript.trim())
+            }
+            title="Extract structured decisions, requirements, tasks, and constraints using Meta AI"
+          >
+            {isExtractingMemory ? "⏳ Extracting Memory..." : "🧠 Extract Memory (Meta AI)"}
+          </button>
+
+          <button
+            type="button"
+            className="vz-btn-meta vz-btn-meta-continuity"
+            onClick={handleGenerateMetaContinuity}
+            disabled={
+              isExtractingMemory ||
+              isGeneratingContinuity ||
+              isProcessing ||
+              (!establishedSession?.messages.length && !transcript.trim())
+            }
+            title="Synthesize project objective, blockers, and next action using Meta AI"
+          >
+            {isGeneratingContinuity ? "⏳ Generating State..." : "⚡ Continuity State (Meta AI)"}
+          </button>
+        </div>
+
         <button
           type="button"
           className="vz-btn-primary"
           onClick={handleGenerateFromCapture}
           disabled={
             isProcessing ||
+            isExtractingMemory ||
+            isGeneratingContinuity ||
             !establishedSession ||
             establishedSession.messages.length === 0
           }
@@ -580,6 +817,186 @@ export default function Continuity({ selectedProject }: ContinuityProps) {
           </button>
         </div>
       </div>
+
+      {/* Meta AI Continuity State Card */}
+      {continuityResult && (
+        <section className="vz-card vz-meta-result-card vz-meta-continuity-card">
+          <div className="vz-card-header">
+            <span className="vz-label-bold">⚡ META AI CONTINUITY STATE</span>
+            <div className="vz-meta-card-actions">
+              <span className="vz-badge-sm vz-badge-neutral">
+                {continuityResult.tokenUsage.totalTokens} tokens
+              </span>
+              <button
+                type="button"
+                className="vz-btn-icon-subtle"
+                onClick={() => setContinuityResult(null)}
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="vz-meta-highlight-box">
+            <div className="vz-meta-field">
+              <span className="vz-meta-label">CURRENT OBJECTIVE</span>
+              <div className="vz-meta-val-emphasis">
+                {continuityResult.currentObjective || "In progress"}
+              </div>
+            </div>
+            <div className="vz-meta-field">
+              <span className="vz-meta-label">RECOMMENDED NEXT ACTION</span>
+              <div className="vz-meta-val-next">
+                👉 {continuityResult.recommendedNextAction || "Continue active session"}
+              </div>
+            </div>
+          </div>
+
+          {continuityResult.importantDecisions.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">BINDING DECISIONS ({continuityResult.importantDecisions.length})</span>
+              <ul className="vz-meta-list">
+                {continuityResult.importantDecisions.map((dec, i) => (
+                  <li key={i}>{dec}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {continuityResult.constraints.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">CONSTRAINTS</span>
+              <ul className="vz-meta-list vz-meta-constraints">
+                {continuityResult.constraints.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {continuityResult.blockers.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">KNOWN BLOCKERS</span>
+              <ul className="vz-meta-list vz-meta-blockers">
+                {continuityResult.blockers.map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {continuityResult.technicalContext && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">TECHNICAL CONTEXT</span>
+              <p className="vz-meta-text">{continuityResult.technicalContext}</p>
+            </div>
+          )}
+
+          <div className="vz-btn-row vz-meta-action-row">
+            <button
+              type="button"
+              className="vz-btn-secondary"
+              onClick={handleCopyMetaPrompt}
+            >
+              {copiedMetaPrompt ? "✓ Copied Prompt" : "📋 Copy Restore Prompt"}
+            </button>
+            <button
+              type="button"
+              className="vz-btn-secondary"
+              onClick={handleApplyContinuityToArchive}
+              disabled={isProcessing || !establishedSession || establishedSession.messages.length === 0}
+              title="Apply synthesized state as the transfer prompt in the canonical archive"
+            >
+              ⚡ Apply to Archive
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Meta AI Memory Extraction Card */}
+      {memoryResult && (
+        <section className="vz-card vz-meta-result-card vz-meta-memory-card">
+          <div className="vz-card-header">
+            <span className="vz-label-bold">🧠 META AI PROJECT MEMORY</span>
+            <div className="vz-meta-card-actions">
+              <span className="vz-badge-sm vz-badge-neutral">
+                {memoryResult.tokenUsage.totalTokens} tokens
+              </span>
+              <button
+                type="button"
+                className="vz-btn-icon-subtle"
+                onClick={() => setMemoryResult(null)}
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {memoryResult.decisions.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">DECISIONS ({memoryResult.decisions.length})</span>
+              <ul className="vz-meta-list">
+                {memoryResult.decisions.map((d, i) => (
+                  <li key={i}>{d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {memoryResult.requirements.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">REQUIREMENTS ({memoryResult.requirements.length})</span>
+              <ul className="vz-meta-list">
+                {memoryResult.requirements.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {memoryResult.constraints.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">CONSTRAINTS</span>
+              <ul className="vz-meta-list vz-meta-constraints">
+                {memoryResult.constraints.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {memoryResult.pendingTasks.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">PENDING TASKS ({memoryResult.pendingTasks.length})</span>
+              <ul className="vz-meta-list">
+                {memoryResult.pendingTasks.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {memoryResult.technicalContext && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">TECHNICAL CONTEXT</span>
+              <p className="vz-meta-text">{memoryResult.technicalContext}</p>
+            </div>
+          )}
+
+          {memoryResult.projectFacts.length > 0 && (
+            <div className="vz-meta-section">
+              <span className="vz-meta-label">PROJECT FACTS</span>
+              <ul className="vz-meta-list">
+                {memoryResult.projectFacts.map((f, i) => (
+                  <li key={i}>{f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 5. Manual Fallback Accordion */}
       <div className="vz-manual-accordion">
